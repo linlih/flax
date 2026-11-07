@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>从 Zotero 迁移</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button,input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+/* BoardUI 式：灰色托盘 + 白色内卡 */
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.tray-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 8px 0}
+.lbl{font-size:14px;font-weight:500;color:#6B6B6B}
+.big{font-size:22px;font-weight:500;color:#0A0A0A;letter-spacing:-0.01em}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25),0 1px 2px rgba(0,0,0,0.08)}
+.btn-p:hover{background:linear-gradient(180deg,#4A90FF 0%,#2B7FFF 100%)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:13px;font-weight:500}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;border:1px solid #EBEBEB;background:#F7F7F7;font-size:12px;color:#6B6B6B}
+.side{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:#404040;font-size:14px;cursor:pointer;text-align:left;box-sizing:border-box}
+.side:hover{background:#F5F5F5}
+.side.on{color:#FFFFFF;font-weight:500;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.side.on:hover{background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%)}
+.grp{display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:28px;font-size:12px;font-weight:500;color:#6B6B6B}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;min-width:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.book{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px;color:#0A0A0A;transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.book:hover{border-color:#DADADA}
+.book:active{transform:scale(0.98)}
+.peek{position:relative;height:132px;border-radius:8px;background:#F2F2F2;overflow:hidden}
+.peek .pg{position:absolute;left:50%;top:14px;margin-left:-77px;width:153px;height:198px;overflow:hidden;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 6px rgba(0,0,0,0.08)}
+.tr{display:grid;grid-template-columns:44px minmax(0,1fr) 130px 130px 70px 100px;align-items:center;padding:0 4px;border-bottom:1px solid #F0F0F0}
+.tr > *{padding:0 10px;min-width:0}
+.th{height:40px;font-size:13px;color:#6B6B6B}
+.td{height:56px;cursor:pointer}
+.td:last-child{border-bottom:0}
+.td:hover{background:#FAFAFA}
+.td.sel{background:#F3F7FF}
+.r{text-align:right}
+.chk{width:16px;height:16px;border-radius:5px;border:1px solid #D4D4D4;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 1px rgba(0,0,0,0.04)}
+.chk[aria-checked="true"]{border:0;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid #EBEBEB;border-radius:8px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%}
+.cmd:hover{background:#F5F5F5}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}.book{transition:none}}
+.sheet{width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;display:flex;flex-direction:column;position:relative}
+.sheet .v{font-size:9px;color:#6E6E73;text-align:center;margin-bottom:22px;letter-spacing:.02em}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5}
+.sheet .f{font-size:9px;color:#6E6E73;text-align:center;margin:2px 0 22px}
+.sheet .ah{font-size:11px;font-weight:700;text-align:center;margin-bottom:6px}
+.sheet .ab{font-size:9.5px;line-height:1.5;text-align:justify;margin:0 34px 20px}
+.sheet .ab mark{background:#FFE27A;color:inherit}
+.sheet .h{font-size:12px;font-weight:700;margin-bottom:6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .fig{height:96px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field > span{font-size:13px;font-weight:500;color:#404040}
+.inp{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:14px;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;align-items:center;gap:8px}
+.inp input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit}
+.hint{font-size:12px;color:#6B6B6B;line-height:1.5}
+.sw2{position:relative;width:38px;height:22px;border-radius:11px;background:#E5E5E5;flex:none;border:0;padding:0;cursor:pointer;transition:background .2s}
+.sw2::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#FFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.sw2[aria-checked="true"]{background:#155DFC}
+.sw2[aria-checked="true"]::after{transform:translateX(16px)}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 14px;box-sizing:border-box}
+.row + .row{border-top:1px solid #F0F0F0}
+.rt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rt b{font-weight:500}
+.rt small{font-size:13px;color:#6B6B6B;line-height:1.45}
+.sel{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);white-space:nowrap;cursor:pointer}
+.bar{height:6px;border-radius:3px;background:#EBEBEB;overflow:hidden}
+.bar > span{display:block;height:100%;border-radius:3px;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,0.28);display:flex;align-items:center;justify-content:center;z-index:10}
+.sheet2{width:560px;background:#F7F7F7;border-radius:20px;padding:8px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.06),0 24px 64px rgba(0,0,0,0.22);display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion: reduce){.sw2,.sw2::after{transition:none}}
+.sec-h{}</style>
+</helmet>
+<div style="position: relative; width: 100%; min-height: 900px; box-sizing: border-box; display: flex; justify-content: center; align-items: flex-start; padding: 56px 0; background: #EDEDED; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A">
+  <div role="dialog" aria-labelledby="h-z" class="sheet2" style="width: 620px">
+    <div style="display: flex; align-items: center; gap: 12px; padding: 8px 8px 2px 12px">
+      <h2 id="h-z" style="flex: 1; margin: 0; font-size: 16px; font-weight: 600">从 Zotero 迁移</h2>
+      <ol aria-label="步骤" style="display: flex; gap: 6px; margin: 0; padding: 0; list-style: none">
+        <sc-for list="{{ steps }}" as="st" hint-placeholder-count="4"><li aria-current="{{ st.cur }}" style="{{ st.style }}">{{ st.label }}</li></sc-for>
+      </ol>
+    </div>
+
+    <sc-if value="{{ s0 }}" hint-placeholder-val="{{ true }}">
+      <div class="card row" style="padding: 14px 16px">
+        <span aria-hidden="true" style="width: 40px; height: 40px; border-radius: 10px; background: #F2F2F2; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 700; color: #404040">Z</span>
+        <span class="rt"><b>找到了 Zotero 文献库</b><small class="num">~/Zotero · 1,284 个条目 · 2.1 GB · 今天修改过</small></span>
+        <button type="button" class="btn" style="height: 32px">选择其他位置</button>
+      </div>
+      <div class="card" style="padding: 12px 16px; display: flex; gap: 10px; font-size: 13px; line-height: 1.6; color: #404040">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true" style="flex: none; margin-top: 2px"><circle cx="12" cy="12" r="9"></circle><path d="M12 11v5M12 8h.01"></path></svg>
+        <span>只读取，不会修改 Zotero 里的任何东西。迁移期间 Zotero 最好先退出，避免读到一半的数据。以后可以再迁移一次，已经导入的条目会跳过。</span>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 2px 4px 4px"><button type="button" class="btn">取消</button><button type="button" class="btn btn-p" onClick="{{ next }}">下一步</button></div>
+    </sc-if>
+
+    <sc-if value="{{ s1 }}" hint-placeholder-val="{{ false }}">
+      <div class="card">
+<div class="row"><button type="button" role="checkbox" aria-checked="{{ meta }}" aria-label="条目和元数据" onClick="{{ t_meta }}" class="chk"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button><span class="rt"><b>条目和元数据</b><small>标题、作者、年份、DOI、摘要</small></span><span class="num" style="font-size: 14px; color: #404040">1,284</span></div>
+        <div class="row"><button type="button" role="checkbox" aria-checked="{{ pdf }}" aria-label="PDF 附件" onClick="{{ t_pdf }}" class="chk"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button><span class="rt"><b>PDF 附件</b><small>复制一份到本库，Zotero 原文件保持不动</small></span><span class="num" style="font-size: 14px; color: #404040">1,102 · 2.0 GB</span></div>
+<div class="row"><button type="button" role="checkbox" aria-checked="{{ coll }}" aria-label="分类 → 文件夹" onClick="{{ t_coll }}" class="chk"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button><span class="rt"><b>分类 → 文件夹</b><small>保留层级</small></span><span class="num" style="font-size: 14px; color: #404040">38</span></div><div class="row"><button type="button" role="checkbox" aria-checked="{{ tags }}" aria-label="标签" onClick="{{ t_tags }}" class="chk"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button><span class="rt"><b>标签</b><small>自动标签（例如来自数据库的）默认不导入</small></span><span class="num" style="font-size: 14px; color: #404040">214</span></div><div class="row"><button type="button" role="checkbox" aria-checked="{{ ann }}" aria-label="PDF 高亮和批注" onClick="{{ t_ann }}" class="chk"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button><span class="rt"><b>PDF 高亮和批注</b><small>Zotero 7 阅读器里的高亮、下划线、批注，转成本应用的批注</small></span><span class="num" style="font-size: 14px; color: #404040">3,560</span></div><div class="row"><button type="button" role="checkbox" aria-checked="{{ notes }}" aria-label="笔记" onClick="{{ t_notes }}" class="chk"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg></button><span class="rt"><b>笔记</b><small>转成 Markdown，挂在对应论文下</small></span><span class="num" style="font-size: 14px; color: #404040">412</span></div>
+        <div class="row" style="color: #6B6B6B"><span style="width: 16px; display: flex; justify-content: center">—</span><span class="rt"><b style="color: #6B6B6B">网页快照</b><small>第一版只支持 PDF，会跳过，在报告里列出</small></span><span class="num" style="font-size: 14px">23</span></div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 10px"><span class="hint" style="flex: 1">预计 3 分钟，需要 2.0 GB 空间（还剩 186 GB）</span><button type="button" class="btn" onClick="{{ back }}">上一步</button><button type="button" class="btn btn-p" onClick="{{ start }}">开始迁移</button></div>
+    </sc-if>
+
+    <sc-if value="{{ s2 }}" hint-placeholder-val="{{ false }}">
+      <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 10px">
+        <div style="display: flex; align-items: baseline; gap: 10px"><span class="num" style="font-size: 22px; font-weight: 500">{{ pct }}%</span><span style="font-size: 14px; color: #404040">{{ phase }}</span></div>
+        <div class="bar"><span style="{{ barStyle }}"></span></div>
+      </div>
+      <div class="card">
+        <sc-for list="{{ tasks }}" as="k" hint-placeholder-count="4">
+          <div class="row" style="min-height: 44px"><span style="width: 16px; display: flex; justify-content: center">{{ k.icon }}</span><span class="rt"><b>{{ k.label }}</b></span><span class="num" style="font-size: 13px; color: #6B6B6B">{{ k.note }}</span></div>
+        </sc-for>
+      </div>
+      <div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 10px"><span class="hint" style="flex: 1">可以关掉这个窗口，迁移会在后台继续，侧边栏底部能看到进度。</span><button type="button" class="btn">在后台继续</button></div>
+    </sc-if>
+
+    <sc-if value="{{ s3 }}" hint-placeholder-val="{{ false }}">
+      <div class="card" style="padding: 18px 16px 16px; display: flex; flex-direction: column; gap: 14px">
+        <div style="display: flex; align-items: center; gap: 10px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg><span style="font-size: 18px; font-weight: 600">迁移完成</span><span class="hint">用时 2 分 41 秒</span></div>
+        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px">
+          <sc-for list="{{ stats }}" as="x" hint-placeholder-count="4"><div style="padding: 10px 12px; border-radius: 10px; background: #F7F7F7"><div class="num" style="font-size: 20px; font-weight: 500">{{ x.n }}</div><div style="font-size: 12px; color: #6B6B6B">{{ x.label }}</div></div></sc-for>
+        </div>
+      </div>
+      <div class="card">
+        <div class="sec-h" style="display: flex; padding: 12px 14px 4px; font-size: 13px; font-weight: 500; color: #6B6B6B">需要你看一下</div>
+        <div class="row"><span class="dot" style="background: #F59E0B; margin: 0 5px"></span><span class="rt"><b>12 条批注没能放回原位置</b><small>对应的 PDF 在 Zotero 里被替换过，原文找不到了。已作为笔记保留，原文和页码都在</small></span><button type="button" class="btn" style="height: 32px">查看</button></div>
+        <div class="row"><span class="dot" style="background: #EF4444; margin: 0 5px"></span><span class="rt"><b>5 个附件找不到文件</b><small>Zotero 里有记录，但电脑上没有这个文件（可能只在 Zotero 云端）。条目已导入，可以之后补上 PDF</small></span><button type="button" class="btn" style="height: 32px">查看</button></div>
+        <div class="row"><span class="dot" style="background: #A1A1A1; margin: 0 5px"></span><span class="rt"><b>23 个网页快照已跳过</b><small>链接保留在条目里</small></span></div>
+      </div>
+      <div style="display: flex; justify-content: flex-end; gap: 8px; padding: 2px 4px 4px"><button type="button" class="btn">保存报告</button><a href="Main.dc.html" class="btn btn-p">打开文献库</a></div>
+    </sc-if>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0, pct: 0, meta: true, pdf: true, coll: true, tags: true, ann: true, notes: true };
+  }
+  renderVals() {
+    const s = this.state;
+    const icons = {
+      inbox: 'M4 13l2.5-7h11L20 13v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      reading: 'M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13',
+      toread: 'M7 4h10v16l-5-3.5L7 20z',
+      done: 'M5 12.5l4.5 4.5L19 7.5',
+      all: 'M5 4.5h14v15H5zM9 4.5v15'
+    };
+    const navDef = [['inbox','收件箱'],['reading','正在读'],['toread','待读'],['done','已读完'],['all','全部论文']];
+    const navItems = (counts, cur) => navDef.map(([id,label],i) => { const on = id === cur; return { id, label, count: counts[i], icon: icons[id], cls: on ? 'side on' : 'side', current: on ? 'page' : null, iconStyle: on ? 'color: #FFFFFF' : 'color: #6B6B6B', countStyle: on ? 'font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF' : 'font-size: 13px; color: #6B6B6B', pick: () => {} }; });
+    const t = (k) => () => this.setState({ [k]: !s[k] });
+    const labels = ['位置', '内容', '迁移', '完成'];
+    const p = s.pct;
+    const taskDef = [['条目和元数据', 10], ['分类和标签', 20], ['PDF 附件', 75], ['高亮、批注和笔记', 100]];
+    let prev = 0;
+    const tasks = taskDef.map(([label, end]) => { const st = p >= end ? 'done' : p > prev ? 'run' : 'wait'; const start = prev; prev = end; return { label, icon: st === 'done' ? '✓' : st === 'run' ? '•' : '·', note: st === 'done' ? '完成' : st === 'run' ? (label === 'PDF 附件' ? Math.round((p - start) / (end - start) * 1102) + ' / 1,102' : '进行中') : '等待' }; });
+    const cb = (k) => s[k] ? 'true' : 'false';
+    return {
+      steps: labels.map((label, i) => ({ label, cur: i === s.step ? 'step' : null, style: 'height: 24px; padding: 0 8px; border-radius: 6px; display: flex; align-items: center; font-size: 12px; font-weight: 500; ' + (i === s.step ? 'background: #FFFFFF; color: #0A0A0A; box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)' : i < s.step ? 'color: #155DFC' : 'color: #A1A1A1') })),
+      s0: s.step === 0, s1: s.step === 1, s2: s.step === 2, s3: s.step === 3,
+      next: () => this.setState({ step: 1 }), back: () => this.setState({ step: 0 }),
+      start: () => { this.setState({ step: 2, pct: 0 }); const tick = () => { const n = Math.min(100, this.state.pct + 4); this.setState({ pct: n }); if (n < 100) setTimeout(tick, 120); else setTimeout(() => this.setState({ step: 3 }), 400); }; setTimeout(tick, 120); },
+      meta: cb('meta'), pdf: cb('pdf'), coll: cb('coll'), tags: cb('tags'), ann: cb('ann'), notes: cb('notes'),
+      t_meta: t('meta'), t_pdf: t('pdf'), t_coll: t('coll'), t_tags: t('tags'), t_ann: t('ann'), t_notes: t('notes'),
+      pct: p, barStyle: 'width: ' + p + '%',
+      phase: p < 10 ? '正在读取条目…' : p < 20 ? '正在建立文件夹和标签…' : p < 75 ? '正在复制 PDF…' : p < 100 ? '正在转换高亮和批注…' : '收尾中…',
+      tasks,
+      stats: [{ n: '1,284', label: '篇论文' }, { n: '1,097', label: '个 PDF' }, { n: '3,548', label: '条批注' }, { n: '412', label: '篇笔记' }]
+    };
+  }
+}
+</script>
+</body>
+</html>

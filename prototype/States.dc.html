@@ -1,0 +1,159 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>出错和特殊状态</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button,input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+/* BoardUI 式：灰色托盘 + 白色内卡 */
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.tray-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 8px 0}
+.lbl{font-size:14px;font-weight:500;color:#6B6B6B}
+.big{font-size:22px;font-weight:500;color:#0A0A0A;letter-spacing:-0.01em}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25),0 1px 2px rgba(0,0,0,0.08)}
+.btn-p:hover{background:linear-gradient(180deg,#4A90FF 0%,#2B7FFF 100%)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:13px;font-weight:500}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;border:1px solid #EBEBEB;background:#F7F7F7;font-size:12px;color:#6B6B6B}
+.side{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:#404040;font-size:14px;cursor:pointer;text-align:left;box-sizing:border-box}
+.side:hover{background:#F5F5F5}
+.side.on{color:#FFFFFF;font-weight:500;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.side.on:hover{background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%)}
+.grp{display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:28px;font-size:12px;font-weight:500;color:#6B6B6B}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;min-width:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.book{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px;color:#0A0A0A;transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.book:hover{border-color:#DADADA}
+.book:active{transform:scale(0.98)}
+.peek{position:relative;height:132px;border-radius:8px;background:#F2F2F2;overflow:hidden}
+.peek .pg{position:absolute;left:50%;top:14px;margin-left:-77px;width:153px;height:198px;overflow:hidden;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 6px rgba(0,0,0,0.08)}
+.tr{display:grid;grid-template-columns:44px minmax(0,1fr) 130px 130px 70px 100px;align-items:center;padding:0 4px;border-bottom:1px solid #F0F0F0}
+.tr > *{padding:0 10px;min-width:0}
+.th{height:40px;font-size:13px;color:#6B6B6B}
+.td{height:56px;cursor:pointer}
+.td:last-child{border-bottom:0}
+.td:hover{background:#FAFAFA}
+.td.sel{background:#F3F7FF}
+.r{text-align:right}
+.chk{width:16px;height:16px;border-radius:5px;border:1px solid #D4D4D4;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 1px rgba(0,0,0,0.04)}
+.chk[aria-checked="true"]{border:0;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid #EBEBEB;border-radius:8px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%}
+.cmd:hover{background:#F5F5F5}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}.book{transition:none}}
+.sheet{width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;display:flex;flex-direction:column;position:relative}
+.sheet .v{font-size:9px;color:#6E6E73;text-align:center;margin-bottom:22px;letter-spacing:.02em}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5}
+.sheet .f{font-size:9px;color:#6E6E73;text-align:center;margin:2px 0 22px}
+.sheet .ah{font-size:11px;font-weight:700;text-align:center;margin-bottom:6px}
+.sheet .ab{font-size:9.5px;line-height:1.5;text-align:justify;margin:0 34px 20px}
+.sheet .ab mark{background:#FFE27A;color:inherit}
+.sheet .h{font-size:12px;font-weight:700;margin-bottom:6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .fig{height:96px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field > span{font-size:13px;font-weight:500;color:#404040}
+.inp{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:14px;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;align-items:center;gap:8px}
+.inp input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit}
+.hint{font-size:12px;color:#6B6B6B;line-height:1.5}
+.sw2{position:relative;width:38px;height:22px;border-radius:11px;background:#E5E5E5;flex:none;border:0;padding:0;cursor:pointer;transition:background .2s}
+.sw2::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#FFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.sw2[aria-checked="true"]{background:#155DFC}
+.sw2[aria-checked="true"]::after{transform:translateX(16px)}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 14px;box-sizing:border-box}
+.row + .row{border-top:1px solid #F0F0F0}
+.rt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rt b{font-weight:500}
+.rt small{font-size:13px;color:#6B6B6B;line-height:1.45}
+.sel{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);white-space:nowrap;cursor:pointer}
+.bar{height:6px;border-radius:3px;background:#EBEBEB;overflow:hidden}
+.bar > span{display:block;height:100%;border-radius:3px;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,0.28);display:flex;align-items:center;justify-content:center;z-index:10}
+.sheet2{width:560px;background:#F7F7F7;border-radius:20px;padding:8px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.06),0 24px 64px rgba(0,0,0,0.22);display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion: reduce){.sw2,.sw2::after{transition:none}}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; padding: 28px 32px; background: #FFFFFF; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A; display: flex; flex-direction: column; gap: 16px">
+  <header style="display: flex; flex-direction: column; gap: 4px"><h1 style="margin: 0; font-size: 24px; font-weight: 600">出错和特殊状态</h1><p style="margin: 0; font-size: 14px; color: #6B6B6B">每条都说清楚：发生了什么、哪些还能用、下一步怎么做。不用弹窗，就地显示。</p></header>
+  <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; align-items: start"><section class="tray" aria-label="还没设置 AI"><div class="tray-h" style="align-items: baseline"><div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">1 · 在"AI"标签或查词时</span><h2 style="margin: 0; font-size: 16px; font-weight: 600">还没设置 AI</h2></div></div><div class="card" style="padding: 18px 16px; display: flex; flex-direction: column; gap: 10px">
+  <span aria-hidden="true" style="width: 36px; height: 36px; border-radius: 10px; background: #F3F7FF; color: #155DFC; display: flex; align-items: center; justify-content: center"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path></svg></span>
+  <b style="font-size: 15px; font-weight: 600">连接一个 AI 服务，就能问这篇论文</b>
+  <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #404040">用你自己的 API Key，或者本机模型。阅读、高亮和笔记不需要 AI，可以照常用。</p>
+  <div style="display: flex; gap: 8px"><a href="Settings.dc.html" class="btn btn-p" style="height: 32px; font-size: 13px">连接 AI 服务</a><button type="button" class="btn" style="height: 32px; font-size: 13px">用本机模型</button></div>
+</div></section><section class="tray" aria-label="离线"><div class="tray-h" style="align-items: baseline"><div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">2 · 网络断开时</span><h2 style="margin: 0; font-size: 16px; font-weight: 600">离线</h2></div></div><div class="card" style="padding: 10px 12px; display: flex; align-items: center; gap: 10px">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M3 3l18 18M8.5 16.5a5 5 0 0 1 7 0M5 13a10 10 0 0 1 5.5-2.8M19 13a10 10 0 0 0-2-1.4M12 20h.01"></path></svg>
+  <span style="flex: 1; font-size: 13px"><b style="font-weight: 500">离线</b><span style="color: #6B6B6B"> · 批注照常保存，联网后自动同步</span></span>
+</div>
+<div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 8px">
+  <b style="font-weight: 500">AI 暂时用不了</b>
+  <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #404040">已经翻译过的段落和查过的词还能看（存在本地）。新的问题会排队，联网后自动发送。</p>
+  <div style="display: flex; gap: 8px"><button type="button" class="btn" style="height: 32px; font-size: 13px">改用本机模型</button></div>
+</div></section><section class="tray" aria-label="AI 回答中断"><div class="tray-h" style="align-items: baseline"><div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">3 · 服务返回错误时</span><h2 style="margin: 0; font-size: 16px; font-weight: 600">AI 回答中断</h2></div></div><div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+  <p style="margin: 0; font-size: 14px; line-height: 1.65">缩放因子 1/√d<sub>k</sub> 的作用是让点积的方差保持在 1 附近。d<sub>k</sub> 较大时，点积会变得很大，softmax 落进</p>
+  <div style="display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px; border-radius: 10px; background: #FEF2F2">
+    <span class="dot" style="background: #EF4444; margin-top: 6px"></span>
+    <span style="flex: 1; font-size: 13px; line-height: 1.55; color: #404040"><b style="font-weight: 500; color: #0A0A0A">回答到一半中断了</b><br>服务商说请求太频繁（429），大约 20 秒后可以重试。已经写出的部分会保留。</span>
+  </div>
+  <div style="display: flex; gap: 8px"><button type="button" class="btn btn-p" style="height: 32px; font-size: 13px">继续回答</button><button type="button" class="btn" style="height: 32px; font-size: 13px">换一个模型</button></div>
+</div></section><section class="tray" aria-label="扫描版 PDF"><div class="tray-h" style="align-items: baseline"><div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">4 · 打开没有文字层的 PDF 时</span><h2 style="margin: 0; font-size: 16px; font-weight: 600">扫描版 PDF</h2></div></div><div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+  <div style="display: flex; align-items: center; gap: 10px"><span class="dot" style="background: #F59E0B"></span><b style="font-weight: 500; flex: 1">这份 PDF 是扫描图片，没有文字</b></div>
+  <p style="margin: 0; font-size: 13px; line-height: 1.6; color: #404040">可以照常阅读和手写批注。选中文字、查词、翻译、AI 和搜索需要先识别文字。识别在本机完成，22 页大约 40 秒。</p>
+  <div style="display: flex; gap: 8px"><button type="button" class="btn btn-p" style="height: 32px; font-size: 13px">识别文字</button><button type="button" class="btn" style="height: 32px; font-size: 13px">先不用</button></div>
+</div></section><section class="tray" aria-label="找不到元数据"><div class="tray-h" style="align-items: baseline"><div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">5 · 导入后识别失败时</span><h2 style="margin: 0; font-size: 16px; font-weight: 600">找不到元数据</h2></div></div><div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+  <div style="display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 500">scan_lecture_notes.pdf</b><span style="font-size: 13px; color: #6B6B6B">没有找到 DOI 或 arXiv 编号。按首页文字搜到这些，选一个：</span></div>
+  <div style="display: flex; flex-direction: column; gap: 6px">
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #F7F7F7"><span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500; font-size: 13.5px">Lecture Notes on Optimization Methods</span><span style="font-size: 12px; color: #6B6B6B">Crossref · 2019 · 标题相似度高</span></span><button type="button" class="btn" style="height: 32px; font-size: 13px">用这个</button></div>
+    <div style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 10px; background: #F7F7F7"><span style="flex: 1; min-width: 0; display: flex; flex-direction: column"><span style="font-weight: 500; font-size: 13.5px">Optimization Methods for Machine Learning</span><span style="font-size: 12px; color: #6B6B6B">arXiv · 2021 · 部分匹配</span></span><button type="button" class="btn" style="height: 32px; font-size: 13px">用这个</button></div>
+  </div>
+  <div style="display: flex; gap: 8px"><button type="button" class="btn" style="height: 32px; font-size: 13px">手动填写</button><button type="button" class="btn" style="height: 32px; font-size: 13px">就用文件名</button></div>
+</div></section><section class="tray" aria-label="重复导入"><div class="tray-h" style="align-items: baseline"><div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">6 · 拖入已经在库里的论文时</span><h2 style="margin: 0; font-size: 16px; font-weight: 600">重复导入</h2></div></div><div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 10px">
+  <b style="font-weight: 500">这篇已经在库里了</b>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 12.5px; line-height: 1.5">
+    <div style="padding: 8px 10px; border-radius: 10px; background: #F7F7F7"><div style="color: #6B6B6B">库里的</div><div style="font-weight: 500">arXiv v5 · 2017-12</div><div style="color: #6B6B6B">18 条批注</div></div>
+    <div style="padding: 8px 10px; border-radius: 10px; background: #F3F7FF; box-shadow: inset 0 0 0 1px #BFD7FF"><div style="color: #6B6B6B">新拖入的</div><div style="font-weight: 500">NeurIPS 正式版</div><div style="color: #6B6B6B">没有批注</div></div>
+  </div>
+  <p style="margin: 0; font-size: 13px; color: #404040">两个版本内容不同，建议作为同一篇论文的另一个文件保存，批注互不影响。</p>
+  <div style="display: flex; gap: 8px"><button type="button" class="btn btn-p" style="height: 32px; font-size: 13px">加为另一个版本</button><button type="button" class="btn" style="height: 32px; font-size: 13px">不导入</button></div>
+</div></section></div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = {};
+  }
+  renderVals() {
+    const s = this.state;
+    const icons = {
+      inbox: 'M4 13l2.5-7h11L20 13v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      reading: 'M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13',
+      toread: 'M7 4h10v16l-5-3.5L7 20z',
+      done: 'M5 12.5l4.5 4.5L19 7.5',
+      all: 'M5 4.5h14v15H5zM9 4.5v15'
+    };
+    const navDef = [['inbox','收件箱'],['reading','正在读'],['toread','待读'],['done','已读完'],['all','全部论文']];
+    const navItems = (counts, cur) => navDef.map(([id,label],i) => { const on = id === cur; return { id, label, count: counts[i], icon: icons[id], cls: on ? 'side on' : 'side', current: on ? 'page' : null, iconStyle: on ? 'color: #FFFFFF' : 'color: #6B6B6B', countStyle: on ? 'font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF' : 'font-size: 13px; color: #6B6B6B', pick: () => {} }; });
+    return {};
+  }
+}
+</script>
+</body>
+</html>

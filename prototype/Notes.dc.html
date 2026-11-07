@@ -1,0 +1,281 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>笔记</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button,input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+/* BoardUI 式：灰色托盘 + 白色内卡 */
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.tray-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 8px 0}
+.lbl{font-size:14px;font-weight:500;color:#6B6B6B}
+.big{font-size:22px;font-weight:500;color:#0A0A0A;letter-spacing:-0.01em}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25),0 1px 2px rgba(0,0,0,0.08)}
+.btn-p:hover{background:linear-gradient(180deg,#4A90FF 0%,#2B7FFF 100%)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:13px;font-weight:500}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;border:1px solid #EBEBEB;background:#F7F7F7;font-size:12px;color:#6B6B6B}
+.side{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:#404040;font-size:14px;cursor:pointer;text-align:left;box-sizing:border-box}
+.side:hover{background:#F5F5F5}
+.side.on{color:#FFFFFF;font-weight:500;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.side.on:hover{background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%)}
+.grp{display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:28px;font-size:12px;font-weight:500;color:#6B6B6B}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;min-width:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.book{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px;color:#0A0A0A;transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.book:hover{border-color:#DADADA}
+.book:active{transform:scale(0.98)}
+.peek{position:relative;height:132px;border-radius:8px;background:#F2F2F2;overflow:hidden}
+.peek .pg{position:absolute;left:50%;top:14px;margin-left:-77px;width:153px;height:198px;overflow:hidden;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 6px rgba(0,0,0,0.08)}
+.tr{display:grid;grid-template-columns:44px minmax(0,1fr) 130px 130px 70px 100px;align-items:center;padding:0 4px;border-bottom:1px solid #F0F0F0}
+.tr > *{padding:0 10px;min-width:0}
+.th{height:40px;font-size:13px;color:#6B6B6B}
+.td{height:56px;cursor:pointer}
+.td:last-child{border-bottom:0}
+.td:hover{background:#FAFAFA}
+.td.sel{background:#F3F7FF}
+.r{text-align:right}
+.chk{width:16px;height:16px;border-radius:5px;border:1px solid #D4D4D4;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 1px rgba(0,0,0,0.04)}
+.chk[aria-checked="true"]{border:0;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid #EBEBEB;border-radius:8px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%}
+.cmd:hover{background:#F5F5F5}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}.book{transition:none}}
+.sheet{width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;display:flex;flex-direction:column;position:relative}
+.sheet .v{font-size:9px;color:#6E6E73;text-align:center;margin-bottom:22px;letter-spacing:.02em}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5}
+.sheet .f{font-size:9px;color:#6E6E73;text-align:center;margin:2px 0 22px}
+.sheet .ah{font-size:11px;font-weight:700;text-align:center;margin-bottom:6px}
+.sheet .ab{font-size:9.5px;line-height:1.5;text-align:justify;margin:0 34px 20px}
+.sheet .ab mark{background:#FFE27A;color:inherit}
+.sheet .h{font-size:12px;font-weight:700;margin-bottom:6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .fig{height:96px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field > span{font-size:13px;font-weight:500;color:#404040}
+.inp{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:14px;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;align-items:center;gap:8px}
+.inp input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit}
+.hint{font-size:12px;color:#6B6B6B;line-height:1.5}
+.sw2{position:relative;width:38px;height:22px;border-radius:11px;background:#E5E5E5;flex:none;border:0;padding:0;cursor:pointer;transition:background .2s}
+.sw2::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#FFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.sw2[aria-checked="true"]{background:#155DFC}
+.sw2[aria-checked="true"]::after{transform:translateX(16px)}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 14px;box-sizing:border-box}
+.row + .row{border-top:1px solid #F0F0F0}
+.rt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rt b{font-weight:500}
+.rt small{font-size:13px;color:#6B6B6B;line-height:1.45}
+.sel{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);white-space:nowrap;cursor:pointer}
+.bar{height:6px;border-radius:3px;background:#EBEBEB;overflow:hidden}
+.bar > span{display:block;height:100%;border-radius:3px;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,0.28);display:flex;align-items:center;justify-content:center;z-index:10}
+.sheet2{width:560px;background:#F7F7F7;border-radius:20px;padding:8px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.06),0 24px 64px rgba(0,0,0,0.22);display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion: reduce){.sw2,.sw2::after{transition:none}}
+.nl{display:flex;flex-direction:column;gap:3px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box;color:#0A0A0A;font:inherit}
+.nl:hover{background:#F5F5F5}
+.nl[aria-selected="true"]{background:#F3F7FF;box-shadow:inset 0 0 0 1px #BFD7FF}
+.md h1{margin:0;font-size:26px;font-weight:600;letter-spacing:-0.015em}
+.md h2{margin:22px 0 8px;font-size:17px;font-weight:600}
+.md p{margin:0 0 10px;font-size:15px;line-height:1.75}
+.md ul{margin:0 0 10px;padding-left:20px;font-size:15px;line-height:1.75}
+.wl{color:#155DFC;background:#F3F7FF;border-radius:4px;padding:0 3px;font-weight:500;cursor:pointer}
+.q{margin:6px 0 14px;padding:12px 14px 10px 16px;border-radius:10px;background:#FFFBEB;box-shadow:inset 3px 0 0 #F5C542}
+.q p{margin:0;font-family:'Source Serif 4',Georgia,serif;font-size:14.5px;line-height:1.6}
+.qf{display:flex;align-items:center;gap:8px;margin-top:8px;font-size:12px;color:#6B6B6B}
+.tp{display:flex;flex-direction:column;gap:2px;width:100%;padding:10px 12px;border:0;border-radius:10px;background:transparent;text-align:left;cursor:pointer;font:inherit;color:#0A0A0A}
+.tp:hover{background:#F5F5F5}
+</style>
+</helmet>
+<div style="position: relative; width: 100%; min-height: 900px; box-sizing: border-box; display: flex; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A; background: #FFFFFF">
+<!-- 侧边栏 -->
+  <nav aria-label="侧边栏" style="flex: 0 0 264px; box-sizing: border-box; padding: 16px 12px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 4px">
+      <span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 8px; background: #0A0A0A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600">文</span>
+      <span style="flex: 1; font-size: 14px; font-weight: 600">我的文献库</span>
+      <button type="button" aria-label="收起侧边栏" style="width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M9.5 4.5v15"></path></svg>
+      </button>
+    </div>
+
+    <button type="button" onClick="{{ openPalette }}" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 10px; border: 1px solid #EBEBEB; border-radius: 10px; background: #FFFFFF; color: #6B6B6B; font-size: 14px; font-weight: 500; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.04)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <span style="flex: 1">快速搜索</span>
+      <span class="kbd">⌘K</span>
+    </button>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="5">
+        <button type="button" onClick="{{ item.pick }}" class="{{ item.cls }}" aria-current="{{ item.current }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{ item.iconStyle }}"><path d="{{ item.icon }}"></path></svg>
+          <span style="flex: 1">{{ item.label }}</span>
+          <span class="num" style="{{ item.countStyle }}">{{ item.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div class="grp"><span>知识</span></div>
+      <a href="Terms.dc.html" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5a2 2 0 0 1 2-2h11.5v14H7a2 2 0 0 0-2 2z"></path><path d="M5 19.5a2 2 0 0 0 2 2h11.5v-4"></path><path d="M9 8h6M9 11h4"></path></svg>
+        <span style="flex: 1">术语</span>
+        <span class="num" style="font-size: 13px; color: #6B6B6B">46</span>
+      </a>
+      <button type="button" class="side on" aria-current="page">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"></path><path d="M13 7l4 4"></path></svg>
+        <span style="flex: 1">笔记</span>
+        <span class="num" style="font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF">23</span>
+      </button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div class="grp">
+        <span>文件夹</span>
+        <button type="button" aria-label="新建文件夹" style="width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </div>
+      <sc-for list="{{ folders }}" as="f" hint-placeholder-count="3">
+        <button type="button" class="side">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg>
+          <span style="flex: 1">{{ f.name }}</span>
+          <span class="num" style="font-size: 13px; color: #6B6B6B">{{ f.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 2px">
+      <button type="button" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+        <span style="flex: 1">设置</span>
+      </button>
+      <div style="margin-top: 8px; padding: 6px; border-radius: 14px; background: #F7F7F7">
+        <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 10px">
+          <span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 9px; background: #F2F2F2; display: flex; align-items: center; justify-content: center; color: #6B6B6B">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z"></path></svg>
+          </span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0">
+            <span style="font-size: 13px; font-weight: 500">iCloud 同步</span>
+            <span style="font-size: 12px; color: #6B6B6B">已同步 · 刚刚</span>
+          </span>
+          <span class="dot" style="background: #22C55E" aria-hidden="true"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 6px 2px; font-size: 12px; color: #6B6B6B">
+          <span>69 篇 · 1.2 GB</span><span>Mac · iPad</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+  <main style="flex: 1; min-width: 0; box-sizing: border-box; padding: 16px 24px 24px 12px; display: flex; gap: 16px">
+    <section class="tray" aria-label="笔记列表" style="position: relative; flex: 0 0 280px">
+      <div class="tray-h" style="align-items: center">
+        <div style="display: flex; flex-direction: column; gap: 2px"><span class="lbl">笔记</span><span class="big num">23 篇</span></div>
+        <button type="button" class="btn btn-p" style="height: 32px; font-size: 13px" onClick="{{ toggleTpl }}" aria-haspopup="menu" aria-expanded="{{ tpl }}">新建笔记</button>
+      </div>
+      <label class="inp"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><input type="search" aria-label="搜索笔记" placeholder="搜索笔记、批注和引用"></label>
+      <div role="listbox" aria-label="笔记" class="card" style="flex: 1; padding: 4px; display: flex; flex-direction: column; gap: 1px"><button type="button" role="option" aria-selected="true" class="nl"><span style="display: flex; align-items: baseline; gap: 8px"><b style="flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">注意力机制学习笔记</b><span class="num" style="font-size: 12px; color: #6B6B6B">11月2日</span></span><span style="font-size: 13px; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">缩放是为了防止 d_k 较大时点积过大……</span><span style="font-size: 12px; color: #6B6B6B">Attention Is All You Need 等 2 篇</span></button><button type="button" role="option" aria-selected="false" class="nl"><span style="display: flex; align-items: baseline; gap: 8px"><b style="flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">LoRA 读书笔记</b><span class="num" style="font-size: 12px; color: #6B6B6B">11月1日</span></span><span style="font-size: 13px; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">只在 W_q、W_v 上加低秩矩阵，效果已经接近全量微调</span><span style="font-size: 12px; color: #6B6B6B">LoRA</span></button><button type="button" role="option" aria-selected="false" class="nl"><span style="display: flex; align-items: baseline; gap: 8px"><b style="flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">扩散模型综述（草稿）</b><span class="num" style="font-size: 12px; color: #6B6B6B">10月29日</span></span><span style="font-size: 13px; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">DDPM → LDM：把扩散放到潜空间，计算量降一个量级</span><span style="font-size: 12px; color: #6B6B6B">3 篇论文</span></button><button type="button" role="option" aria-selected="false" class="nl"><span style="display: flex; align-items: baseline; gap: 8px"><b style="flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">组会汇报 11/7</b><span class="num" style="font-size: 12px; color: #6B6B6B">10月28日</span></span><span style="font-size: 13px; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">讲 QLoRA：4 位量化 + 低秩适配器</span><span style="font-size: 12px; color: #6B6B6B">QLoRA</span></button><button type="button" role="option" aria-selected="false" class="nl"><span style="display: flex; align-items: baseline; gap: 8px"><b style="flex: 1; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Scaling Laws 疑问</b><span class="num" style="font-size: 12px; color: #6B6B6B">10月20日</span></span><span style="font-size: 13px; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">幂律在多大规模之后会失效？</span><span style="font-size: 12px; color: #6B6B6B">Scaling Laws</span></button></div>
+      <sc-if value="{{ tpl }}" hint-placeholder-val="{{ false }}">
+        <div role="menu" aria-label="选择模板" style="position: absolute; left: 8px; right: 8px; top: 58px; padding: 6px; border-radius: 16px; background: #F7F7F7; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.14); z-index: 5">
+          <div class="card" style="padding: 4px">
+            <button type="button" role="menuitem" class="tp"><b style="font-weight: 500">空白笔记</b><span class="hint">什么都不预设</span></button>
+            <button type="button" role="menuitem" class="tp"><b style="font-weight: 500">论文精读</b><span class="hint">问题 · 方法 · 结论 · 局限 · 我的想法；AI 可以按论文要点预填</span></button>
+            <button type="button" role="menuitem" class="tp"><b style="font-weight: 500">主题综述</b><span class="hint">选几篇论文，按论文要点生成对比表再写</span></button>
+            <button type="button" role="menuitem" class="tp"><b style="font-weight: 500">组会汇报</b><span class="hint">背景 · 方法 · 结果 · 讨论问题</span></button>
+          </div>
+          <p class="hint" style="margin: 6px 8px 2px">也可以在阅读器里把高亮拖进笔记分栏，直接新建。</p>
+        </div>
+      </sc-if>
+    </section>
+
+    <section class="tray" aria-label="注意力机制学习笔记" style="flex: 1; min-width: 0">
+      <div class="tray-h" style="align-items: center; padding: 6px 8px 0">
+        <span style="font-size: 13px; color: #6B6B6B">已保存 · 注意力机制学习笔记.md</span>
+        <div style="display: flex; gap: 6px"><button type="button" class="btn" style="height: 32px; font-size: 13px">在阅读器旁打开</button><button type="button" class="btn" style="height: 32px; font-size: 13px">导出</button></div>
+      </div>
+      <article class="card md" style="flex: 1; padding: 28px 32px; overflow: hidden">
+        <h1>注意力机制学习笔记</h1>
+        <p style="font-size: 13px; color: #6B6B6B; margin-top: 6px">挂在 <a href="Reader.dc.html" class="src" style="display: inline-flex; height: 22px; padding: 0 6px; border: 1px solid #EBEBEB; border-radius: 6px; font-size: 12px; color: #404040">Attention Is All You Need</a> <a href="#" class="src" style="display: inline-flex; height: 22px; padding: 0 6px; border: 1px solid #EBEBEB; border-radius: 6px; font-size: 12px; color: #404040">LoRA</a> 下 · 11月2日修改</p>
+        <h2>缩放点积</h2>
+        <div class="q">
+          <p>The dot products of the query with all keys are divided by the square root of the key dimension before a softmax is applied</p>
+          <div class="qf"><span style="flex: 1">Attention Is All You Need · 第 4 页 · 高亮</span><a href="Reader.dc.html" style="color: #155DFC; font-weight: 500">跳回原文</a></div>
+        </div>
+        <p>缩放是为了防止 d<sub>k</sub> 较大时点积过大，softmax 进入饱和区、梯度变小。这里的 <span class="wl">[[查询向量]]</span> 和键向量都由输入线性投影得到，<span class="wl">[[低秩适配]]</span> 后来正是在这些投影矩阵上做文章。</p>
+        <h2>还没想明白的</h2>
+        <div class="q" style="background: #FFF5F5; box-shadow: inset 3px 0 0 #E5484D">
+          <p style="font-family: 'Caveat', cursive; font-size: 24px; line-height: 1.2; color: #E5484D">why h = 8 ?</p>
+          <div class="qf"><span style="flex: 1">Attention Is All You Need · 第 4 页 · iPad 手写批注</span><a href="Reader.dc.html" style="color: #155DFC; font-weight: 500">跳回原文</a></div>
+        </div>
+        <ul><li>AI 的回答：头数太少或太多效果都会下降，8 是折中（见第 9 页表 3）。还想自己看一下消融实验。</li></ul>
+        <p style="color: #A1A1A1">输入 / 插入模板、论文引用或图表…</p>
+      </article>
+    </section>
+
+    <aside class="tray" aria-label="链接" style="flex: 0 0 248px">
+      <div class="tray-h"><span class="lbl">链接</span></div>
+      <div class="card" style="padding-bottom: 10px">
+        <div style="padding: 12px 14px 4px; font-size: 13px; font-weight: 500; color: #6B6B6B">链接到这篇的笔记 · 1</div>
+        <a href="#" style="display: block; margin: 4px 10px 0; padding: 8px 10px; border-radius: 8px; background: #F7F7F7"><b style="font-weight: 500; font-size: 13.5px">LoRA 读书笔记</b><span style="display: block; margin-top: 2px; font-size: 12.5px; line-height: 1.5; color: #404040">……原理见 <span class="wl">[[注意力机制学习笔记]]</span> 里的投影部分</span></a>
+      </div>
+      <div class="card" style="padding-bottom: 12px">
+        <div style="padding: 12px 14px 4px; font-size: 13px; font-weight: 500; color: #6B6B6B">引用的论文 · 2</div>
+        <div style="display: flex; flex-direction: column; gap: 4px; margin: 4px 10px 0; font-size: 13px">
+          <a href="Reader.dc.html" style="padding: 6px 8px; border-radius: 8px; background: #F7F7F7">Attention Is All You Need<span style="display: block; font-size: 12px; color: #6B6B6B">2 处引用</span></a>
+          <a href="#" style="padding: 6px 8px; border-radius: 8px; background: #F7F7F7">LoRA<span style="display: block; font-size: 12px; color: #6B6B6B">1 处提到</span></a>
+        </div>
+      </div>
+      <div class="card" style="padding-bottom: 12px">
+        <div style="padding: 12px 14px 4px; font-size: 13px; font-weight: 500; color: #6B6B6B">提到的术语</div>
+        <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 12px 0"><a href="Terms.dc.html" class="chip">查询向量</a><a href="Terms.dc.html" class="chip">低秩适配</a></div>
+      </div>
+      <p class="hint" style="margin: 0 8px">笔记就是普通的 Markdown 文件，Obsidian 可以直接打开；引用块存成 <code>![[annotation:…]]</code>。</p>
+    </aside>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { tpl: false };
+  }
+  renderVals() {
+    const s = this.state;
+    const icons = {
+      inbox: 'M4 13l2.5-7h11L20 13v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      reading: 'M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13',
+      toread: 'M7 4h10v16l-5-3.5L7 20z',
+      done: 'M5 12.5l4.5 4.5L19 7.5',
+      all: 'M5 4.5h14v15H5zM9 4.5v15'
+    };
+    const navDef = [['inbox','收件箱'],['reading','正在读'],['toread','待读'],['done','已读完'],['all','全部论文']];
+    const navItems = (counts, cur) => navDef.map(([id,label],i) => { const on = id === cur; return { id, label, count: counts[i], icon: icons[id], cls: on ? 'side on' : 'side', current: on ? 'page' : null, iconStyle: on ? 'color: #FFFFFF' : 'color: #6B6B6B', countStyle: on ? 'font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF' : 'font-size: 13px; color: #6B6B6B', pick: () => {} }; });
+    return {
+      navItems: navItems([6, 3, 12, 48, 69], null),
+      folders: [{ name: '扩散模型', count: 14 }, { name: '大模型推理', count: 22 }, { name: '参数高效微调', count: 9 }],
+      openPalette: () => {},
+      tpl: s.tpl,
+      toggleTpl: () => this.setState({ tpl: !s.tpl })
+    };
+  }
+}
+</script>
+</body>
+</html>

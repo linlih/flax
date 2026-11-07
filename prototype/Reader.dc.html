@@ -1,0 +1,386 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>阅读器与笔记分栏</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;family=Noto+Serif+SC:wght@400;600&amp;family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:#155DFC;text-decoration:none}
+::selection{background:#B5D5FF}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+.tb:hover{background:#F5F5F5}
+.mi:hover{background:#F5F5F5}
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;box-sizing:border-box}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.ib{width:36px;height:36px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;color:#0A0A0A;cursor:pointer;display:flex;align-items:center;justify-content:center;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.ib:hover{background:#F5F5F5}
+.btn{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:13px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;padding:0 14px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;font-size:13px;font-weight:500;cursor:pointer}
+.seg button[aria-pressed="true"],.seg button[aria-selected="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.src{display:inline-flex;align-items:center;height:24px;padding:0 8px;border:1px solid #EBEBEB;border-radius:6px;background:#FFFFFF;font-size:12px;font-weight:500;color:#404040}
+.src:hover{background:#F5F5F5}
+.thumb:hover .tp{box-shadow:0 0 0 1px rgba(0,0,0,0.14),0 2px 6px rgba(0,0,0,0.12)}
+.sheet{display:block;position:relative;width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;transform:scale(0.1438)}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5;margin-bottom:22px}
+.sheet .h{font-size:12px;font-weight:700;margin:4px 0 6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .p mark{background:#FFE27A;color:inherit}
+.sheet .fig{height:120px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.sheet .n{position:absolute;left:0;right:0;bottom:26px;font-size:9px;text-align:center;color:#6E6E73}
+</style>
+</helmet>
+<div style="width: 100%; min-height: 900px; box-sizing: border-box; display: flex; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A; background: #FFFFFF; padding: 12px; gap: 12px">
+
+  <nav aria-label="页面缩略图" style="flex: 0 0 136px; box-sizing: border-box; display: flex">
+    <div class="tray" style="flex: 1; min-height: 876px; padding: 16px 0; display: flex; flex-direction: column; align-items: center; gap: 14px; overflow: hidden">
+      <sc-for list="{{ thumbs }}" as="t" hint-placeholder-count="6">
+        <button type="button" onClick="{{ t.go }}" aria-label="{{ t.label }}" class="thumb" style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 0; border: 0; background: transparent; cursor: pointer">
+          <span class="tp" style="{{ t.pageStyle }}">
+            <span class="sheet">
+              <sc-if value="{{ t.first }}" hint-placeholder-val="{{ false }}"><span style="display:block" class="t">Attention Is All You Need</span><span style="display:block" class="a">Vaswani, Shazeer, Parmar, Uszkoreit, Jones, Gomez, Kaiser, Polosukhin</span></sc-if>
+              <span style="display:block" class="h">{{ t.h1 }}</span>
+              <span style="display:block" class="p">{{ textA }}</span>
+              <span style="display:block" class="p">{{ textB }}<mark>{{ t.hlText }}</mark></span>
+              <sc-if value="{{ t.fig }}" hint-placeholder-val="{{ true }}"><span style="display:block" class="fig"></span></sc-if>
+              <span style="display:block" class="p">{{ textA }}</span>
+              <span style="display:block" class="h">{{ t.h2 }}</span>
+              <span style="display:block" class="p">{{ textB }}</span>
+              <span style="display:block" class="p">{{ textA }}</span>
+              <span class="n">{{ t.n }}</span>
+            </span>
+          </span>
+          <span class="num" style="{{ t.numStyle }}">{{ t.n }}</span>
+        </button>
+      </sc-for>
+    </div>
+  </nav>
+
+  <div style="flex: 1; min-width: 0; display: flex; flex-direction: column">
+    <header style="display: flex; align-items: center; gap: 12px; height: 44px; padding: 0 4px 12px">
+      <a href="Main.dc.html" aria-label="返回文献库" class="ib">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+      </a>
+      <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+        <span style="font-size: 14px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Attention Is All You Need</span>
+        <span class="num" style="font-size: 12px; color: #6B6B6B">第 {{ page }} 页，共 11 页</span>
+      </div>
+      <div role="group" aria-label="阅读模式" class="seg">
+        <button type="button" onClick="{{ setOrig }}" aria-pressed="{{ isOrig }}">原文</button>
+        <button type="button" onClick="{{ setBi }}" aria-pressed="{{ showBi }}">对照</button>
+        <button type="button" onClick="{{ setZh }}" aria-pressed="{{ showZh }}">译文</button>
+      </div>
+      <div style="flex: 1; display: flex; justify-content: flex-end; gap: 8px">
+        <button type="button" aria-label="高亮工具" class="ib">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 15l-3 5h6l1-2M9 15l7-11 4 3-7 11z"></path></svg>
+        </button>
+        <button type="button" aria-label="显示或隐藏检查器" class="ib">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5"></rect><path d="M14.5 4.5v15"></path></svg>
+        </button>
+      </div>
+    </header>
+
+    <section aria-label="论文页面" class="tray" style="flex: 1; min-height: 0; padding: 28px 32px 40px; display: flex; justify-content: center">
+      <article style="position: relative; width: 100%; max-width: 720px; box-sizing: border-box; padding: 60px 72px; background: #FFFFFF; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05); font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif; font-size: 16px; line-height: 1.7; color: #1D1D1F">
+
+        <h2 style="margin: 0 0 16px; font-size: 18px; font-weight: 700">3.2 Attention</h2>
+
+        <sc-if value="{{ showOrig }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; flex-direction: column; gap: 14px">
+            <p style="margin: 0">An attention function takes a query and a set of key–value pairs and produces an output. The output is a weighted sum of the values, where each weight reflects how well the query matches the corresponding key.</p>
+            <p style="margin: 0">We call our variant Scaled Dot-Product Attention. <mark style="background: #FFE27A; color: inherit; padding: 1px 0">The dot products of the query with all keys are divided by the square root of the key dimension before a softmax is applied</mark>, which keeps the gradients stable when the dimension is large.</p>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 28px; padding: 6px 0; font-size: 17px; font-style: italic">
+              <span>Attention(Q, K, V) = softmax(QKᵀ / √d<sub>k</sub>) V</span>
+              <span class="num" style="font-style: normal">(1)</span>
+            </div>
+            <p style="margin: 0">The two most widely used alternatives are additive attention <button type="button" onClick="{{ toggleCite }}" aria-label="预览参考文献 2" aria-expanded="{{ citeOpen }}" style="padding: 0 2px; border: 0; background: transparent; color: #155DFC; font: inherit; cursor: pointer">[2]</button> and <span style="{{ selStyle }}">plain dot-product attention</span>. Dot-product attention is faster and more memory-efficient in practice because it can be computed with highly optimized matrix multiplication.</p>
+            <p style="margin: 0">For small key dimensions the two mechanisms perform similarly. For larger dimensions, additive attention does better unless the dot products are scaled, because their magnitude grows with d<sub>k</sub> and pushes the softmax into regions where its gradients are tiny.</p>
+            <h3 style="margin: 8px 0 0; font-size: 16px; font-weight: 600">3.2.2 Multi-Head Attention</h3>
+            <p style="margin: 0">Rather than computing a single attention function over full-width keys, values and queries, we found it useful to project them several times with different learned projections and attend to each projection in parallel. The outputs are concatenated and projected once more.</p>
+            <div style="display: flex; justify-content: space-between; margin-top: 18px; font-size: 12px; color: #6E6E73"><span>4</span></div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showBi }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 18px">
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; font-size: 14.5px">
+              <p style="margin: 0">An attention function takes a query and a set of key–value pairs and produces an output. The output is a weighted sum of the values, where each weight reflects how well the query matches the corresponding key.</p>
+              <p style="margin: 0; font-family: 'Noto Serif SC', serif; line-height: 1.85">注意力函数接收一个查询和一组键值对，输出是各个值的加权和，每个权重表示查询与对应键的匹配程度。</p>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; font-size: 14.5px">
+              <p style="margin: 0">We call our variant Scaled Dot-Product Attention. <mark style="background: #FFE27A; color: inherit">The dot products of the query with all keys are divided by the square root of the key dimension before a softmax is applied</mark>, which keeps the gradients stable when the dimension is large.</p>
+              <p style="margin: 0; font-family: 'Noto Serif SC', serif; line-height: 1.85">我们把这种变体称为缩放点积注意力。<mark style="background: #FFE27A; color: inherit">查询与所有键做点积后，先除以键维度的平方根，再做 softmax</mark>，这样在维度较大时梯度依然稳定。</p>
+            </div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 28px; font-size: 16px; font-style: italic">
+              <span>Attention(Q, K, V) = softmax(QKᵀ / √d<sub>k</sub>) V</span>
+              <span class="num" style="font-style: normal">(1)</span>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 28px; font-size: 14.5px">
+              <p style="margin: 0">The two most widely used alternatives are additive attention [2] and plain dot-product attention. Dot-product attention is faster and more memory-efficient in practice because it can be computed with highly optimized matrix multiplication.</p>
+              <p style="margin: 0; font-family: 'Noto Serif SC', serif; line-height: 1.85">最常用的两种替代方案是加性注意力 [2] 和普通点积注意力。点积注意力可以用高度优化的矩阵乘法实现，因此实践中更快、更省内存。</p>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ showZh }}" hint-placeholder-val="{{ false }}">
+          <div style="display: flex; flex-direction: column; gap: 14px; font-family: 'Noto Serif SC', 'Source Serif 4', serif; line-height: 1.9">
+            <p style="margin: 0">注意力函数接收一个查询和一组键值对，输出是各个值的加权和，每个权重表示查询与对应键的匹配程度。</p>
+            <p style="margin: 0">我们把这种变体称为缩放点积注意力。<mark style="background: #FFE27A; color: inherit">查询与所有键做点积后，先除以键维度的平方根，再做 softmax</mark>，这样在维度较大时梯度依然稳定。</p>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 28px; padding: 6px 0; font-size: 17px; font-style: italic; font-family: 'Source Serif 4', serif">
+              <span>Attention(Q, K, V) = softmax(QKᵀ / √d<sub>k</sub>) V</span>
+              <span class="num" style="font-style: normal">(1)</span>
+            </div>
+            <p style="margin: 0">最常用的两种替代方案是加性注意力 [2] 和普通点积注意力。点积注意力可以用高度优化的矩阵乘法实现，因此实践中更快、更省内存。</p>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ citeOpen }}" hint-placeholder-val="{{ false }}">
+          <div role="dialog" aria-label="参考文献预览" style="position: absolute; left: 72px; width: 400px; top: 430px; box-sizing: border-box; padding: 6px; border-radius: 16px; background: #F7F7F7; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.14); font-family: Inter, 'Noto Sans SC', sans-serif; display: flex; flex-direction: column; gap: 6px; z-index: 5">
+            <div class="card" style="padding: 12px 14px; display: flex; flex-direction: column; gap: 4px">
+            <span style="font-size: 14px; font-weight: 500; line-height: 1.4">Neural Machine Translation by Jointly Learning to Align and Translate</span>
+            <span style="font-size: 13px; color: #6B6B6B">Bahdanau, Cho, Bengio · ICLR 2015</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px">
+              <sc-if value="{{ inLib }}" hint-placeholder-val="{{ true }}">
+                <span style="display: flex; align-items: center; gap: 5px; font-size: 13px; color: #6B6B6B">
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+                  已在文献库
+                </span>
+              </sc-if>
+              <sc-if value="{{ notInLib }}" hint-placeholder-val="{{ false }}">
+                <button type="button" onClick="{{ addToLib }}" class="btn btn-p">加入文献库</button>
+              </sc-if>
+              <span style="flex: 1"></span>
+              <button type="button" class="btn">打开</button>
+            </div>
+          </div>
+        </sc-if>
+
+        <sc-if value="{{ selOpen }}" hint-placeholder-val="{{ true }}">
+          <div role="toolbar" aria-label="选中文字操作" style="position: absolute; left: 150px; top: 442px; display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 12px; background: #FFFFFF; border: 1px solid #EBEBEB; box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.05); font-family: Inter, 'Noto Sans SC', sans-serif; z-index: 4">
+            <button type="button" aria-label="黄色高亮" class="mi" style="width: 30px; height: 30px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 50%; background: #FFE27A; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08)"></span></button>
+            <button type="button" aria-label="绿色高亮" class="mi" style="width: 30px; height: 30px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 50%; background: #B8E6A8; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08)"></span></button>
+            <button type="button" aria-label="蓝色高亮" class="mi" style="width: 30px; height: 30px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 50%; background: #B5D5FF; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08)"></span></button>
+            <button type="button" aria-label="粉色高亮" class="mi" style="width: 30px; height: 30px; border: 0; border-radius: 999px; background: transparent; cursor: pointer; display: flex; align-items: center; justify-content: center"><span style="width: 16px; height: 16px; border-radius: 50%; background: #FFC2D6; box-shadow: inset 0 0 0 1px rgba(0,0,0,0.08)"></span></button>
+            <span style="width: 1px; height: 18px; background: #EBEBEB; margin: 0 4px"></span>
+            <button type="button" onClick="{{ askExplain }}" class="mi" style="height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: #1D1D1F; font-size: 13px; cursor: pointer">解释</button>
+            <button type="button" onClick="{{ lookup }}" class="mi" style="height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: #1D1D1F; font-size: 13px; cursor: pointer">翻译</button>
+            <button type="button" onClick="{{ askExplain }}" class="mi" style="height: 30px; padding: 0 10px; border: 0; border-radius: 999px; background: transparent; color: #1D1D1F; font-size: 13px; cursor: pointer">问 AI</button>
+            <button type="button" onClick="{{ clip }}" class="btn btn-p" style="height: 30px; margin-left: 4px">摘到笔记</button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ lookOpen }}" hint-placeholder-val="{{ false }}">
+          <div role="dialog" aria-label="查词：plain dot-product attention" style="position: absolute; left: 150px; top: 442px; width: 380px; box-sizing: border-box; padding: 8px; border-radius: 16px; background: #F7F7F7; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.14); font-family: Inter, 'Noto Sans SC', sans-serif; display: flex; flex-direction: column; gap: 6px; z-index: 5">
+            <div style="display: flex; align-items: center; gap: 8px; padding: 2px 2px 2px 8px">
+              <span style="flex: 1; min-width: 0; font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; font-weight: 600">plain dot-product attention</span>
+              <button type="button" onClick="{{ closeLook }}" aria-label="关闭" style="width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+            </div>
+            <div class="card" style="padding: 12px 14px">
+              <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #6B6B6B"><span style="width: 6px; height: 6px; border-radius: 50%; background: #2B7FFF"></span>在这篇论文里</div>
+              <div style="margin-top: 6px; font-size: 16px; font-weight: 600">普通点积注意力</div>
+              <div style="margin-top: 4px; font-size: 13.5px; line-height: 1.6; color: #404040">不除以 √d<sub>k</sub> 的点积注意力。作者拿它和自己的"缩放点积注意力"对比：维度大时它的点积会过大。</div>
+            </div>
+            <div class="card" style="padding: 10px 14px 12px">
+              <div style="font-size: 12px; font-weight: 500; color: #6B6B6B">整句译文</div>
+              <div style="margin-top: 4px; font-size: 13.5px; line-height: 1.65">最常用的两种替代方案是加性注意力 [2] 和<mark style="background: rgba(43,127,255,0.14); color: inherit; border-radius: 3px; padding: 0 2px">普通点积注意力</mark>。</div>
+            </div>
+            <div style="display: flex; gap: 6px; padding-top: 2px">
+              <button type="button" onClick="{{ addTerm }}" class="btn" style="flex: 1; height: 32px; justify-content: center; font-size: 13px; {{ termStyle }}">{{ termLabel }}</button>
+              <button type="button" onClick="{{ askExplain }}" class="btn" style="flex: 1; height: 32px; justify-content: center; font-size: 13px">问 AI</button>
+              <button type="button" onClick="{{ setBi }}" class="btn" style="flex: 1; height: 32px; justify-content: center; font-size: 13px">对照全文</button>
+            </div>
+            <p style="margin: 0; padding: 0 8px 2px; font-size: 12px; color: #6B6B6B">按住 ⌥ 点一个单词可以直接查，不用先选中。</p>
+          </div>
+        </sc-if>
+      </article>
+    </section>
+  </div>
+
+  <aside aria-label="检查器" class="tray" style="flex: 0 0 344px; display: flex; flex-direction: column; gap: 8px">
+    <div style="display: flex; align-items: center; gap: 8px; padding: 4px 4px 0">
+      <div role="tablist" aria-label="检查器" class="seg" style="flex: 1; background: #EBEBEB">
+        <button type="button" role="tab" aria-selected="{{ isNotes }}" onClick="{{ tabNotes }}" style="flex: 1">笔记</button>
+        <button type="button" role="tab" aria-selected="{{ isCard }}" onClick="{{ tabCard }}" style="flex: 1">要点</button>
+        <button type="button" role="tab" aria-selected="{{ isAi }}" onClick="{{ tabAi }}" style="flex: 1">AI</button>
+      </div>
+    </div>
+
+    <sc-if value="{{ isNotes }}" hint-placeholder-val="{{ true }}">
+      <div class="card" style="flex: 1; padding: 16px 18px 20px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 1.65">
+        <h3 style="margin: 0; font-size: 15px; font-weight: 600">方法</h3>
+        <div style="padding: 10px 12px 10px 14px; border-radius: 10px; background: #FFFBEB; box-shadow: inset 3px 0 0 #F5C542">
+          <p style="margin: 0; font-family: 'Source Serif 4', serif; font-size: 14px; line-height: 1.55">The dot products of the query with all keys are divided by the square root of the key dimension before a softmax is applied</p>
+          <a href="#" class="src" style="margin-top: 8px">第 4 页</a>
+        </div>
+        <sc-if value="{{ clipped }}" hint-placeholder-val="{{ false }}">
+          <div style="padding: 10px 12px 10px 14px; border-radius: 10px; background: #F3F7FF; box-shadow: inset 3px 0 0 #2B7FFF">
+            <p style="margin: 0; font-family: 'Source Serif 4', serif; font-size: 14px; line-height: 1.55">plain dot-product attention</p>
+            <a href="#" class="src" style="margin-top: 8px">第 4 页</a>
+          </div>
+        </sc-if>
+        <p style="margin: 0">缩放是为了防止 d<sub>k</sub> 较大时点积过大，softmax 进入饱和区、梯度变小。可以和<a href="#">加性注意力</a>对比；LoRA 后来正是在这些投影矩阵上做低秩适配，见<a href="#">LoRA</a>。</p>
+        <h3 style="margin: 8px 0 0; font-size: 15px; font-weight: 600">我的想法</h3>
+        <p style="margin: 0; color: #6B6B6B">继续写…</p>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isCard }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 1.55">
+        <p style="margin: 0; padding: 0 8px; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6B6B6B"><span style="width: 6px; height: 6px; border-radius: 50%; background: #F59E0B"></span>由 AI 生成，还没确认</p>
+
+        <section aria-label="导读" class="card" style="padding: 14px 16px 6px">
+          <div style="font-size: 13px; font-weight: 500; color: #6B6B6B">一句话</div>
+          <p style="margin: 4px 0 0; font-size: 16px; font-weight: 600; line-height: 1.5">不用循环和卷积，只靠注意力做翻译：效果更好，训练也快得多。</p>
+          <div style="display: flex; align-items: center; margin-top: 14px; font-size: 13px; font-weight: 500; color: #6B6B6B"><span style="flex: 1">建议怎么读</span><span class="num" style="font-weight: 400">约 25 分钟</span></div>
+          <ol style="margin: 6px 0 0; padding: 0; list-style: none; display: flex; flex-direction: column">
+            <sc-for list="{{ guide }}" as="g" hint-placeholder-count="3">
+              <li style="display: grid; grid-template-columns: 22px 1fr auto; column-gap: 10px; align-items: start; padding: 9px 0; border-top: 1px solid #F0F0F0">
+                <span class="num" style="{{ g.dot }}">{{ g.n }}</span>
+                <span style="display: flex; flex-direction: column; gap: 2px"><span style="font-weight: 500">{{ g.title }}</span><span style="font-size: 13px; color: #6B6B6B">{{ g.why }}</span></span>
+                <a href="#" class="src" style="{{ g.srcStyle }}">{{ g.src }}</a>
+              </li>
+            </sc-for>
+          </ol>
+        </section>
+
+        <dl class="card" aria-label="要点" style="margin: 0; padding: 0 16px; display: flex; flex-direction: column">
+          <sc-for list="{{ cardFields }}" as="f" hint-placeholder-count="5">
+            <div style="display: flex; flex-direction: column; gap: 4px; padding: 12px 0; border-bottom: 1px solid #F0F0F0">
+              <dt style="display: flex; align-items: center; font-size: 13px; font-weight: 500; color: #6B6B6B"><span style="flex: 1">{{ f.label }}</span><a href="#" class="src">{{ f.src }}</a></dt>
+              <dd style="margin: 0">{{ f.value }}</dd>
+            </div>
+          </sc-for>
+        </dl>
+        <section aria-label="本文术语" class="card" style="padding: 12px 14px 14px">
+          <div style="display: flex; align-items: center; font-size: 13px; font-weight: 500; color: #6B6B6B"><span style="flex: 1">本文术语 <span class="num" style="font-weight: 400">8</span></span><a href="Terms.dc.html" style="font-weight: 400; color: #155DFC">全部术语</a></div>
+          <div style="display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px">
+            <a href="Terms.dc.html" class="src" style="height: 28px">查询向量</a><a href="Terms.dc.html" class="src" style="height: 28px">注意力机制</a><a href="Terms.dc.html" class="src" style="height: 28px">多头注意力</a><a href="Terms.dc.html" class="src" style="height: 28px">缩放点积注意力</a><a href="Terms.dc.html" class="src" style="height: 28px">位置编码</a><a href="Terms.dc.html" class="src" style="height: 28px; color: #6B6B6B">还有 3 个</a>
+          </div>
+        </section>
+        <div style="display: flex; gap: 8px; padding: 0 4px"><button type="button" class="btn btn-p" style="height: 36px; flex: 1; justify-content: center">确认要点</button><button type="button" class="btn" style="height: 36px">重新生成</button></div>
+      </div>
+    </sc-if>
+
+    <sc-if value="{{ isAi }}" hint-placeholder-val="{{ false }}">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 8px">
+        <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; font-size: 14px; line-height: 1.65">
+          <div style="align-self: flex-end; max-width: 85%; margin: 4px 4px 0; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: linear-gradient(180deg,#2B7FFF,#155DFC); color: #FFFFFF">{{ question }}</div>
+          <div class="card" style="padding: 14px 16px; display: flex; flex-direction: column; gap: 10px">
+          <p style="margin: 0">点积注意力直接用矩阵乘法计算 QKᵀ；加性注意力要先把查询和键送进一个带激活函数的小前馈网络。两者理论复杂度相近，但点积可以用高度优化的矩阵乘法库，所以更快、更省内存。</p>
+          <p style="margin: 0">代价是 d<sub>k</sub> 较大时点积数值偏大，所以论文除以 √d<sub>k</sub> 做缩放。</p>
+          <div style="display: flex; gap: 6px; flex-wrap: wrap">
+            <a href="#" class="src">第 4 页</a>
+            <a href="#" class="src">公式 (1)</a>
+            <a href="#" class="src">Bahdanau 2015</a>
+          </div>
+          </div>
+          <p style="margin: 0; padding: 0 8px; font-size: 12px; color: #6B6B6B">示例回答</p>
+        </div>
+        <div>
+          <label for="ask" style="position: absolute; left: -9999px">向这篇论文提问</label>
+          <input id="ask" type="text" placeholder="问这篇论文…" style="width: 100%; box-sizing: border-box; height: 40px; padding: 0 14px; border: 1px solid #EBEBEB; border-radius: 12px; font-size: 14px; font-family: inherit; color: #0A0A0A; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.05); outline: none">
+        </div>
+      </div>
+    </sc-if>
+  </aside>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { look: false, termAdded: false, mode: 'orig', tab: 'notes', cite: false, inLib: true, sel: true, clipped: false, page: 4, question: '为什么点积注意力比加性注意力更快？' };
+  }
+  renderVals() {
+    const s = this.state;
+    const seg = 'height: 26px; padding: 0 14px; border: 0; border-radius: 999px; font-size: 13px; cursor: pointer;';
+    const on = ' background: #FFFFFF; color: #1D1D1F; font-weight: 500; box-shadow: 0 1px 2px rgba(0,0,0,0.12);';
+    const off = ' background: transparent; color: #1D1D1F;';
+    const hlPages = { 3: true, 4: true };
+    const thumbs = [];
+    for (let i = 1; i <= 6; i++) {
+      const cur = i === s.page;
+      thumbs.push({
+        n: i,
+        label: '第 ' + i + ' 页' + (cur ? '，当前页' : ''),
+        pageStyle: 'display: block; width: 88px; height: 114px; overflow: hidden; background: #FFFFFF; border-radius: 3px; box-shadow: ' + (cur ? '0 0 0 2px #FFFFFF, 0 0 0 4px #2B7FFF' : '0 0 0 1px rgba(0,0,0,0.06), 0 1px 3px rgba(0,0,0,0.06)') + ';',
+        hlText: hlPages[i] ? ' The scaled dot products keep the softmax away from regions with very small gradients.' : '',
+        first: i === 1,
+        fig: i === 3 || i === 4 || i === 6,
+        h1: ['', 'Abstract', '1 Introduction', '3 Model Architecture', '3.2 Attention', '3.3 Feed-Forward Networks', '4 Why Self-Attention'][i],
+        h2: ['', '1 Introduction', '2 Background', '3.1 Encoder and Decoder', '3.2.2 Multi-Head Attention', '3.4 Embeddings', '5 Training'][i],
+        numStyle: 'font-size: 12px; font-weight: 500; ' + (cur ? 'padding: 1px 7px; border-radius: 6px; background: linear-gradient(180deg,#2B7FFF,#155DFC); color: #FFFFFF;' : 'color: #6B6B6B;'),
+        go: () => this.setState({ page: i })
+      });
+    }
+    return {
+      page: s.page,
+      thumbs,
+      textA: 'Sequence models have traditionally processed tokens one step at a time, which limits how much work can be done in parallel during training. In this section we describe the components of our model and explain the reasoning behind each design choice, together with the settings used in our experiments.',
+      textB: 'Each layer contains two sub-layers with a residual connection around each of them, followed by layer normalization. To make these connections possible, all sub-layers and embedding layers produce outputs of the same dimension.',
+      showOrig: s.mode === 'orig',
+      lookOpen: s.look && s.mode === 'orig',
+      lookup: () => this.setState({ look: true, sel: false }),
+      closeLook: () => this.setState({ look: false }),
+      addTerm: () => this.setState({ termAdded: true }),
+      termLabel: s.termAdded ? '已加入术语' : '加入术语',
+      termStyle: s.termAdded ? 'color: #155DFC' : '',
+      isOrig: s.mode === 'orig',
+      showBi: s.mode === 'bi',
+      showZh: s.mode === 'zh',
+      origStyle: seg + (s.mode === 'orig' ? on : off),
+      biStyle: seg + (s.mode === 'bi' ? on : off),
+      zhStyle: seg + (s.mode === 'zh' ? on : off),
+      setOrig: () => this.setState({ mode: 'orig' }),
+      setBi: () => this.setState({ mode: 'bi', sel: false, cite: false }),
+      setZh: () => this.setState({ mode: 'zh', sel: false, cite: false }),
+      citeOpen: s.cite && s.mode === 'orig',
+      toggleCite: () => this.setState({ cite: !s.cite, sel: false }),
+      inLib: s.inLib,
+      notInLib: !s.inLib,
+      addToLib: () => this.setState({ inLib: true }),
+      selOpen: s.sel && s.mode === 'orig',
+      selStyle: (s.sel || s.look) ? 'background: #BFD7FF;' : '',
+      clip: () => this.setState({ clipped: true, sel: false, tab: 'notes' }),
+      askExplain: () => this.setState({ tab: 'ai', sel: false, question: '解释一下 plain dot-product attention，它和加性注意力有什么区别？' }),
+      clipped: s.clipped,
+      isNotes: s.tab === 'notes',
+      guide: [
+        { n: '1', title: '先看图 1 和 3.2 节', why: '整个模型和多头注意力都在这里，是全文核心', src: '第 3–4 页', cur: true },
+        { n: '2', title: '再看表 2', why: '翻译质量和训练成本的对比，结论的依据', src: '第 8 页' },
+        { n: '3', title: '第 5 节可以跳读', why: '训练细节，复现时再回来看', src: '第 7 页' }
+      ].map(g => ({ ...g, dot: 'width: 22px; height: 22px; margin-top: 1px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 600; ' + (g.cur ? 'color: #FFFFFF; background: linear-gradient(180deg,#2B7FFF,#155DFC)' : 'color: #404040; background: #F2F2F2'), src: g.cur ? '在读 · 第 4 页' : g.src, srcStyle: g.cur ? 'color: #155DFC; border-color: #BFD7FF; background: #F3F7FF' : '' })),
+      isCard: s.tab === 'card',
+      isAi: s.tab === 'ai',
+      notesTabStyle: seg + (s.tab === 'notes' ? on : off),
+      cardTabStyle: seg + (s.tab === 'card' ? on : off),
+      aiTabStyle: seg + (s.tab === 'ai' ? on : off),
+      tabNotes: () => this.setState({ tab: 'notes' }),
+      tabCard: () => this.setState({ tab: 'card' }),
+      tabAi: () => this.setState({ tab: 'ai' }),
+      question: s.question,
+      cardFields: [
+        { label: '研究问题', value: '能否完全不用循环和卷积，只靠注意力机制完成序列转换任务。', src: '第 1 页' },
+        { label: '方法', value: 'Transformer：编码器-解码器结构，核心是多头缩放点积注意力和位置编码。', src: '第 3 页' },
+        { label: '数据集', value: 'WMT 2014 英德、英法翻译。', src: '第 7 页' },
+        { label: '主要结论', value: '翻译质量超过当时的最佳模型，训练成本显著更低。', src: '第 8 页' },
+        { label: '局限', value: '注意力计算量随序列长度平方增长，长序列代价高。', src: 'AI 推断' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

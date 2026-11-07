@@ -1,0 +1,110 @@
+{
+  "name": "@paper/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "license": "AGPL-3.0-only",
+  "main": "out/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev --watch",
+    "build": "electron-vite build",
+    "typecheck": "tsc -p tsconfig.json",
+    "dist": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
+    "dist:signed": "electron-vite build && electron-builder --mac --publish never -c.mac.notarize=true"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "1.1.0",
+    "electron-updater": "6.8.11",
+    "pdfjs-dist": "^6.5.438"
+  },
+  "devDependencies": {
+    "@codemirror/autocomplete": "6.20.4",
+    "@codemirror/commands": "6.11.1",
+    "@codemirror/lang-markdown": "6.5.2",
+    "@codemirror/language": "6.13.1",
+    "@codemirror/search": "6.7.2",
+    "@codemirror/state": "6.7.6",
+    "@codemirror/view": "6.43.15",
+    "@lezer/highlight": "1.2.5",
+    "@paper/core": "*",
+    "@paper/ui": "*",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.2.1",
+    "electron": "^45.2.3",
+    "electron-builder": "26.18.0",
+    "electron-vite": "^6.0.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.5"
+  },
+  "productName": "Flax",
+  "description": "读论文、做批注、写笔记的桌面应用",
+  "author": "Flax",
+  "build": {
+    "appId": "app.flax.desktop",
+    "productName": "Flax",
+    "copyright": "Copyright © 2026 Flax contributors · AGPL-3.0",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "out/**",
+      "resources/icon.png",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "**/*.node"
+    ],
+    "mac": {
+      "category": "public.app-category.education",
+      "icon": "resources/icon.icns",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "hardenedRuntime": true,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "notarize": false,
+      "extendInfo": {
+        "NSHumanReadableCopyright": "AGPL-3.0",
+        "CFBundleDevelopmentRegion": "zh_CN",
+        "CFBundleLocalizations": [
+          "zh_CN"
+        ]
+      },
+      "x64ArchFiles": "Contents/Resources/app.asar.unpacked/node_modules/@napi-rs/canvas-darwin-*/**"
+    },
+    "dmg": {
+      "title": "Flax ${version}"
+    },
+    "electronVersion": "45.2.3",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "linlih",
+        "repo": "flax"
+      }
+    ],
+    "extraResources": [
+      {
+        "from": "../../LICENSE",
+        "to": "LICENSE"
+      }
+    ]
+  }
+}

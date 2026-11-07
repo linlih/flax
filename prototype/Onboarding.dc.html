@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>首次打开</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button,input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+/* BoardUI 式：灰色托盘 + 白色内卡 */
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.tray-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 8px 0}
+.lbl{font-size:14px;font-weight:500;color:#6B6B6B}
+.big{font-size:22px;font-weight:500;color:#0A0A0A;letter-spacing:-0.01em}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25),0 1px 2px rgba(0,0,0,0.08)}
+.btn-p:hover{background:linear-gradient(180deg,#4A90FF 0%,#2B7FFF 100%)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:13px;font-weight:500}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;border:1px solid #EBEBEB;background:#F7F7F7;font-size:12px;color:#6B6B6B}
+.side{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:#404040;font-size:14px;cursor:pointer;text-align:left;box-sizing:border-box}
+.side:hover{background:#F5F5F5}
+.side.on{color:#FFFFFF;font-weight:500;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.side.on:hover{background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%)}
+.grp{display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:28px;font-size:12px;font-weight:500;color:#6B6B6B}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;min-width:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.book{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px;color:#0A0A0A;transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.book:hover{border-color:#DADADA}
+.book:active{transform:scale(0.98)}
+.peek{position:relative;height:132px;border-radius:8px;background:#F2F2F2;overflow:hidden}
+.peek .pg{position:absolute;left:50%;top:14px;margin-left:-77px;width:153px;height:198px;overflow:hidden;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 6px rgba(0,0,0,0.08)}
+.tr{display:grid;grid-template-columns:44px minmax(0,1fr) 130px 130px 70px 100px;align-items:center;padding:0 4px;border-bottom:1px solid #F0F0F0}
+.tr > *{padding:0 10px;min-width:0}
+.th{height:40px;font-size:13px;color:#6B6B6B}
+.td{height:56px;cursor:pointer}
+.td:last-child{border-bottom:0}
+.td:hover{background:#FAFAFA}
+.td.sel{background:#F3F7FF}
+.r{text-align:right}
+.chk{width:16px;height:16px;border-radius:5px;border:1px solid #D4D4D4;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 1px rgba(0,0,0,0.04)}
+.chk[aria-checked="true"]{border:0;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid #EBEBEB;border-radius:8px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%}
+.cmd:hover{background:#F5F5F5}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}.book{transition:none}}
+.sheet{width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;display:flex;flex-direction:column;position:relative}
+.sheet .v{font-size:9px;color:#6E6E73;text-align:center;margin-bottom:22px;letter-spacing:.02em}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5}
+.sheet .f{font-size:9px;color:#6E6E73;text-align:center;margin:2px 0 22px}
+.sheet .ah{font-size:11px;font-weight:700;text-align:center;margin-bottom:6px}
+.sheet .ab{font-size:9.5px;line-height:1.5;text-align:justify;margin:0 34px 20px}
+.sheet .ab mark{background:#FFE27A;color:inherit}
+.sheet .h{font-size:12px;font-weight:700;margin-bottom:6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .fig{height:96px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field > span{font-size:13px;font-weight:500;color:#404040}
+.inp{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:14px;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;align-items:center;gap:8px}
+.inp input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit}
+.hint{font-size:12px;color:#6B6B6B;line-height:1.5}
+.sw2{position:relative;width:38px;height:22px;border-radius:11px;background:#E5E5E5;flex:none;border:0;padding:0;cursor:pointer;transition:background .2s}
+.sw2::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#FFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.sw2[aria-checked="true"]{background:#155DFC}
+.sw2[aria-checked="true"]::after{transform:translateX(16px)}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 14px;box-sizing:border-box}
+.row + .row{border-top:1px solid #F0F0F0}
+.rt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rt b{font-weight:500}
+.rt small{font-size:13px;color:#6B6B6B;line-height:1.45}
+.sel{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);white-space:nowrap;cursor:pointer}
+.bar{height:6px;border-radius:3px;background:#EBEBEB;overflow:hidden}
+.bar > span{display:block;height:100%;border-radius:3px;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,0.28);display:flex;align-items:center;justify-content:center;z-index:10}
+.sheet2{width:560px;background:#F7F7F7;border-radius:20px;padding:8px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.06),0 24px 64px rgba(0,0,0,0.22);display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion: reduce){.sw2,.sw2::after{transition:none}}
+</style>
+</helmet>
+<div style="position: relative; width: 100%; min-height: 900px; box-sizing: border-box; display: flex; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A; background: #FFFFFF">
+<!-- 侧边栏 -->
+  <nav aria-label="侧边栏" style="flex: 0 0 264px; box-sizing: border-box; padding: 16px 12px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 4px">
+      <span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 8px; background: #0A0A0A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600">文</span>
+      <span style="flex: 1; font-size: 14px; font-weight: 600">我的文献库</span>
+      <button type="button" aria-label="收起侧边栏" style="width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M9.5 4.5v15"></path></svg>
+      </button>
+    </div>
+
+    <button type="button" onClick="{{ openPalette }}" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 10px; border: 1px solid #EBEBEB; border-radius: 10px; background: #FFFFFF; color: #6B6B6B; font-size: 14px; font-weight: 500; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.04)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <span style="flex: 1">快速搜索</span>
+      <span class="kbd">⌘K</span>
+    </button>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="5">
+        <button type="button" onClick="{{ item.pick }}" class="{{ item.cls }}" aria-current="{{ item.current }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{ item.iconStyle }}"><path d="{{ item.icon }}"></path></svg>
+          <span style="flex: 1">{{ item.label }}</span>
+          <span class="num" style="{{ item.countStyle }}">{{ item.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div class="grp"><span>知识</span></div>
+      <a href="Terms.dc.html" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5a2 2 0 0 1 2-2h11.5v14H7a2 2 0 0 0-2 2z"></path><path d="M5 19.5a2 2 0 0 0 2 2h11.5v-4"></path><path d="M9 8h6M9 11h4"></path></svg>
+        <span style="flex: 1">术语</span>
+        <span class="num" style="font-size: 13px; color: #6B6B6B">0</span>
+      </a>
+      <button type="button" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"></path><path d="M13 7l4 4"></path></svg>
+        <span style="flex: 1">笔记</span>
+        <span class="num" style="font-size: 13px; color: #6B6B6B">0</span>
+      </button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div class="grp">
+        <span>文件夹</span>
+        <button type="button" aria-label="新建文件夹" style="width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </div>
+      <sc-for list="{{ folders }}" as="f" hint-placeholder-count="3">
+        <button type="button" class="side">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg>
+          <span style="flex: 1">{{ f.name }}</span>
+          <span class="num" style="font-size: 13px; color: #6B6B6B">{{ f.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 2px">
+      <button type="button" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+        <span style="flex: 1">设置</span>
+      </button>
+      <div style="margin-top: 8px; padding: 6px; border-radius: 14px; background: #F7F7F7">
+        <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 10px">
+          <span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 9px; background: #F2F2F2; display: flex; align-items: center; justify-content: center; color: #6B6B6B">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z"></path></svg>
+          </span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0">
+            <span style="font-size: 13px; font-weight: 500">同步</span>
+            <span style="font-size: 12px; color: #6B6B6B">未开启，可以之后再设置</span>
+          </span>
+          <span class="dot" style="background: #A1A1A1" aria-hidden="true"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 6px 2px; font-size: 12px; color: #6B6B6B">
+          <span>0 篇</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+  <main style="flex: 1; min-width: 0; box-sizing: border-box; padding: 16px 24px 24px 12px; display: flex; flex-direction: column; gap: 16px">
+    <header style="display: flex; align-items: flex-end; gap: 12px; padding-top: 4px">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+        <div style="font-size: 13px; color: #6B6B6B">文献库</div>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.015em">全部论文</h1>
+      </div>
+      <button type="button" class="btn btn-p" onClick="{{ importPdf }}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        导入 PDF
+      </button>
+    </header>
+
+    <section class="tray" aria-label="添加第一篇论文">
+      <div class="card" style="height: 340px; border: 1.5px dashed #D4D4D4; box-shadow: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; text-align: center">
+        <span aria-hidden="true" style="width: 56px; height: 56px; border-radius: 14px; background: #F3F7FF; color: #155DFC; display: flex; align-items: center; justify-content: center">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 3.5H7a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8.5z"></path><path d="M14 3.5v5h5"></path><path d="M12 17v-6M9.5 13.5L12 11l2.5 2.5"></path></svg>
+        </span>
+        <div style="display: flex; flex-direction: column; gap: 6px">
+          <h2 style="margin: 0; font-size: 20px; font-weight: 600">把 PDF 拖到这里，就能开始读</h2>
+          <p style="margin: 0; font-size: 14px; color: #6B6B6B">标题、作者、年份会自动识别。也可以粘贴 DOI 或 arXiv 链接。</p>
+        </div>
+        <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+          <div style="display: flex; gap: 8px; margin-top: 4px">
+            <button type="button" class="btn btn-p" onClick="{{ importPdf }}">选择 PDF</button>
+            <a href="Zotero.dc.html" class="btn">从 Zotero 迁移</a>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: #6B6B6B"><span class="kbd">⌘O</span>选择文件<span style="width: 10px"></span><span class="kbd">⌘V</span>粘贴链接</div>
+        </sc-if>
+        <sc-if value="{{ busy }}" hint-placeholder-val="{{ false }}">
+          <div class="card" style="display: flex; align-items: center; gap: 12px; width: 460px; padding: 12px 14px; text-align: left">
+            <svg class="spin" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#155DFC" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 3a9 9 0 1 0 9 9"></path></svg>
+            <span style="flex: 1; display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 500">1706.03762.pdf</b><span style="font-size: 13px; color: #6B6B6B">正在识别标题和作者…</span></span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ done }}" hint-placeholder-val="{{ false }}">
+          <div class="card" style="display: flex; align-items: center; gap: 12px; width: 460px; padding: 12px 14px; text-align: left">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+            <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px"><b style="font-weight: 500">Attention Is All You Need</b><span style="font-size: 13px; color: #6B6B6B">Vaswani 等 · NeurIPS 2017 · 通过 arXiv 识别</span></span>
+            <a href="Reader.dc.html" class="btn btn-p" style="height: 32px">开始读</a>
+          </div>
+        </sc-if>
+      </div>
+    </section>
+
+    <div style="display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px">
+      <section class="tray" aria-labelledby="h-ai">
+        <div class="tray-h">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <h2 id="h-ai" class="lbl" style="margin: 0">AI 和翻译</h2>
+            <span style="font-size: 15px; font-weight: 500">{{ aiTitle }}</span>
+          </div>
+        </div>
+        <sc-if value="{{ noAi }}" hint-placeholder-val="{{ true }}">
+          <div class="card">
+            <button type="button" class="row" onClick="{{ openSheet }}" style="width: 100%; border: 0; background: transparent; text-align: left; cursor: pointer; font: inherit; color: inherit">
+              <span class="rt"><b>用自己的 API Key <span class="badge" style="margin-left: 6px; background: #F3F7FF; color: #155DFC">推荐</span></b><small>Anthropic、OpenAI 或任何 OpenAI 兼容接口，按用量直接付给服务商</small></span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A1A1A1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </button>
+            <button type="button" class="row" style="width: 100%; border: 0; border-top: 1px solid #F0F0F0; background: transparent; text-align: left; cursor: pointer; font: inherit; color: inherit">
+              <span class="rt"><b>用本机模型</b><small>通过 Ollama 在这台电脑上运行，论文内容不离开电脑；速度取决于你的显卡</small></span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A1A1A1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </button>
+          </div>
+        </sc-if>
+        <sc-if value="{{ hasAi }}" hint-placeholder-val="{{ false }}">
+          <div class="card row">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+            <span class="rt"><b>已连接 Anthropic</b><small>问答和要点用 claude-sonnet-5-5，查词和翻译用 claude-haiku-5-5</small></span>
+            <a href="Settings.dc.html" class="btn" style="height: 32px">在设置里修改</a>
+          </div>
+        </sc-if>
+      </section>
+
+      <section class="tray" aria-labelledby="h-data">
+        <div class="tray-h"><h2 id="h-data" class="lbl" style="margin: 0">你的数据</h2></div>
+        <div class="card">
+          <div class="row"><span class="rt"><b>文件在你的电脑上</b><small>~/Documents/文献库，普通 PDF 和 Markdown，随时可以带走</small></span></div>
+          <div class="row"><span class="rt"><b>同步用你自己的存储</b><small>iCloud Drive、WebDAV 或 S3，以后在设置里打开</small></span></div>
+          <div class="row"><span class="rt"><b>开源</b><small>AGPL-3.0，代码公开，可以自己审查</small></span></div>
+        </div>
+      </section>
+    </div>
+  </main>
+
+  <sc-if value="{{ sheet }}" hint-placeholder-val="{{ false }}">
+    <div class="scrim">
+      <div role="dialog" aria-modal="true" aria-labelledby="h-sheet" class="sheet2">
+        <div style="display: flex; align-items: center; padding: 6px 6px 0 12px">
+          <h2 id="h-sheet" style="flex: 1; margin: 0; font-size: 16px; font-weight: 600">连接 AI 服务</h2>
+          <button type="button" onClick="{{ closeSheet }}" aria-label="关闭" style="width: 32px; height: 32px; border: 0; border-radius: 8px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg></button>
+        </div>
+        <div class="card" style="padding: 16px; display: flex; flex-direction: column; gap: 16px">
+          <div class="field"><span>服务</span>
+            <div class="seg" role="group" aria-label="服务" style="align-self: flex-start">
+              <sc-for list="{{ providers }}" as="p" hint-placeholder-count="3"><button type="button" aria-pressed="{{ p.on }}" onClick="{{ p.pick }}" style="font-size: 13px; font-weight: 500; padding: 0 12px">{{ p.label }}</button></sc-for>
+            </div>
+          </div>
+          <sc-if value="{{ isCompat }}" hint-placeholder-val="{{ false }}">
+            <label class="field"><span>接口地址</span><span class="inp"><input type="url" placeholder="https://你的服务地址/v1"></span></label>
+          </sc-if>
+          <label class="field"><span>API Key</span>
+            <span class="inp"><input type="password" placeholder="{{ keyHint }}" autocomplete="off"></span>
+            <span class="hint">Key 只保存在这台电脑的系统钥匙串里：不会同步到其他设备，也不会发给我们。</span>
+          </label>
+          <div class="field"><span>模型</span>
+            <button type="button" class="sel" style="align-self: flex-start">{{ model }}<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button>
+            <span class="hint">{{ modelHint }}</span>
+          </div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 8px; padding: 2px 4px 4px 10px">
+          <span role="status" style="flex: 1; display: flex; align-items: center; gap: 6px; font-size: 13px; color: #404040">{{ testText }}</span>
+          <button type="button" class="btn" onClick="{{ test }}">测试连接</button>
+          <button type="button" class="btn btn-p" onClick="{{ save }}">保存</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { imp: 0, ai: false, sheet: false, prov: 'anthropic', test: 0 };
+  }
+  renderVals() {
+    const s = this.state;
+    const icons = {
+      inbox: 'M4 13l2.5-7h11L20 13v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      reading: 'M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13',
+      toread: 'M7 4h10v16l-5-3.5L7 20z',
+      done: 'M5 12.5l4.5 4.5L19 7.5',
+      all: 'M5 4.5h14v15H5zM9 4.5v15'
+    };
+    const navDef = [['inbox','收件箱'],['reading','正在读'],['toread','待读'],['done','已读完'],['all','全部论文']];
+    const navItems = (counts, cur) => navDef.map(([id,label],i) => { const on = id === cur; return { id, label, count: counts[i], icon: icons[id], cls: on ? 'side on' : 'side', current: on ? 'page' : null, iconStyle: on ? 'color: #FFFFFF' : 'color: #6B6B6B', countStyle: on ? 'font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF' : 'font-size: 13px; color: #6B6B6B', pick: () => {} }; });
+    const prov = [['anthropic', 'Anthropic'], ['openai', 'OpenAI'], ['compat', 'OpenAI 兼容接口']];
+    return {
+      navItems: navItems(s.imp === 2 ? [1, 0, 0, 0, 1] : [0, 0, 0, 0, 0], 'all'),
+      folders: [],
+      openPalette: () => {},
+      idle: s.imp === 0, busy: s.imp === 1, done: s.imp === 2,
+      importPdf: () => { this.setState({ imp: 1 }); setTimeout(() => this.setState({ imp: 2 }), 1600); },
+      noAi: !s.ai, hasAi: s.ai,
+      aiTitle: s.ai ? '已经可以用了' : '还没设置 · 不设置也能阅读、高亮和写笔记',
+      sheet: s.sheet,
+      openSheet: () => this.setState({ sheet: true, test: 0 }),
+      closeSheet: () => this.setState({ sheet: false }),
+      providers: prov.map(([id, label]) => ({ label, on: s.prov === id ? 'true' : 'false', pick: () => this.setState({ prov: id, test: 0 }) })),
+      isCompat: s.prov === 'compat',
+      keyHint: s.prov === 'anthropic' ? 'sk-ant-…' : s.prov === 'openai' ? 'sk-…' : '粘贴 Key',
+      model: s.prov === 'anthropic' ? 'claude-sonnet-5-5（推荐）' : '填好 Key 后自动列出可用模型',
+      modelHint: s.prov === 'anthropic' ? '查词和翻译会自动用更快、更便宜的 claude-haiku-5-5，可以在设置里改。' : '查词和翻译建议选一个更快、更便宜的模型，可以在设置里分开设置。',
+      testText: s.test === 1 ? '正在连接…' : s.test === 2 ? '✓ 连接成功，响应用时 0.8 秒' : '',
+      test: () => { this.setState({ test: 1 }); setTimeout(() => this.setState({ test: 2 }), 900); },
+      save: () => this.setState({ sheet: false, ai: true })
+    };
+  }
+}
+</script>
+</body>
+</html>

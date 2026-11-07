@@ -1,0 +1,413 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>术语</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button,input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+/* BoardUI 式：灰色托盘 + 白色内卡 */
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.tray-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 8px 0}
+.lbl{font-size:14px;font-weight:500;color:#6B6B6B}
+.big{font-size:22px;font-weight:500;color:#0A0A0A;letter-spacing:-0.01em}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25),0 1px 2px rgba(0,0,0,0.08)}
+.btn-p:hover{background:linear-gradient(180deg,#4A90FF 0%,#2B7FFF 100%)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:13px;font-weight:500}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;border:1px solid #EBEBEB;background:#F7F7F7;font-size:12px;color:#6B6B6B}
+.side{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:#404040;font-size:14px;cursor:pointer;text-align:left;box-sizing:border-box}
+.side:hover{background:#F5F5F5}
+.side.on{color:#FFFFFF;font-weight:500;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.side.on:hover{background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%)}
+.grp{display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:28px;font-size:12px;font-weight:500;color:#6B6B6B}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;min-width:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.book{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px;color:#0A0A0A;transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.book:hover{border-color:#DADADA}
+.book:active{transform:scale(0.98)}
+.peek{position:relative;height:132px;border-radius:8px;background:#F2F2F2;overflow:hidden}
+.peek .pg{position:absolute;left:50%;top:14px;margin-left:-77px;width:153px;height:198px;overflow:hidden;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 6px rgba(0,0,0,0.08)}
+.tr{display:grid;grid-template-columns:44px minmax(0,1fr) 130px 130px 70px 100px;align-items:center;padding:0 4px;border-bottom:1px solid #F0F0F0}
+.tr > *{padding:0 10px;min-width:0}
+.th{height:40px;font-size:13px;color:#6B6B6B}
+.td{height:56px;cursor:pointer}
+.td:last-child{border-bottom:0}
+.td:hover{background:#FAFAFA}
+.td.sel{background:#F3F7FF}
+.r{text-align:right}
+.chk{width:16px;height:16px;border-radius:5px;border:1px solid #D4D4D4;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 1px rgba(0,0,0,0.04)}
+.chk[aria-checked="true"]{border:0;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid #EBEBEB;border-radius:8px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%}
+.cmd:hover{background:#F5F5F5}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}.book{transition:none}}
+.sheet{width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;display:flex;flex-direction:column;position:relative}
+.sheet .v{font-size:9px;color:#6E6E73;text-align:center;margin-bottom:22px;letter-spacing:.02em}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5}
+.sheet .f{font-size:9px;color:#6E6E73;text-align:center;margin:2px 0 22px}
+.sheet .ah{font-size:11px;font-weight:700;text-align:center;margin-bottom:6px}
+.sheet .ab{font-size:9.5px;line-height:1.5;text-align:justify;margin:0 34px 20px}
+.sheet .ab mark{background:#FFE27A;color:inherit}
+.sheet .h{font-size:12px;font-weight:700;margin-bottom:6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .fig{height:96px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.trm{display:flex;align-items:center;gap:10px;width:100%;min-height:52px;padding:8px 12px;border:0;border-radius:10px;background:transparent;text-align:left;cursor:pointer;box-sizing:border-box;color:#0A0A0A;font-size:14px}
+.trm:hover{background:#F5F5F5}
+.trm[aria-selected="true"]{background:#F3F7FF;box-shadow:inset 0 0 0 1px #BFD7FF}
+.src{display:inline-flex;align-items:center;height:24px;padding:0 8px;border:1px solid #EBEBEB;border-radius:6px;background:#FFFFFF;font-size:12px;font-weight:500;color:#404040;white-space:nowrap}
+.role{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:12px;font-weight:500;background:#F2F2F2;color:#404040;white-space:nowrap}
+.sec-h{display:flex;align-items:center;justify-content:space-between;padding:12px 14px 0;font-size:13px;font-weight:500;color:#6B6B6B}
+</style>
+</helmet>
+<div style="position: relative; width: 100%; min-height: 900px; box-sizing: border-box; display: flex; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A; background: #FFFFFF">
+
+  <!-- 侧边栏 -->
+  <nav aria-label="侧边栏" style="flex: 0 0 264px; box-sizing: border-box; padding: 16px 12px 16px 16px; display: flex; flex-direction: column; gap: 12px">
+    <div style="display: flex; align-items: center; gap: 10px; height: 36px; padding: 0 4px">
+      <span aria-hidden="true" style="width: 28px; height: 28px; border-radius: 8px; background: #0A0A0A; color: #FFFFFF; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 600">文</span>
+      <span style="flex: 1; font-size: 14px; font-weight: 600">我的文献库</span>
+      <button type="button" aria-label="收起侧边栏" style="width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M9.5 4.5v15"></path></svg>
+      </button>
+    </div>
+
+    <button type="button" onClick="{{ openPalette }}" style="display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 8px 0 10px; border: 1px solid #EBEBEB; border-radius: 10px; background: #FFFFFF; color: #6B6B6B; font-size: 14px; font-weight: 500; cursor: pointer; text-align: left; box-shadow: 0 1px 2px rgba(0,0,0,0.04)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+      <span style="flex: 1">快速搜索</span>
+      <span class="kbd">⌘K</span>
+    </button>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <sc-for list="{{ navItems }}" as="item" hint-placeholder-count="5">
+        <button type="button" onClick="{{ item.pick }}" class="{{ item.cls }}" aria-current="{{ item.current }}">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" style="{{ item.iconStyle }}"><path d="{{ item.icon }}"></path></svg>
+          <span style="flex: 1">{{ item.label }}</span>
+          <span class="num" style="{{ item.countStyle }}">{{ item.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div class="grp"><span>知识</span></div>
+      <a href="Terms.dc.html" class="side on" aria-current="page">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5.5a2 2 0 0 1 2-2h11.5v14H7a2 2 0 0 0-2 2z"></path><path d="M5 19.5a2 2 0 0 0 2 2h11.5v-4"></path><path d="M9 8h6M9 11h4"></path></svg>
+        <span style="flex: 1">术语</span>
+        <span class="num" style="font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF">46</span>
+      </a>
+      <button type="button" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"></path><path d="M13 7l4 4"></path></svg>
+        <span style="flex: 1">笔记</span>
+        <span class="num" style="font-size: 13px; color: #6B6B6B">23</span>
+      </button>
+    </div>
+
+    <div style="display: flex; flex-direction: column; gap: 2px">
+      <div class="grp">
+        <span>文件夹</span>
+        <button type="button" aria-label="新建文件夹" style="width: 22px; height: 22px; border: 0; border-radius: 6px; background: transparent; color: #6B6B6B; cursor: pointer; display: flex; align-items: center; justify-content: center">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        </button>
+      </div>
+      <sc-for list="{{ folders }}" as="f" hint-placeholder-count="3">
+        <button type="button" class="side">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"></path></svg>
+          <span style="flex: 1">{{ f.name }}</span>
+          <span class="num" style="font-size: 13px; color: #6B6B6B">{{ f.count }}</span>
+        </button>
+      </sc-for>
+    </div>
+
+    <div style="margin-top: auto; display: flex; flex-direction: column; gap: 2px">
+      <button type="button" class="side">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"></path></svg>
+        <span style="flex: 1">设置</span>
+      </button>
+      <div style="margin-top: 8px; padding: 6px; border-radius: 14px; background: #F7F7F7">
+        <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 10px">
+          <span aria-hidden="true" style="width: 32px; height: 32px; border-radius: 9px; background: #F2F2F2; display: flex; align-items: center; justify-content: center; color: #6B6B6B">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z"></path></svg>
+          </span>
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 1px; min-width: 0">
+            <span style="font-size: 13px; font-weight: 500">iCloud 同步</span>
+            <span style="font-size: 12px; color: #6B6B6B">已同步 · 刚刚</span>
+          </span>
+          <span class="dot" style="background: #22C55E" aria-hidden="true"></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding: 8px 6px 2px; font-size: 12px; color: #6B6B6B">
+          <span>69 篇 · 1.2 GB</span><span>Mac · iPad</span>
+        </div>
+      </div>
+    </div>
+  </nav>
+
+    <!-- 主区域 -->
+  <main style="flex: 1; min-width: 0; box-sizing: border-box; padding: 16px 24px 24px 12px; display: flex; flex-direction: column; gap: 16px">
+    <header style="display: flex; align-items: flex-end; gap: 12px; padding-top: 4px">
+      <div style="flex: 1; display: flex; flex-direction: column; gap: 6px">
+        <div style="display: flex; align-items: center; gap: 6px; font-size: 13px; color: #6B6B6B">
+          <span>知识</span>
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+          <span>术语</span>
+        </div>
+        <h1 style="margin: 0; font-size: 24px; font-weight: 600; letter-spacing: -0.015em">术语</h1>
+      </div>
+      <button type="button" class="btn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v10M8 10l4 4 4-4M5 19h14"></path></svg>
+        导出术语表
+      </button>
+      <button type="button" class="btn btn-p">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>
+        新建术语
+      </button>
+    </header>
+
+    <div style="flex: 1; min-height: 0; display: flex; gap: 16px; align-items: stretch">
+      <!-- 术语列表 -->
+      <section class="tray" aria-label="术语列表" style="flex: 0 0 336px">
+        <div class="tray-h" style="align-items: center">
+          <div style="display: flex; flex-direction: column; gap: 2px">
+            <span class="lbl">全库</span>
+            <span class="big num">46 个术语</span>
+          </div>
+        </div>
+        <div style="display: flex; gap: 8px; padding: 0 0 0 0">
+          <label style="flex: 1; display: flex; align-items: center; gap: 8px; height: 36px; padding: 0 10px; border: 1px solid #EBEBEB; border-radius: 10px; background: #FFFFFF; color: #6B6B6B; box-shadow: 0 1px 2px rgba(0,0,0,0.04)">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+            <input type="search" aria-label="搜索术语" placeholder="中文或英文" style="flex: 1; min-width: 0; border: 0; outline: 0; background: transparent; font-size: 14px; color: #0A0A0A">
+          </label>
+        </div>
+        <div role="group" aria-label="筛选" class="seg" style="align-self: stretch">
+          <sc-for list="{{ filters }}" as="f" hint-placeholder-count="3">
+            <button type="button" aria-pressed="{{ f.on }}" onClick="{{ f.pick }}" style="flex: 1; font-size: 13px; font-weight: 500; gap: 6px">{{ f.label }}<span class="num" style="color: #6B6B6B; font-weight: 400">{{ f.count }}</span></button>
+          </sc-for>
+        </div>
+        <div role="listbox" aria-label="术语" class="card" style="flex: 1; padding: 4px; display: flex; flex-direction: column; gap: 1px; overflow: hidden">
+          <sc-for list="{{ terms }}" as="t" hint-placeholder-count="8">
+            <button type="button" role="option" aria-selected="{{ t.on }}" onClick="{{ t.pick }}" class="trm">
+              <span style="flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px">
+                <span style="font-weight: 500">{{ t.zh }}</span>
+                <span style="font-size: 13px; color: #6B6B6B; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ t.en }}</span>
+              </span>
+              <sc-if value="{{ t.pending }}" hint-placeholder-val="{{ false }}"><span style="display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: #6B6B6B"><span class="dot" style="background: #F59E0B"></span>待确认</span></sc-if>
+              <sc-if value="{{ t.locked }}" hint-placeholder-val="{{ false }}"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" aria-label="译法已锁定"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg></sc-if>
+              <span class="num" style="flex: none; width: 40px; text-align: right; font-size: 13px; color: #6B6B6B">{{ t.n }} 篇</span>
+            </button>
+          </sc-for>
+        </div>
+      </section>
+
+      <!-- 概念页 -->
+      <section class="tray" aria-label="{{ cur.zh }}" style="flex: 1; min-width: 0">
+        <div class="tray-h" style="align-items: flex-start; padding: 10px 10px 2px 12px">
+          <div style="display: flex; flex-direction: column; gap: 6px; min-width: 0">
+            <div style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap">
+              <h2 style="margin: 0; font-size: 26px; font-weight: 600; letter-spacing: -0.015em">{{ cur.zh }}</h2>
+              <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 18px; color: #404040">{{ cur.en }}</span>
+            </div>
+            <sc-if value="{{ cur.hasAlias }}" hint-placeholder-val="{{ true }}">
+            <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 13px; color: #6B6B6B">
+              <span>也写作</span>
+              <sc-for list="{{ cur.alias }}" as="a" hint-placeholder-count="2"><span class="badge" style="background: #EFEFEF; color: #404040">{{ a }}</span></sc-for>
+            </div>
+            </sc-if>
+          </div>
+          <div style="display: flex; gap: 8px; flex: none">
+            <button type="button" class="btn" style="height: 32px; font-size: 13px">编辑</button>
+            <button type="button" class="btn" style="height: 32px; font-size: 13px">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path></svg>
+              问 AI
+            </button>
+          </div>
+        </div>
+
+        <sc-if value="{{ cur.pending }}" hint-placeholder-val="{{ false }}">
+          <div class="card" style="display: flex; align-items: center; gap: 12px; padding: 10px 12px 10px 14px">
+            <span class="dot" style="background: #F59E0B"></span>
+            <span style="flex: 1; font-size: 14px">AI 从{{ cur.from }}里提取了这个术语，译法还没确认。确认后，翻译和查词都会用它。</span>
+            <button type="button" class="btn" style="height: 32px; font-size: 13px">改译法</button>
+            <button type="button" onClick="{{ confirm }}" class="btn btn-p" style="height: 32px; font-size: 13px">确认</button>
+          </div>
+        </sc-if>
+
+        <div style="flex: 1; min-height: 0; display: grid; grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr); gap: 8px">
+          <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+            <div class="card" style="padding-bottom: 14px">
+              <div class="sec-h"><span>释义</span><span style="font-weight: 400">{{ cur.defSrc }}</span></div>
+              <p style="margin: 6px 14px 0; font-size: 15px; line-height: 1.7">{{ cur.def }}</p>
+              <div style="display: flex; align-items: center; gap: 8px; margin: 12px 14px 0; padding: 8px 10px; border-radius: 8px; background: #F7F7F7; font-size: 13px; color: #404040">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.8" aria-hidden="true"><rect x="5" y="11" width="14" height="9" rx="2"></rect><path d="M8 11V8a4 4 0 0 1 8 0v3"></path></svg>
+                <span style="flex: 1">{{ cur.lockText }}</span>
+              </div>
+            </div>
+            <div class="card" style="flex: 1; min-height: 0">
+              <div class="sec-h"><span>出现在 <span class="num">{{ cur.n }}</span> 篇论文里</span><span style="font-weight: 400">按时间</span></div>
+              <ol style="margin: 4px 0 0; padding: 0 6px 6px; list-style: none">
+                <sc-for list="{{ cur.papers }}" as="p" hint-placeholder-count="3">
+                  <li style="display: grid; grid-template-columns: 1fr auto; column-gap: 12px; row-gap: 4px; padding: 10px 8px; border-top: 1px solid #F0F0F0">
+                    <a href="Reader.dc.html" style="font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">{{ p.title }}</a>
+                    <span style="display: flex; gap: 6px"><span class="role" style="{{ p.roleStyle }}">{{ p.role }}</span><a href="Reader.dc.html" class="src">{{ p.page }}</a></span>
+                    <span style="grid-column: 1 / -1; font-size: 13px; line-height: 1.5; color: #404040">{{ p.how }}</span>
+                  </li>
+                </sc-for>
+              </ol>
+            </div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 8px; min-width: 0">
+            <div class="card" style="padding-bottom: 12px">
+              <div class="sec-h"><span>你的批注</span><span class="num" style="font-weight: 400">{{ cur.noteCount }}</span></div>
+              <sc-if value="{{ cur.hasNotes }}" hint-placeholder-val="{{ true }}">
+                <div style="display: flex; flex-direction: column; gap: 8px; margin: 8px 12px 0">
+                  <sc-for list="{{ cur.notes }}" as="h" hint-placeholder-count="2">
+                    <div style="{{ h.style }}">
+                      <p style="margin: 0; font-size: 13.5px; line-height: 1.55; {{ h.font }}">{{ h.text }}</p>
+                      <span style="display: block; margin-top: 6px; font-size: 12px; color: #6B6B6B">{{ h.where }}</span>
+                    </div>
+                  </sc-for>
+                </div>
+              </sc-if>
+              <sc-if value="{{ cur.noNotes }}" hint-placeholder-val="{{ false }}">
+                <p style="margin: 8px 14px 0; font-size: 13px; line-height: 1.6; color: #6B6B6B">还没有批注提到它。在阅读器里高亮含有这个词的句子，会自动出现在这里。</p>
+              </sc-if>
+            </div>
+            <div class="card" style="padding-bottom: 12px">
+              <div class="sec-h"><span>相关术语</span></div>
+              <div style="display: flex; flex-wrap: wrap; gap: 6px; margin: 8px 12px 0">
+                <sc-for list="{{ cur.related }}" as="r" hint-placeholder-count="4">
+                  <button type="button" onClick="{{ r.pick }}" class="chip" style="cursor: pointer">{{ r.label }}</button>
+                </sc-for>
+              </div>
+            </div>
+            <div class="card" style="padding-bottom: 12px">
+              <div class="sec-h"><span>提到它的笔记</span></div>
+              <sc-for list="{{ cur.links }}" as="l" hint-placeholder-count="1">
+                <a href="#" style="display: flex; align-items: center; gap: 10px; margin: 8px 12px 0; padding: 8px 10px; border-radius: 8px; background: #F7F7F7; font-size: 13.5px">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#6B6B6B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L18.5 9.5l-4-4L4 16z"></path></svg>
+                  <span style="flex: 1">{{ l.title }}</span>
+                  <span style="font-size: 12px; color: #6B6B6B">{{ l.when }}</span>
+                </a>
+              </sc-for>
+              <p style="margin: 8px 14px 0; font-size: 12px; color: #6B6B6B">在笔记里写 [[{{ cur.zh }}]] 就会链接到这里。</p>
+            </div>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { nav: null, term: 'query', filter: 'all', confirmed: {} };
+  }
+  renderVals() {
+    const s = this.state;
+    const icons = {
+      inbox: 'M4 13l2.5-7h11L20 13v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      reading: 'M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13',
+      toread: 'M7 4h10v16l-5-3.5L7 20z',
+      done: 'M5 12.5l4.5 4.5L19 7.5',
+      all: 'M5 4.5h14v15H5zM9 4.5v15'
+    };
+    const nav = [
+      { id: 'inbox', label: '收件箱', count: 6 },
+      { id: 'reading', label: '正在读', count: 3 },
+      { id: 'toread', label: '待读', count: 12 },
+      { id: 'done', label: '已读完', count: 48 },
+      { id: 'all', label: '全部论文', count: 69 }
+    ];
+    const T = {
+      query: { zh: '查询向量', en: 'query', alias: ['queries', 'Q', 'query vector'], locked: true,
+        def: '注意力里负责"提问"的向量。它和每个键向量 K 做点积，得到这一步该关注哪些位置的权重，再用这些权重对值向量 V 加权求和。Q、K、V 通常由同一个输入经过三个不同的线性投影得到。',
+        defSrc: 'AI 根据 4 篇论文生成 · 你改过',
+        lockText: '译法已锁定，翻译、查词和生词注释都用它',
+        papers: [
+          { title: 'Attention Is All You Need', role: '首次定义', page: '第 4 页', how: '提出 Q、K、V 的写法，用缩放点积计算注意力权重。' },
+          { title: 'High-Resolution Image Synthesis with Latent Diffusion Models', role: '沿用', page: '第 5 页', how: '交叉注意力里，Q 来自图像特征，K 和 V 来自文本条件。' },
+          { title: 'LoRA: Low-Rank Adaptation of Large Language Models', role: '在此基础上改进', page: '第 5 页', how: '只在查询和值的投影矩阵 W_q、W_v 上加低秩矩阵，效果已经接近全量微调。' },
+          { title: 'QLoRA: Efficient Finetuning of Quantized LLMs', role: '沿用', page: '第 4 页', how: '和 LoRA 一样，在注意力的投影层上加适配器。' }
+        ],
+        notes: [
+          { kind: 'hl', text: 'The dot products of the query with all keys are divided by the square root of the key dimension before a softmax is applied', where: 'Attention Is All You Need · 第 4 页 · 高亮' },
+          { kind: 'note', text: '缩放是为了防止 d_k 较大时点积过大、softmax 饱和。LoRA 正是在这些投影矩阵上做低秩适配。', where: 'Attention Is All You Need · 笔记「方法」' }
+        ],
+        related: [['key', '键向量 K'], ['value', '值向量 V'], ['attn', '注意力机制'], ['xattn', '交叉注意力'], ['lora', '低秩适配']],
+        links: [{ title: '注意力机制学习笔记', when: '11月2日' }] },
+      attn: { zh: '注意力机制', en: 'attention mechanism', alias: ['attention', 'self-attention'], locked: true,
+        def: '让模型在处理一个位置时，按相关程度从其他位置汇集信息的方法。相关程度由查询向量和键向量的相似度决定。',
+        defSrc: 'AI 根据 7 篇论文生成',
+        lockText: '译法已锁定为"注意力机制"',
+        papers: [
+          { title: 'Attention Is All You Need', role: '核心方法', page: '第 3 页', how: '完全用注意力替代循环和卷积。' },
+          { title: 'High-Resolution Image Synthesis with Latent Diffusion Models', role: '沿用', page: '第 5 页', how: '在去噪网络里用交叉注意力接入文本条件。' },
+          { title: 'Scaling Laws for Neural Language Models', role: '沿用', page: '第 3 页', how: '研究对象是基于注意力的 Transformer 语言模型。' }
+        ],
+        notes: [], related: [['query', '查询向量'], ['xattn', '交叉注意力']], links: [{ title: '注意力机制学习笔记', when: '11月2日' }] },
+      lora: { zh: '低秩适配', en: 'low-rank adaptation', alias: ['LoRA'], locked: true,
+        def: '微调大模型时冻结原有权重，只在部分层旁边加两个很小的矩阵相乘来表示权重的变化，大大减少要训练的参数。',
+        defSrc: 'AI 根据 3 篇论文生成',
+        lockText: '译法已锁定为"低秩适配"，英文缩写 LoRA 保留不译',
+        papers: [
+          { title: 'LoRA: Low-Rank Adaptation of Large Language Models', role: '首次定义', page: '第 4 页', how: '提出方法，并比较了加在哪些投影矩阵上效果最好。' },
+          { title: 'QLoRA: Efficient Finetuning of Quantized LLMs', role: '在此基础上改进', page: '第 3 页', how: '把底座模型量化成 4 位，再训练低秩适配器。' }
+        ],
+        notes: [{ kind: 'hl', text: 'We freeze the pre-trained weights and inject trainable low-rank matrices into each layer', where: 'LoRA · 第 1 页 · 高亮' }],
+        related: [['query', '查询向量'], ['quant', '量化']], links: [] },
+      diff: { zh: '扩散模型', en: 'diffusion model', alias: ['DDPM'], locked: false, def: '先逐步给数据加噪声、再学习一步步去噪还原的生成模型。', defSrc: 'AI 根据 3 篇论文生成', lockText: '译法未锁定：不同引擎可能译成"扩散模型"或"弥散模型"',
+        papers: [{ title: 'Denoising Diffusion Probabilistic Models', role: '首次定义', page: '第 2 页', how: '把去噪训练和变分下界联系起来。' }, { title: 'High-Resolution Image Synthesis with Latent Diffusion Models', role: '在此基础上改进', page: '第 3 页', how: '把扩散过程放到潜空间里。' }], notes: [], related: [['latent', '潜空间']], links: [] },
+      latent: { zh: '潜空间', en: 'latent space', alias: ['latent'], locked: false, def: '自编码器压缩后的低维表示空间。', defSrc: 'AI 根据 2 篇论文生成', lockText: '译法未锁定', papers: [{ title: 'High-Resolution Image Synthesis with Latent Diffusion Models', role: '核心方法', page: '第 3 页', how: '在预训练自编码器的潜空间里做扩散。' }], notes: [], related: [['diff', '扩散模型']], links: [] },
+      xattn: { zh: '交叉注意力', en: 'cross-attention', alias: [], locked: false, pending: true, from: '《High-Resolution Image Synthesis with Latent Diffusion Models》', def: '查询向量来自一个序列，键和值来自另一个序列的注意力，常用来把文本条件接入图像模型。', defSrc: 'AI 根据 2 篇论文生成', lockText: '译法未锁定', papers: [{ title: 'Attention Is All You Need', role: '首次定义', page: '第 5 页', how: '解码器里的"编码器-解码器注意力"。' }, { title: 'High-Resolution Image Synthesis with Latent Diffusion Models', role: '沿用', page: '第 5 页', how: 'Q 来自图像特征，K、V 来自文本编码。' }], notes: [], related: [['query', '查询向量'], ['attn', '注意力机制']], links: [] },
+      quant: { zh: '量化', en: 'quantization', alias: ['4-bit'], locked: false, pending: true, from: '《QLoRA》', def: '用更少的位数存储权重，例如从 16 位降到 4 位，以减少显存。', defSrc: 'AI 根据 1 篇论文生成', lockText: '译法未锁定', papers: [{ title: 'QLoRA: Efficient Finetuning of Quantized LLMs', role: '核心方法', page: '第 3 页', how: '提出 4 位 NormalFloat 量化。' }], notes: [], related: [['lora', '低秩适配']], links: [] },
+      cot: { zh: '思维链', en: 'chain-of-thought', alias: ['CoT'], locked: true, def: '让模型先写出中间推理步骤，再给出答案的提示方法。', defSrc: 'AI 根据 1 篇论文生成', lockText: '译法已锁定为"思维链"', papers: [{ title: 'Chain-of-Thought Prompting Elicits Reasoning in Large Language Models', role: '首次定义', page: '第 2 页', how: '在提示里放几个分步推理的示例。' }], notes: [], related: [], links: [] },
+      scale: { zh: '缩放定律', en: 'scaling law', alias: ['scaling laws'], locked: false, def: '模型效果随参数量、数据量和计算量按幂律变化的经验规律。', defSrc: 'AI 根据 1 篇论文生成', lockText: '译法未锁定：也常译作"规模定律"', papers: [{ title: 'Scaling Laws for Neural Language Models', role: '首次定义', page: '第 1 页', how: '损失随模型大小、数据量、计算量呈幂律下降。' }], notes: [], related: [], links: [] }
+    };
+    const order = ['attn', 'query', 'lora', 'diff', 'xattn', 'latent', 'quant', 'cot', 'scale'];
+    const isPending = (k) => T[k].pending && !s.confirmed[k];
+    const visible = order.filter((k) => s.filter === 'all' || (s.filter === 'pending' ? isPending(k) : T[k].locked));
+    const c = T[s.term];
+    const roleOn = { '首次定义': 'background: #F3F7FF; color: #155DFC', '在此基础上改进': 'background: #EFEFEF; color: #0A0A0A', '核心方法': 'background: #F3F7FF; color: #155DFC' };
+    return {
+      navItems: nav.map((n) => ({ ...n, icon: icons[n.id], cls: 'side', current: null, iconStyle: 'color: #6B6B6B', countStyle: 'font-size: 13px; color: #6B6B6B', pick: () => {} })),
+      folders: [{ name: '扩散模型', count: 14 }, { name: '大模型推理', count: 22 }, { name: '参数高效微调', count: 9 }],
+      openPalette: () => {},
+      filters: [['all', '全部', 46], ['pending', '待确认', order.filter(isPending).length], ['locked', '已锁定', 12]].map(([id, label, count]) => ({ label, count, on: s.filter === id ? 'true' : 'false', pick: () => this.setState({ filter: id }) })),
+      terms: visible.map((k) => ({ zh: T[k].zh, en: T[k].en + (T[k].alias.length ? ' · ' + T[k].alias[0] : ''), n: T[k].papers.length + (k === 'attn' ? 4 : 0), on: s.term === k ? 'true' : 'false', pending: isPending(k), locked: T[k].locked, pick: () => this.setState({ term: k }) })),
+      cur: {
+        ...c,
+        n: c.papers.length + (s.term === 'attn' ? 4 : 0),
+        pending: isPending(s.term),
+        hasAlias: c.alias.length > 0,
+        papers: c.papers.map((p) => ({ ...p, roleStyle: roleOn[p.role] || '' })),
+        noteCount: c.notes.length ? c.notes.length + ' 条' : '',
+        hasNotes: c.notes.length > 0,
+        noNotes: c.notes.length === 0,
+        notes: c.notes.map((h) => ({ ...h, style: h.kind === 'hl' ? 'padding: 10px 12px 10px 14px; border-radius: 10px; background: #FFFBEB; box-shadow: inset 3px 0 0 #F5C542' : 'padding: 10px 12px; border-radius: 10px; background: #F7F7F7', font: h.kind === 'hl' ? "font-family: 'Source Serif 4', serif;" : '' })),
+        related: c.related.map(([k, label]) => ({ label, pick: () => this.setState({ term: k }) })),
+        links: c.links
+      },
+      confirm: () => this.setState({ confirmed: { ...s.confirmed, [s.term]: true } })
+    };
+  }
+}
+</script>
+</body>
+</html>

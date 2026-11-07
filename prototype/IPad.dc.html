@@ -1,0 +1,448 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>iPad 圈选问 AI</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;family=Noto+Serif+SC:wght@400;600&amp;family=Caveat:wght@500&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+.ib{width:40px;height:40px;border:0;border-radius:10px;background:transparent;color:#0A0A0A;display:flex;align-items:center;justify-content:center;cursor:pointer}
+.ib:active{background:#EBEBEB}
+.ib[aria-pressed="true"]{background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px #EBEBEB}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:40px;padding:0 14px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:15px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:active{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.src{display:inline-flex;align-items:center;height:28px;padding:0 10px;border:1px solid #EBEBEB;border-radius:6px;background:#FFFFFF;font-size:13px;font-weight:500;color:#404040}
+.tool{position:relative;width:44px;height:64px;padding:0;border:0;background:transparent;cursor:pointer;display:flex;justify-content:center;transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.tool svg{position:absolute;top:0}
+.sw{width:36px;height:36px;padding:0;border:0;background:transparent;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.sw span{width:22px;height:22px;border-radius:50%;box-shadow:inset 0 0 0 1px rgba(0,0,0,0.10);transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.sw[aria-checked="true"] span{transform:scale(1.05)}
+.wd{width:32px;height:32px;padding:0;border:0;border-radius:8px;background:transparent;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.wd[aria-checked="true"]{background:#FFFFFF;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.wd span{border-radius:50%;background:#0A0A0A}
+.w{display:inline;border:0;margin:0 -2px;padding:0 2px;font:inherit;color:inherit;background:transparent;border-radius:4px;cursor:pointer}
+.w[aria-expanded="true"]{background:rgba(43,127,255,0.14);box-shadow:inset 0 -2px 0 #2B7FFF}
+.gl{position:relative}
+.glt{position:absolute;left:50%;bottom:calc(100% - 5px);transform:translateX(-50%);font-family:Inter,'Noto Sans SC',sans-serif;font-size:11px;line-height:1;font-weight:500;color:#155DFC;white-space:nowrap;pointer-events:none;text-shadow:0 0 2px #FFF,0 0 2px #FFF,0 0 3px #FFF}
+.mat{background:rgba(255,255,255,0.82);-webkit-backdrop-filter:blur(24px) saturate(1.8);backdrop-filter:blur(24px) saturate(1.8);box-shadow:0 0 0 0.5px rgba(0,0,0,0.10),0 1px 2px rgba(0,0,0,0.04),0 12px 36px rgba(0,0,0,0.10)}
+.pop{background:#F7F7F7;border-radius:16px;padding:8px;box-sizing:border-box;box-shadow:0 0 0 0.5px rgba(0,0,0,0.10),0 18px 48px rgba(0,0,0,0.16),0 2px 6px rgba(0,0,0,0.05)}
+.row{display:flex;align-items:center;gap:12px;min-height:48px;padding:0 12px;border:0;background:transparent;width:100%;text-align:left;font-size:15px;color:#0A0A0A;cursor:pointer;box-sizing:border-box}
+.row + .row{box-shadow:inset 0 1px 0 #F0F0F0}
+.lbl{font-size:12px;font-weight:500;color:#6B6B6B;display:flex;align-items:center;gap:6px}
+.sw2{position:relative;width:51px;height:31px;border-radius:16px;background:#E5E5E5;transition:background .2s;flex:none}
+.sw2::after{content:'';position:absolute;left:2px;top:2px;width:27px;height:27px;border-radius:50%;background:#FFF;box-shadow:0 2px 6px rgba(0,0,0,0.15),0 0 0 0.5px rgba(0,0,0,0.04);transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.sw2.on{background:#155DFC}
+.sw2.on::after{transform:translateX(20px)}
+.blk{position:relative}
+.tm{position:absolute;left:-54px;top:-6px;width:44px;height:44px;padding:0;border:0;background:transparent;display:flex;align-items:center;justify-content:center;cursor:pointer;border-radius:10px}
+.tm span{width:26px;height:26px;border-radius:6px;display:flex;align-items:center;justify-content:center;font-family:Inter,'Noto Sans SC',sans-serif;font-size:12px;font-weight:600;background:#F2F2F2;color:#6B6B6B;transition:background .15s,color .15s}
+.tm[aria-expanded="true"] span{background:#F3F7FF;color:#155DFC;box-shadow:inset 0 0 0 1px #BFD7FF}
+.tr{margin:-8px 0 18px;padding:10px 14px;border-radius:6px;background:#F7F7F7;font-family:Inter,'Noto Sans SC',-apple-system,sans-serif;font-size:14.5px;line-height:1.75;color:#262626}
+.term{text-decoration:underline dotted #155DFC;text-underline-offset:4px;text-decoration-thickness:1.5px}
+@media (prefers-reduced-motion: reduce){.tool,.sw span,.sw2,.sw2::after{transition:none}}
+</style>
+</helmet>
+<div style="position: relative; width: 1194px; height: 834px; overflow: hidden; background: #F2F2F2; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 15px; color: #0A0A0A">
+
+  <!-- 顶栏：一行、无底板，只占 52px -->
+  <header style="position: absolute; left: 0; right: 0; top: 0; height: 52px; box-sizing: border-box; padding: 6px 12px; display: flex; align-items: center; gap: 4px; z-index: 3">
+    <button type="button" aria-label="返回文献库" class="ib">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"></path></svg>
+    </button>
+    <div style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding-left: 2px">
+      <span style="font-size: 15px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis">Attention Is All You Need</span>
+      <span class="num" style="flex: none; font-size: 13px; color: #6B6B6B">第 4 页，共 11 页</span>
+    </div>
+    <button type="button" aria-label="页面缩略图" class="ib">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M9.5 4.5v15"></path></svg>
+    </button>
+    <button type="button" aria-label="搜索" class="ib">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg>
+    </button>
+    <button type="button" aria-label="翻译和查词" aria-haspopup="menu" aria-pressed="{{ tOn }}" onClick="{{ toggleTmenu }}" class="ib">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h9M8.5 3v2M6 5c1 4 4 7 7 8M11 5c-1 4-4 7-7 8M13 21l4-9 4 9M14.5 18h5"></path></svg>
+    </button>
+    <button type="button" aria-label="笔记" aria-pressed="{{ aiOpen }}" class="ib">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"></rect><path d="M14.5 4.5v15"></path></svg>
+    </button>
+  </header>
+
+  <article aria-label="论文第 4 页" style="position: absolute; left: 50%; top: 56px; transform: translateX(-50%); width: 660px; min-height: 900px; box-sizing: border-box; padding: 52px 64px; background: #FFFFFF; border-radius: 4px; box-shadow: 0 0 0 1px rgba(0,0,0,0.04), 0 1px 3px rgba(0,0,0,0.06), 0 8px 24px rgba(0,0,0,0.05); font-family: 'Source Serif 4', 'Noto Serif SC', Georgia, serif; font-size: 16px; line-height: 1.7; color: #1D1D1F">
+    <h2 style="margin: 0 0 12px; font-size: 18px; font-weight: 700">3.2.2 Multi-Head Attention<sc-if value="{{ full }}" hint-placeholder-val="{{ false }}"><span style="margin-left: 10px; font-family: Inter, 'Noto Sans SC', sans-serif; font-size: 14px; font-weight: 500; color: #6B6B6B">多头注意力</span></sc-if></h2>
+    <div class="blk">
+    <sc-if value="{{ full }}" hint-placeholder-val="{{ false }}"><button type="button" class="tm" onClick="{{ t1 }}" aria-expanded="{{ e1 }}" aria-label="这一段的译文"><span>译</span></button></sc-if>
+    <p style="margin: 0 0 18px">Instead of one attention function over full-width keys, values and <span class="gl"><button type="button" class="w" onClick="{{ lookup }}" aria-expanded="{{ wordOpen }}" aria-label="查词 queries">queries</button><sc-if value="{{ gloss }}" hint-placeholder-val="{{ false }}"><span class="glt">查询</span></sc-if></span>, we project them <span style="position: relative">h times with different learned <span class="gl">projections<sc-if value="{{ gloss }}" hint-placeholder-val="{{ false }}"><span class="glt">投影</span></sc-if></span><svg width="280" height="10" viewBox="0 0 280 10" aria-hidden="true" style="position: absolute; left: 0; bottom: -5px"><path d="M2 6 C 60 3, 130 8, 200 4 S 270 6, 278 5" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="round" opacity="0.9"></path></svg></span>, and run attention on each projection in parallel.</p>
+    <sc-if value="{{ e1 }}" hint-placeholder-val="{{ false }}"><div class="tr" lang="zh-CN">我们不在全宽的键、值和<span class="term">查询向量</span>上只做一次注意力，而是用 h 组不同的、可学习的<span class="term">投影</span>把它们各投影一次，再在每份投影上并行做注意力。</div></sc-if>
+    </div>
+
+    <figure style="position: relative; margin: 0 0 18px; padding: 20px 0 12px; display: flex; flex-direction: column; align-items: center; gap: 10px">
+      <svg width="300" height="210" viewBox="0 0 300 210" role="img" aria-label="多头注意力结构图" style="font-family: Inter, sans-serif">
+        <rect x="100" y="8" width="100" height="28" rx="4" fill="#F5F5F5" stroke="#D4D4D4"></rect><text x="150" y="27" text-anchor="middle" font-size="12" fill="#1D1D1F">Linear</text>
+        <rect x="100" y="54" width="100" height="28" rx="4" fill="#F5F5F5" stroke="#D4D4D4"></rect><text x="150" y="73" text-anchor="middle" font-size="12" fill="#1D1D1F">Concat</text>
+        <rect x="70" y="102" width="160" height="40" rx="4" fill="#FFFFFF" stroke="#A1A1A1"></rect><rect x="76" y="96" width="160" height="40" rx="4" fill="#FFFFFF" stroke="#A1A1A1"></rect><rect x="82" y="90" width="160" height="40" rx="4" fill="#FFFFFF" stroke="#1D1D1F"></rect>
+        <text x="162" y="114" text-anchor="middle" font-size="11" fill="#1D1D1F">Scaled Dot-Product</text><text x="162" y="127" text-anchor="middle" font-size="11" fill="#1D1D1F">Attention</text>
+        <text x="256" y="118" font-size="13" font-style="italic" fill="#1D1D1F">h</text>
+        <rect x="40" y="168" width="60" height="26" rx="4" fill="#F5F5F5" stroke="#D4D4D4"></rect><rect x="120" y="168" width="60" height="26" rx="4" fill="#F5F5F5" stroke="#D4D4D4"></rect><rect x="200" y="168" width="60" height="26" rx="4" fill="#F5F5F5" stroke="#D4D4D4"></rect>
+        <text x="70" y="185" text-anchor="middle" font-size="11">Linear</text><text x="150" y="185" text-anchor="middle" font-size="11">Linear</text><text x="230" y="185" text-anchor="middle" font-size="11">Linear</text>
+        <path d="M70 168 V142 M150 168 V142 M230 168 V142 M150 90 V82 M150 54 V36" stroke="#A1A1A1" fill="none"></path>
+      </svg>
+      <figcaption class="blk" style="font-size: 13px; color: #6B6B6B; align-self: stretch; text-align: center">
+        <sc-if value="{{ full }}" hint-placeholder-val="{{ false }}"><button type="button" class="tm" onClick="{{ tc }}" aria-expanded="{{ ec }}" aria-label="图注的译文" style="top: -12px"><span>译</span></button></sc-if>
+        Figure 2: Multi-Head Attention consists of several attention layers running in parallel.
+        <sc-if value="{{ ec }}" hint-placeholder-val="{{ false }}"><div class="tr" lang="zh-CN" style="margin: 8px 0 0; font-size: 13.5px; text-align: left">图 2：<span class="term">多头注意力</span>由几个并行运行的注意力层组成。</div></sc-if>
+      </figcaption>
+
+      <span aria-hidden="true" style="position: absolute; right: -6px; top: 98px; font-family: 'Caveat', cursive; font-size: 26px; color: #E5484D; transform: rotate(-6deg)">why h = 8 ?</span>
+      <svg aria-hidden="true" width="40" height="30" viewBox="0 0 40 30" style="position: absolute; right: 112px; top: 112px"><path d="M38 6 C 26 10, 14 16, 4 24 M4 24 l8 -1 M4 24 l2 -8" fill="none" stroke="#E5484D" stroke-width="2" stroke-linecap="round"></path></svg>
+
+      <sc-if value="{{ showLasso }}" hint-placeholder-val="{{ false }}">
+        <svg aria-hidden="true" width="560" height="280" viewBox="0 0 560 280" style="position: absolute; left: -30px; top: 0; pointer-events: none">
+          <path d="M70 30 C 160 -4, 420 -6, 510 26 C 566 50, 560 220, 500 256 C 400 290, 150 284, 70 252 C 20 230, 12 60, 70 30 Z" fill="rgba(43,127,255,0.05)" stroke="#2B7FFF" stroke-width="2" stroke-dasharray="6 6" stroke-linecap="round"></path>
+        </svg>
+      </sc-if>
+    </figure>
+
+    <div class="blk">
+    <sc-if value="{{ full }}" hint-placeholder-val="{{ false }}"><button type="button" class="tm" onClick="{{ t2 }}" aria-expanded="{{ e2 }}" aria-label="这一段的译文"><span>译</span></button></sc-if>
+    <p style="margin: 0 0 18px">In this work we use h = 8 parallel heads. For each head the key and value <span class="gl">dimension<sc-if value="{{ gloss }}" hint-placeholder-val="{{ false }}"><span class="glt">维度</span></sc-if></span> is d<sub>model</sub> / h = 64, so the total cost stays close to single-head attention at full width.</p>
+    <sc-if value="{{ e2 }}" hint-placeholder-val="{{ false }}"><div class="tr" lang="zh-CN">本文使用 h = 8 个并行的<span class="term">头</span>。每个头的键和值维度是 d<sub>model</sub> / h = 64，所以总计算量和全宽的单头注意力差不多。</div></sc-if>
+    </div>
+  </article>
+
+  <sc-if value="{{ wordOpen }}" hint-placeholder-val="{{ false }}">
+    <div role="dialog" aria-label="查词：queries" class="pop" style="position: absolute; left: 183px; top: 248px; width: 352px; z-index: 4">
+      
+      <div style="position: relative; display: flex; align-items: center; gap: 8px; padding: 2px 2px 8px 10px">
+        <div style="flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 10px">
+          <span style="font-family: 'Source Serif 4', Georgia, serif; font-size: 24px; font-weight: 600; letter-spacing: -0.01em">queries</span>
+          <span style="font-size: 13px; color: #6B6B6B">/ˈkwɪəriz/ · query 的复数</span>
+        </div>
+        <button type="button" aria-label="朗读" class="ib" style="width: 44px; height: 44px">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3l5-4v13l-5-4H4z"></path><path d="M16 9a4 4 0 0 1 0 6M18.5 6.5a7.5 7.5 0 0 1 0 11"></path></svg>
+        </button>
+      </div>
+      <div style="display: flex; flex-direction: column; gap: 6px">
+        <div class="card" style="padding: 12px 14px 14px">
+          <div class="lbl"><span style="width: 6px; height: 6px; border-radius: 50%; background: #2B7FFF"></span>在这篇论文里</div>
+          <div style="margin-top: 6px; font-size: 18px; font-weight: 600">查询向量 Q</div>
+          <div style="margin-top: 4px; font-size: 14px; line-height: 1.6; color: #404040">用来和每个键 K 比较，决定这一步关注哪些位置。和 keys、values 合称 Q、K、V。</div>
+        </div>
+        <sc-if value="{{ noSent }}" hint-placeholder-val="{{ true }}">
+          <div class="card" style="padding: 10px 14px; display: grid; grid-template-columns: 28px 1fr; row-gap: 4px; font-size: 14px; line-height: 1.5; color: #404040">
+            <span class="lbl" style="grid-column: 1 / -1; margin-bottom: 2px">词典</span>
+            <span style="color: #6B6B6B; font-style: italic">n.</span><span>疑问；询问；（数据库）查询</span>
+            <span style="color: #6B6B6B; font-style: italic">v.</span><span>询问；对……表示怀疑</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{ sent }}" hint-placeholder-val="{{ false }}">
+          <div class="card" style="padding: 10px 14px 12px">
+            <div class="lbl">整句译文</div>
+            <div style="margin-top: 6px; font-size: 14px; line-height: 1.65; color: #0A0A0A">我们不在全宽的键、值和<mark style="background: rgba(43,127,255,0.14); color: inherit; border-radius: 3px; padding: 0 2px">查询</mark>上只做一次注意力，而是用 h 组不同的、可学习的投影把它们各投影一次，再在每份投影上并行做注意力。</div>
+          </div>
+        </sc-if>
+        <div style="display: flex; gap: 6px; padding-top: 2px">
+          <button type="button" onClick="{{ save }}" aria-pressed="{{ saved }}" class="btn" style="flex: 1; height: 44px; padding: 0 10px; {{ saveStyle }}">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="{{ starFill }}" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8L12 16.9l-5.2 2.7 1-5.8-4.3-4.1 5.9-.9z"></path></svg>
+            {{ saveLabel }}
+          </button>
+          <button type="button" onClick="{{ toggleSent }}" aria-pressed="{{ sent }}" class="btn" style="flex: 1; height: 44px; padding: 0 10px">{{ sentLabel }}</button>
+          <button type="button" onClick="{{ askWord }}" class="btn" style="flex: none; height: 44px; padding: 0 12px">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path></svg>
+            问 AI
+          </button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ tmenu }}" hint-placeholder-val="{{ false }}">
+    <div role="menu" aria-label="翻译和查词" class="pop" style="position: absolute; right: 52px; top: 52px; width: 320px; z-index: 6; display: flex; flex-direction: column; gap: 6px">
+      <div class="card" style="overflow: hidden">
+        <button type="button" role="menuitemcheckbox" aria-checked="{{ gloss }}" onClick="{{ toggleGloss }}" class="row">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 8px 0">
+            <span style="font-weight: 500">生词注释</span>
+            <span style="font-size: 13px; color: #6B6B6B">在你可能不认识的词上方标中文</span>
+          </span>
+          <span class="{{ glossCls }}" aria-hidden="true"></span>
+        </button>
+        <button type="button" role="menuitemcheckbox" aria-checked="{{ full }}" onClick="{{ toggleFull }}" class="row">
+          <span style="flex: 1; display: flex; flex-direction: column; gap: 2px; padding: 8px 0">
+            <span style="font-weight: 500">全文翻译</span>
+            <span style="font-size: 13px; color: #6B6B6B">每段左边出现「译」，点开在原文下方看译文</span>
+          </span>
+          <span class="{{ fullCls }}" aria-hidden="true"></span>
+        </button>
+      </div>
+      <div class="card">
+        <button type="button" role="menuitem" class="row">
+          <span style="flex: 1; font-weight: 500">术语表</span>
+          <span class="num" style="font-size: 14px; color: #6B6B6B">8 条</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A1A1A1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
+        <button type="button" role="menuitem" class="row">
+          <span style="flex: 1; font-weight: 500">生词本</span>
+          <span class="num" style="font-size: 14px; color: #6B6B6B">{{ vocabCount }} 个</span>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A1A1A1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+        </button>
+      </div>
+      <p style="margin: 0; padding: 4px 10px 6px; font-size: 13px; line-height: 1.5; color: #6B6B6B">手指点单词查词，笔只用来写。译文只供阅读，手写始终落在原文上。</p>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showMenu }}" hint-placeholder-val="{{ false }}">
+    <div role="menu" aria-label="圈选操作" style="position: absolute; left: 50%; top: 206px; transform: translateX(-50%); display: flex; align-items: center; gap: 2px; padding: 4px; border-radius: 14px; background: #FFFFFF; border: 1px solid #EBEBEB; box-shadow: 0 12px 32px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.05); z-index: 4">
+      <button type="button" role="menuitem" onClick="{{ ask }}" class="btn btn-p" style="height: 44px; padding: 0 16px">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path></svg>
+        问 AI
+      </button>
+      <button type="button" role="menuitem" class="btn" style="height: 44px; border: 0; box-shadow: none">翻译</button>
+      <button type="button" role="menuitem" class="btn" style="height: 44px; border: 0; box-shadow: none">高亮</button>
+      <button type="button" role="menuitem" onClick="{{ clip }}" class="btn" style="height: 44px; border: 0; box-shadow: none">摘到笔记</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ showAi }}" hint-placeholder-val="{{ false }}">
+    <aside aria-label="AI" style="position: absolute; right: 16px; top: 60px; width: 372px; box-sizing: border-box; padding: 8px; border-radius: 20px; background: #F7F7F7; box-shadow: 0 0 0 1px rgba(0,0,0,0.06), 0 16px 40px rgba(0,0,0,0.14); display: flex; flex-direction: column; gap: 8px; z-index: 4">
+      <div style="display: flex; align-items: center; padding: 2px 2px 0 10px">
+        <span style="flex: 1; font-size: 15px; font-weight: 600">问 AI</span>
+        <button type="button" onClick="{{ close }}" aria-label="关闭" class="ib" style="color: #6B6B6B">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"></path></svg>
+        </button>
+      </div>
+      <div class="card" style="display: flex; align-items: center; gap: 10px; padding: 8px 10px; font-size: 14px; color: #404040">
+        <span aria-hidden="true" style="width: 44px; height: 32px; border-radius: 4px; background: #F5F5F5; box-shadow: inset 0 0 0 1px #EBEBEB; flex: none; display: flex; align-items: center; justify-content: center">
+          <svg width="22" height="16" viewBox="0 0 22 16"><rect x="6" y="1" width="10" height="3" rx="1" fill="#D4D4D4"></rect><rect x="3" y="6" width="16" height="4" rx="1" fill="none" stroke="#A1A1A1"></rect><rect x="2" y="12" width="5" height="3" rx="1" fill="#D4D4D4"></rect><rect x="8.5" y="12" width="5" height="3" rx="1" fill="#D4D4D4"></rect><rect x="15" y="12" width="5" height="3" rx="1" fill="#D4D4D4"></rect></svg>
+        </span>
+        <span style="flex: 1">图 2 和你的手写批注「why h = 8 ?」</span>
+      </div>
+      <sc-if value="{{ noAnswer }}" hint-placeholder-val="{{ true }}">
+        <div class="card" style="padding: 4px; display: flex; flex-direction: column">
+          <sc-for list="{{ prompts }}" as="p" hint-placeholder-count="3">
+            <button type="button" onClick="{{ p.pick }}" style="display: flex; align-items: center; gap: 10px; min-height: 44px; padding: 0 12px; border: 0; border-radius: 8px; background: transparent; color: #0A0A0A; font-size: 15px; text-align: left; cursor: pointer">
+              <span style="flex: 1">{{ p.text }}</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#A1A1A1" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M9 6l6 6-6 6"></path></svg>
+            </button>
+          </sc-for>
+        </div>
+      </sc-if>
+      <sc-if value="{{ hasAnswer }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; flex-direction: column; gap: 8px; font-size: 15px; line-height: 1.6">
+          <div style="align-self: flex-end; max-width: 85%; margin-right: 2px; padding: 8px 12px; border-radius: 14px 14px 4px 14px; background: linear-gradient(180deg,#2B7FFF,#155DFC); color: #FFFFFF">{{ q }}</div>
+          <div class="card" style="padding: 14px; display: flex; flex-direction: column; gap: 10px">
+            <p style="margin: 0">论文用 d<sub>model</sub> = 512，取 h = 8 时每个头是 64 维，总计算量和单头全宽注意力差不多。论文的消融实验显示，头数太少或太多效果都会下降，8 是折中。</p>
+            <div style="display: flex; gap: 6px; flex-wrap: wrap">
+              <span class="src">第 9 页，表 3</span>
+              <span class="src">第 5 页</span>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; padding: 0 2px 2px">
+            <span style="flex: 1; padding-left: 8px; font-size: 12px; color: #6B6B6B">示例回答</span>
+            <button type="button" onClick="{{ clip }}" class="btn btn-p" style="height: 44px">摘到笔记</button>
+          </div>
+        </div>
+      </sc-if>
+    </aside>
+  </sc-if>
+
+  <sc-if value="{{ full }}" hint-placeholder-val="{{ false }}">
+    <button type="button" onClick="{{ expandAll }}" class="mat" style="position: absolute; left: 82px; bottom: 26px; height: 32px; padding: 0 12px; display: flex; align-items: center; gap: 6px; border: 0; border-radius: 10px; font: inherit; font-size: 14px; font-weight: 500; color: #155DFC; cursor: pointer; z-index: 3">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h9M8.5 3v2M6 5c1 4 4 7 7 8M11 5c-1 4-4 7-7 8M13 21l4-9 4 9M14.5 18h5"></path></svg>
+      {{ expandLabel }}
+    </button>
+  </sc-if>
+  <span style="position: absolute; left: 16px; bottom: 26px; height: 32px; padding: 0 12px; display: flex; align-items: center; border-radius: 10px; font-size: 14px; font-weight: 500; z-index: 3" class="num mat">4 / 11</span>
+
+  <sc-if value="{{ showHint }}" hint-placeholder-val="{{ true }}">
+    <div style="position: absolute; left: 50%; bottom: 104px; transform: translateX(-50%); display: flex; align-items: center; height: 36px; padding: 0 4px; border-radius: 10px; background: #0A0A0A; color: #FFFFFF; font-size: 14px; font-weight: 500; z-index: 3; box-shadow: 0 6px 16px rgba(0,0,0,0.16); white-space: nowrap">
+      <span style="padding: 0 6px 0 10px; color: #A1A1A1">试试</span>
+      <button type="button" onClick="{{ lookup }}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #FFFFFF; font: inherit; cursor: pointer">手指点 queries 查词</button>
+      <span aria-hidden="true" style="width: 1px; height: 14px; background: #404040"></span>
+      <button type="button" onClick="{{ startFull }}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #FFFFFF; font: inherit; cursor: pointer">打开全文翻译</button>
+      <span aria-hidden="true" style="width: 1px; height: 14px; background: #404040"></span>
+      <button type="button" onClick="{{ startLasso }}" style="height: 28px; padding: 0 10px; border: 0; border-radius: 6px; background: transparent; color: #FFFFFF; font: inherit; cursor: pointer">用笔圈住图问 AI</button>
+    </div>
+  </sc-if>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div role="status" style="position: absolute; left: 50%; bottom: 104px; transform: translateX(-50%); display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 14px; border-radius: 10px; background: #0A0A0A; color: #FFFFFF; font-size: 14px; font-weight: 500; z-index: 5; box-shadow: 0 6px 16px rgba(0,0,0,0.16)">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ADE80" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg>
+      {{ toastText }}
+    </div>
+  </sc-if>
+
+  <!-- 笔工具盘 -->
+  <div role="toolbar" aria-label="笔工具" class="mat" style="position: absolute; left: 50%; bottom: 16px; transform: translateX(-50%); height: 72px; box-sizing: border-box; display: flex; align-items: stretch; border-radius: 20px; z-index: 3">
+    <div style="display: flex; align-items: flex-end; gap: 2px; padding: 0 10px 0 14px; overflow: hidden; border-radius: 20px 0 0 20px">
+      <sc-for list="{{ tools }}" as="t" hint-placeholder-count="4">
+        <button type="button" onClick="{{ t.pick }}" aria-label="{{ t.label }}" aria-pressed="{{ t.on }}" class="tool" style="{{ t.lift }}">
+          <svg width="30" height="78" viewBox="0 0 30 78" aria-hidden="true">
+            <defs>
+              <linearGradient id="{{ t.gid }}" x1="0" x2="1" y1="0" y2="0"><stop offset="0" stop-color="#FFFFFF"></stop><stop offset="0.55" stop-color="#F7F7F7"></stop><stop offset="1" stop-color="#E4E4E4"></stop></linearGradient>
+            </defs>
+            <path d="{{ t.body }}" fill="url(#{{ t.gid }})" stroke="rgba(0,0,0,0.12)" stroke-width="0.8"></path>
+            <path d="{{ t.tip }}" fill="{{ t.tipFill }}"></path>
+            <rect x="4.5" y="{{ t.bandY }}" width="21" height="5" fill="{{ t.band }}"></rect>
+          </svg>
+        </button>
+      </sc-for>
+    </div>
+
+    <span aria-hidden="true" style="width: 1px; margin: 18px 0; background: rgba(0,0,0,0.08)"></span>
+
+    <div role="radiogroup" aria-label="颜色" style="display: flex; align-items: center; gap: 2px; padding: 0 10px">
+      <sc-for list="{{ swatches }}" as="c" hint-placeholder-count="5">
+        <button type="button" role="radio" aria-checked="{{ c.on }}" aria-label="{{ c.label }}" onClick="{{ c.pick }}" class="sw" style="{{ c.ring }}"><span style="{{ c.fill }}"></span></button>
+      </sc-for>
+    </div>
+
+    <span aria-hidden="true" style="width: 1px; margin: 18px 0; background: rgba(0,0,0,0.08)"></span>
+
+    <div role="radiogroup" aria-label="粗细" style="display: flex; align-items: center; padding: 0 10px">
+      <div style="display: flex; gap: 2px; padding: 3px; border-radius: 10px; background: rgba(0,0,0,0.05)">
+        <sc-for list="{{ widths }}" as="w" hint-placeholder-count="3">
+          <button type="button" role="radio" aria-checked="{{ w.on }}" aria-label="{{ w.label }}" onClick="{{ w.pick }}" class="wd"><span style="{{ w.dot }}"></span></button>
+        </sc-for>
+      </div>
+    </div>
+
+    <span aria-hidden="true" style="width: 1px; margin: 18px 0; background: rgba(0,0,0,0.08)"></span>
+
+    <div style="display: flex; align-items: center; gap: 2px; padding: 0 8px">
+      <button type="button" aria-label="撤销" class="ib" style="width: 44px; height: 44px">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 14L4 9l5-5"></path><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"></path></svg>
+      </button>
+      <button type="button" onClick="{{ startLasso }}" aria-pressed="{{ lassoOn }}" style="{{ lassoStyle }}">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-dasharray="3 3" aria-hidden="true"><ellipse cx="12" cy="11" rx="8.5" ry="6.5"></ellipse></svg>
+        圈选问 AI
+      </button>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1194,"height":834}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: 0, tool: 'pen', pen: 'red', hl: 'yellow', width: 1, q: '', toast: false, toastText: '', word: false, sent: false, saved: false, gloss: false, tmenu: false, full: false, e1: false, ec: false, e2: false };
+  }
+  renderVals() {
+    const s = this.state;
+    const inkColors = [['black', '黑色', '#1A1A1A'], ['red', '红色', '#E5484D'], ['blue', '蓝色', '#155DFC'], ['green', '绿色', '#30A46C'], ['orange', '橙色', '#F76B15']];
+    const hlColors = [['yellow', '黄色', '#FFE27A'], ['green', '绿色', '#B8E6A8'], ['blue', '蓝色', '#B5D5FF'], ['pink', '粉色', '#FFC2D6']];
+    const ink = Object.fromEntries(inkColors.map(c => [c[0], c[2]]));
+    const hlc = Object.fromEntries(hlColors.map(c => [c[0], c[2]]));
+    // 笔身从工具盘底部探出来；选中的笔升高 12px
+    const defs = [
+      { id: 'pen', label: '钢笔', body: 'M4.5 78 V26 L12 8 Q15 4 18 8 L25.5 26 V78 Z', tip: 'M12.6 9.5 Q15 5 17.4 9.5 L19 13 H11 Z', bandY: 30, color: ink[s.pen] },
+      { id: 'pencil', label: '铅笔', body: 'M4.5 78 V24 L15 4 L25.5 24 V78 Z', tip: 'M12.4 9 L15 4 L17.6 9 Z', bandY: 28, color: '#6B6B6B' },
+      { id: 'hl', label: '荧光笔', body: 'M4.5 78 V22 H25.5 V78 Z M7.5 22 V10 H22.5 V22 Z', tip: 'M8 10.5 H22 V15 H8 Z', bandY: 26, color: hlc[s.hl] },
+      { id: 'eraser', label: '橡皮', body: 'M4.5 78 V18 Q4.5 8 15 8 Q25.5 8 25.5 18 V78 Z', tip: 'M4.5 18 Q4.5 8 15 8 Q25.5 8 25.5 18 V20 H4.5 Z', bandY: 26, color: '#F2B8B8' }
+    ];
+    const drawing = s.step === 0;
+    const tools = defs.map(d => {
+      const on = s.tool === d.id && drawing;
+      return {
+        label: d.label,
+        on,
+        gid: 'g-' + d.id,
+        body: d.body,
+        tip: d.tip,
+        bandY: d.bandY,
+        band: d.id === 'eraser' ? '#EBEBEB' : d.color,
+        tipFill: d.id === 'eraser' ? '#F2B8B8' : d.color,
+        lift: 'transform: translateY(' + (on ? '2px' : '14px') + ')',
+        pick: () => this.setState({ tool: d.id, step: 0 })
+      };
+    });
+    const isHl = s.tool === 'hl';
+    const list = isHl ? hlColors : inkColors;
+    const curKey = isHl ? s.hl : s.pen;
+    const swatches = list.map(([k, label, hex]) => {
+      const on = k === curKey;
+      return {
+        label,
+        on: on ? 'true' : 'false',
+        fill: 'background: ' + hex,
+        ring: on ? 'box-shadow: 0 0 0 2px ' + hex + (isHl ? ', 0 0 0 3px rgba(0,0,0,0.10)' : '') : '',
+        pick: () => this.setState(isHl ? { hl: k, step: 0 } : { pen: k, tool: s.tool === 'eraser' || s.tool === 'pencil' ? 'pen' : s.tool, step: 0 })
+      };
+    });
+    const sizes = [4, 7, 10];
+    const widths = sizes.map((px, i) => ({
+      label: ['细', '中', '粗'][i],
+      on: s.width === i ? 'true' : 'false',
+      dot: 'width: ' + px + 'px; height: ' + px + 'px;',
+      pick: () => this.setState({ width: i })
+    }));
+    const lassoOn = s.step > 0;
+    return {
+      tools,
+      swatches,
+      widths,
+      lassoOn,
+      aiOpen: s.step >= 2,
+      lassoStyle: 'display: flex; align-items: center; gap: 6px; height: 44px; padding: 0 14px; border-radius: 10px; font-size: 15px; font-weight: 500; cursor: pointer; white-space: nowrap; ' + (lassoOn ? 'border: 1px solid #155DFC; color: #FFFFFF; background: linear-gradient(180deg,#2B7FFF,#155DFC); box-shadow: 0 0 0 1px #155DFC, inset 0 1px 0 rgba(255,255,255,0.25);' : 'border: 1px solid #EBEBEB; color: #0A0A0A; background: #FFFFFF; box-shadow: 0 1px 2px rgba(0,0,0,0.05);'),
+      showHint: s.step === 0 && !s.toast && !s.word && !s.tmenu && !s.full,
+      wordOpen: s.word && s.step === 0,
+      sent: s.sent,
+      noSent: !s.sent,
+      saved: s.saved,
+      saveLabel: s.saved ? '已加入生词本' : '加入生词本',
+      saveStyle: s.saved ? 'color: #155DFC;' : '',
+      starFill: s.saved ? 'currentColor' : 'none',
+      sentLabel: s.sent ? '看词典' : '译整句',
+      gloss: s.gloss,
+      glossCls: s.gloss ? 'sw2 on' : 'sw2',
+      tmenu: s.tmenu,
+      tOn: s.tmenu || s.gloss || s.full,
+      full: s.full,
+      fullCls: s.full ? 'sw2 on' : 'sw2',
+      e1: s.full && s.e1, ec: s.full && s.ec, e2: s.full && s.e2,
+      t1: () => this.setState({ e1: !s.e1 }),
+      tc: () => this.setState({ ec: !s.ec }),
+      t2: () => this.setState({ e2: !s.e2 }),
+      expandLabel: (s.e1 && s.ec && s.e2) ? '全部收起' : '全部展开',
+      expandAll: () => { const v = !(s.e1 && s.ec && s.e2); this.setState({ e1: v, ec: v, e2: v }); },
+      toggleFull: () => this.setState({ full: !s.full, e1: !s.full, ec: false, e2: false }),
+      startFull: () => this.setState({ full: true, e1: true, ec: false, e2: false, word: false, tmenu: false }),
+      vocabCount: s.saved ? 13 : 12,
+      toastText: s.toastText,
+      lookup: () => this.setState({ word: true, sent: false, tmenu: false, step: 0, toast: false }),
+      toggleSent: () => this.setState({ sent: !s.sent }),
+      save: () => { const v = !s.saved; this.setState({ saved: v, toast: v, toastText: '已加入生词本，Mac 和手机上都能复习' }); if (v) setTimeout(() => this.setState({ toast: false }), 2400); },
+      askWord: () => this.setState({ word: false, step: 2 }),
+      toggleTmenu: () => this.setState({ tmenu: !s.tmenu, word: false }),
+      toggleGloss: () => this.setState({ gloss: !s.gloss }),
+      showLasso: s.step > 0,
+      showMenu: s.step === 1,
+      showAi: s.step === 2 || s.step === 3,
+      noAnswer: s.step === 2,
+      hasAnswer: s.step === 3,
+      q: s.q,
+      toast: s.toast,
+      startLasso: () => this.setState({ step: 1, toast: false, word: false, tmenu: false }),
+      ask: () => this.setState({ step: 2 }),
+      close: () => this.setState({ step: 0 }),
+      clip: () => { this.setState({ step: 0, toast: true, toastText: '已摘到笔记，Mac 上已同步' }); setTimeout(() => this.setState({ toast: false }), 2400); },
+      prompts: [
+        { text: '解释这张图', pick: () => this.setState({ step: 3, q: '解释这张图' }) },
+        { text: '为什么 h = 8？', pick: () => this.setState({ step: 3, q: '为什么 h = 8？' }) },
+        { text: '和库里的 LoRA 对比', pick: () => this.setState({ step: 3, q: '和库里的 LoRA 对比' }) }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>设置</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Noto+Sans+SC:wght@400;500;600&amp;family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;0,8..60,700;1,8..60,400&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#FFFFFF;-webkit-font-smoothing:antialiased}
+a{color:inherit;text-decoration:none}
+:focus-visible{outline:2px solid #2B7FFF;outline-offset:2px}
+button,input{font-family:inherit}
+.num{font-variant-numeric:tabular-nums}
+/* BoardUI 式：灰色托盘 + 白色内卡 */
+.tray{background:#F7F7F7;border-radius:16px;padding:8px;display:flex;flex-direction:column;gap:8px;box-sizing:border-box}
+.tray-h{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;padding:8px 8px 0}
+.lbl{font-size:14px;font-weight:500;color:#6B6B6B}
+.big{font-size:22px;font-weight:500;color:#0A0A0A;letter-spacing:-0.01em}
+.card{background:#FFFFFF;border:1px solid #EBEBEB;border-radius:12px;box-shadow:0 1px 2px rgba(0,0,0,0.05);box-sizing:border-box}
+.btn{display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 12px;border-radius:10px;border:1px solid #EBEBEB;background:#FFFFFF;color:#0A0A0A;font-size:14px;font-weight:500;cursor:pointer;box-shadow:0 1px 2px rgba(0,0,0,0.05);white-space:nowrap}
+.btn:hover{background:#F5F5F5}
+.btn-p{border:0;color:#FFFFFF;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25),0 1px 2px rgba(0,0,0,0.08)}
+.btn-p:hover{background:linear-gradient(180deg,#4A90FF 0%,#2B7FFF 100%)}
+.badge{display:inline-flex;align-items:center;height:22px;padding:0 6px;border-radius:6px;font-size:13px;font-weight:500}
+.kbd{display:inline-flex;align-items:center;height:20px;padding:0 6px;border-radius:6px;border:1px solid #EBEBEB;background:#F7F7F7;font-size:12px;color:#6B6B6B}
+.side{display:flex;align-items:center;gap:10px;width:100%;height:36px;padding:0 10px;border:0;border-radius:10px;background:transparent;color:#404040;font-size:14px;cursor:pointer;text-align:left;box-sizing:border-box}
+.side:hover{background:#F5F5F5}
+.side.on{color:#FFFFFF;font-weight:500;background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%);box-shadow:0 0 0 1px #155DFC,inset 0 1px 0 rgba(255,255,255,0.25)}
+.side.on:hover{background:linear-gradient(180deg,#2B7FFF 0%,#155DFC 100%)}
+.grp{display:flex;align-items:center;justify-content:space-between;padding:0 10px;height:28px;font-size:12px;font-weight:500;color:#6B6B6B}
+.seg{display:inline-flex;gap:2px;padding:4px;border-radius:10px;background:#EFEFEF}
+.seg button{height:28px;min-width:32px;padding:0 8px;border:0;border-radius:6px;background:transparent;color:#6B6B6B;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.seg button[aria-pressed="true"]{background:#FFFFFF;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.08),0 0 0 1px rgba(0,0,0,0.04)}
+.book{display:flex;flex-direction:column;gap:10px;padding:6px 6px 12px;color:#0A0A0A;transition:transform .15s cubic-bezier(.23,1,.32,1)}
+.book:hover{border-color:#DADADA}
+.book:active{transform:scale(0.98)}
+.peek{position:relative;height:132px;border-radius:8px;background:#F2F2F2;overflow:hidden}
+.peek .pg{position:absolute;left:50%;top:14px;margin-left:-77px;width:153px;height:198px;overflow:hidden;background:#FFFFFF;box-shadow:0 0 0 1px rgba(0,0,0,0.05),0 2px 6px rgba(0,0,0,0.08)}
+.tr{display:grid;grid-template-columns:44px minmax(0,1fr) 130px 130px 70px 100px;align-items:center;padding:0 4px;border-bottom:1px solid #F0F0F0}
+.tr > *{padding:0 10px;min-width:0}
+.th{height:40px;font-size:13px;color:#6B6B6B}
+.td{height:56px;cursor:pointer}
+.td:last-child{border-bottom:0}
+.td:hover{background:#FAFAFA}
+.td.sel{background:#F3F7FF}
+.r{text-align:right}
+.chk{width:16px;height:16px;border-radius:5px;border:1px solid #D4D4D4;background:#FFFFFF;display:flex;align-items:center;justify-content:center;cursor:pointer;padding:0;box-shadow:0 1px 1px rgba(0,0,0,0.04)}
+.chk[aria-checked="true"]{border:0;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.chip{display:inline-flex;align-items:center;gap:6px;height:26px;padding:0 9px;border:1px solid #EBEBEB;border-radius:8px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;white-space:nowrap}
+.dot{width:6px;height:6px;border-radius:50%}
+.cmd:hover{background:#F5F5F5}
+.spin{animation:spin 1s linear infinite;transform-origin:50% 50%}
+@keyframes spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}.book{transition:none}}
+.sheet{width:612px;height:792px;box-sizing:border-box;padding:62px 70px 40px;background:#FFFFFF;font-family:'Source Serif 4',Georgia,serif;color:#1D1D1F;transform-origin:0 0;display:flex;flex-direction:column;position:relative}
+.sheet .v{font-size:9px;color:#6E6E73;text-align:center;margin-bottom:22px;letter-spacing:.02em}
+.sheet .t{font-size:21px;font-weight:700;line-height:1.25;text-align:center;margin:0 20px 14px}
+.sheet .a{font-size:11px;text-align:center;line-height:1.5}
+.sheet .f{font-size:9px;color:#6E6E73;text-align:center;margin:2px 0 22px}
+.sheet .ah{font-size:11px;font-weight:700;text-align:center;margin-bottom:6px}
+.sheet .ab{font-size:9.5px;line-height:1.5;text-align:justify;margin:0 34px 20px}
+.sheet .ab mark{background:#FFE27A;color:inherit}
+.sheet .h{font-size:12px;font-weight:700;margin-bottom:6px}
+.sheet .p{font-size:9.5px;line-height:1.5;text-align:justify;text-indent:1.4em;margin:0 0 6px}
+.sheet .fig{height:96px;margin:6px 0 10px;border:1px solid #D1D1D6;border-radius:2px;background:linear-gradient(180deg,#FAFAFB,#F0F0F3)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field > span{font-size:13px;font-weight:500;color:#404040}
+.inp{height:36px;box-sizing:border-box;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:14px;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);display:flex;align-items:center;gap:8px}
+.inp input{flex:1;min-width:0;border:0;outline:0;background:transparent;font:inherit;color:inherit}
+.hint{font-size:12px;color:#6B6B6B;line-height:1.5}
+.sw2{position:relative;width:38px;height:22px;border-radius:11px;background:#E5E5E5;flex:none;border:0;padding:0;cursor:pointer;transition:background .2s}
+.sw2::after{content:'';position:absolute;left:2px;top:2px;width:18px;height:18px;border-radius:50%;background:#FFF;box-shadow:0 1px 3px rgba(0,0,0,0.2);transition:transform .2s cubic-bezier(.23,1,.32,1)}
+.sw2[aria-checked="true"]{background:#155DFC}
+.sw2[aria-checked="true"]::after{transform:translateX(16px)}
+.row{display:flex;align-items:center;gap:12px;min-height:52px;padding:8px 14px;box-sizing:border-box}
+.row + .row{border-top:1px solid #F0F0F0}
+.rt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rt b{font-weight:500}
+.rt small{font-size:13px;color:#6B6B6B;line-height:1.45}
+.sel{display:inline-flex;align-items:center;gap:6px;height:32px;padding:0 10px;border:1px solid #EBEBEB;border-radius:10px;background:#FFFFFF;font-size:13px;font-weight:500;color:#0A0A0A;box-shadow:0 1px 2px rgba(0,0,0,0.04);white-space:nowrap;cursor:pointer}
+.bar{height:6px;border-radius:3px;background:#EBEBEB;overflow:hidden}
+.bar > span{display:block;height:100%;border-radius:3px;background:linear-gradient(180deg,#2B7FFF,#155DFC)}
+.scrim{position:absolute;inset:0;background:rgba(10,10,10,0.28);display:flex;align-items:center;justify-content:center;z-index:10}
+.sheet2{width:560px;background:#F7F7F7;border-radius:20px;padding:8px;box-sizing:border-box;box-shadow:0 0 0 1px rgba(0,0,0,0.06),0 24px 64px rgba(0,0,0,0.22);display:flex;flex-direction:column;gap:8px}
+@media (prefers-reduced-motion: reduce){.sw2,.sw2::after{transition:none}}
+</style>
+</helmet>
+<div style="position: relative; width: 100%; min-height: 900px; box-sizing: border-box; display: flex; justify-content: center; padding: 28px 0; background: #EDEDED; font-family: Inter, 'Noto Sans SC', -apple-system, 'PingFang SC', sans-serif; font-size: 14px; color: #0A0A0A">
+  <div role="dialog" aria-label="设置" style="width: 820px; height: 844px; display: flex; flex-direction: column; background: #FFFFFF; border-radius: 12px; overflow: hidden; box-shadow: 0 0 0 1px rgba(0,0,0,0.10), 0 24px 64px rgba(0,0,0,0.18)">
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 12px 0 10px; border-bottom: 1px solid #EBEBEB; background: #FAFAFA">
+      <span style="font-size: 13px; font-weight: 600">AI 与翻译</span>
+      <nav aria-label="设置分类" style="display: flex; gap: 4px"><button type="button" style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; height: 52px; justify-content: center; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: #6B6B6B"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6zM4 12h2M18 12h2M12 4v2M12 18v2"></path></svg>通用</button><button type="button" style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; height: 52px; justify-content: center; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: #6B6B6B"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4.5h14v15H5zM9 4.5v15"></path></svg>文献库</button><button type="button" aria-current="page" style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; height: 52px; justify-content: center; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; background: #FFFFFF; color: #0A0A0A; box-shadow: 0 1px 2px rgba(0,0,0,0.08), 0 0 0 1px rgba(0,0,0,0.04)"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z"></path></svg>AI 与翻译</button><button type="button" style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; height: 52px; justify-content: center; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: #6B6B6B"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 18h10a4 4 0 0 0 .6-7.95A6 6 0 0 0 6.2 9.1 4.5 4.5 0 0 0 7 18z"></path></svg>同步</button><button type="button" style="display: flex; flex-direction: column; align-items: center; gap: 3px; width: 76px; height: 52px; justify-content: center; border: 0; border-radius: 10px; font: inherit; font-size: 12px; font-weight: 500; cursor: pointer; background: transparent; color: #6B6B6B"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16v10H4zM7 10h1M10 10h1M13 10h1M16 10h1M8 14h8"></path></svg>快捷键</button></nav>
+    </div>
+    <div style="flex: 1; min-height: 0; overflow-y: auto; padding: 16px 20px 24px; display: flex; flex-direction: column; gap: 16px">
+<section class="tray" aria-label="模型服务"><div class="tray-h" style="align-items: center"><h2 class="lbl" style="margin: 0">模型服务</h2><button type="button" class="btn" style="height: 32px; font-size: 13px">添加服务</button></div><div class="card">
+        <div class="row"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12l5 5 9-10"></path></svg><span class="rt"><b>Anthropic <span class="badge" style="margin-left: 6px; background: #EFEFEF; color: #404040">默认</span></b><small>已连接 · Key 存在系统钥匙串里，不同步</small></span><button type="button" class="btn" style="height: 32px">更改</button></div>
+        <div class="row"><span class="dot" style="background: #A1A1A1; margin: 0 5px"></span><span class="rt"><b>本机模型（Ollama）</b><small>没有检测到 Ollama。安装并启动后会自动出现在这里，论文内容不离开电脑</small></span><button type="button" class="btn" style="height: 32px">安装说明</button></div></div></section>
+<section class="tray" aria-label="每种用途用哪个模型"><div class="tray-h" style="align-items: center"><h2 class="lbl" style="margin: 0">每种用途用哪个模型</h2></div><div class="card"><div class="row"><span class="rt"><b>问答、论文要点</b><small>需要理解整篇论文，用更强的模型</small></span><button type="button" class="sel">claude-sonnet-5-5<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div><div class="row"><span class="rt"><b>查词、划词解释、翻译</b><small>次数多、要快，用更快更便宜的模型</small></span><button type="button" class="sel">claude-haiku-5-5<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div><div class="row"><span class="rt"><b>离线时换成本机模型</b><small>需要先连接 Ollama；没有本机模型时，离线状态下 AI 功能暂停，阅读和批注不受影响</small></span><button type="button" role="switch" aria-label="离线时换成本机模型" aria-checked="{{ offline }}" onClick="{{ t_offline }}" class="sw2"></button></div></div></section>
+<section class="tray" aria-label="翻译"><div class="tray-h" style="align-items: center"><h2 class="lbl" style="margin: 0">翻译</h2></div><div class="card"><div class="row"><span class="rt"><b>译成</b><small>查词、生词注释和全文翻译都用这个语言</small></span><button type="button" class="sel">简体中文<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div><div class="row"><span class="rt"><b>统一术语译法</b><small>翻译时必须用术语表里锁定的译法，例如 queries 一律译成"查询向量"</small></span><button type="button" role="switch" aria-label="统一术语译法" aria-checked="{{ terms }}" onClick="{{ t_terms }}" class="sw2"></button></div><div class="row"><span class="rt"><b>生词注释的词汇量</b><small>比这个水平难的词，才会在上方标中文</small></span><button type="button" class="sel">约 6000 词（六级）<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 9l6 6 6-6"></path></svg></button></div></div></section>
+<section class="tray" aria-label="隐私和用量"><div class="tray-h" style="align-items: center"><h2 class="lbl" style="margin: 0">隐私和用量</h2></div><div class="card"><div class="row"><span class="rt"><b>AI 可以读取我的批注和笔记</b><small>问答和要点会参考你的高亮和笔记；关掉后只发送论文原文</small></span><button type="button" role="switch" aria-label="AI 可以读取我的批注和笔记" aria-checked="{{ notesAi }}" onClick="{{ t_notesAi }}" class="sw2"></button></div><div class="row"><span class="rt"><b>本月用量</b><small>按服务商公开价格估算，实际以服务商账单为准</small></span><span class="num" style="font-size: 14px; font-weight: 500">1.24M tokens · 约 $6</span><button type="button" class="btn" style="height: 32px">明细</button></div></div></section>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { offline: false, terms: true, notesAi: true };
+  }
+  renderVals() {
+    const s = this.state;
+    const icons = {
+      inbox: 'M4 13l2.5-7h11L20 13v5a1.5 1.5 0 0 1-1.5 1.5h-13A1.5 1.5 0 0 1 4 18zM4 13h4.5l1.5 2.5h4l1.5-2.5H20',
+      reading: 'M12 6.5C10 5 7 4.5 4 5v13c3-.5 6 0 8 1.5 2-1.5 5-2 8-1.5V5c-3-.5-6 0-8 1.5zM12 6.5v13',
+      toread: 'M7 4h10v16l-5-3.5L7 20z',
+      done: 'M5 12.5l4.5 4.5L19 7.5',
+      all: 'M5 4.5h14v15H5zM9 4.5v15'
+    };
+    const navDef = [['inbox','收件箱'],['reading','正在读'],['toread','待读'],['done','已读完'],['all','全部论文']];
+    const navItems = (counts, cur) => navDef.map(([id,label],i) => { const on = id === cur; return { id, label, count: counts[i], icon: icons[id], cls: on ? 'side on' : 'side', current: on ? 'page' : null, iconStyle: on ? 'color: #FFFFFF' : 'color: #6B6B6B', countStyle: on ? 'font-size: 12px; font-weight: 500; padding: 1px 6px; border-radius: 6px; background: rgba(255,255,255,0.22); color: #FFFFFF' : 'font-size: 13px; color: #6B6B6B', pick: () => {} }; });
+    const t = (k) => () => this.setState({ [k]: !s[k] });
+    return {
+      offline: s.offline ? 'true' : 'false', terms: s.terms ? 'true' : 'false', notesAi: s.notesAi ? 'true' : 'false',
+      t_offline: t('offline'), t_terms: t('terms'), t_notesAi: t('notesAi')
+    };
+  }
+}
+</script>
+</body>
+</html>
