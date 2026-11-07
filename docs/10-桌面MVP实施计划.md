@@ -118,7 +118,7 @@
 - **自动更新**：electron-updater 6.8.11，从 GitHub Releases（`linlih/flax`，见 package.json 的 `build.publish`）找新版本。打开应用 10 秒后检查一次，之后每 6 小时一次；有新版本就在后台下载，下好了弹一条"新版本 X 已经下载好 · 重启更新"，不点也会在退出时装上。菜单 Flax › 检查更新… 和 设置 › 关于 可以手动检查，只有手动检查才告诉用户"已经是最新"或失败原因（没发布过版本、连不上网络、没签名）。开发时不检查。macOS 上只有签名的版本能自动更新。测过：打包后的 App 手动检查，仓库还不存在时显示"还没有发布过可以更新的版本"。打包时发现 `import('electron-updater')` 拿到的具名导出是空的（CommonJS 的 getter），改成从 default 上取。
 - **发布一个版本**：改 `apps/desktop/package.json` 的 `version`，设置 `GH_TOKEN`（有 repo 权限的 GitHub token）和签名用的环境变量，运行 `npx electron-builder --mac --publish always`（在 `apps/desktop` 下，先 `npx electron-vite build`），会把 dmg、zip 和 `latest-mac.yml` 传到一个草稿 Release，在 GitHub 上点发布后用户就能收到更新。
 - **许可**：AGPL-3.0，全文在仓库根目录 `LICENSE`，打包时一起放进 App 的 Resources。
-- **还没做**：创建 GitHub 仓库 `flax`；签名、公证；用真实长论文和真实 Key 复测性能。
+- **还没做**：签名、公证，发布第一个 Release；用真实长论文和真实 Key 复测性能。
 
 
 - **CRDT（Automerge 还是 Yjs）**：阶段 1 只需要"数据结构为同步做好准备"。M1 起所有记录都带 `id`（UUID）、`updatedAt`、`deviceId`，写操作集中在一个仓储层，以后接 CRDT 只改这一层。真正的选型放到阶段 2 开始前。
