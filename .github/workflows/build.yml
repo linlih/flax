@@ -53,10 +53,14 @@ jobs:
           security find-identity -p codesigning "$kc"
       # Electron 的 zip（scripts/fetch-electron.mjs 下载、核对校验和）和 electron-builder 自己的工具。
       # GitHub 的下载时不时 504，缓存住以后大多数构建一个都不用下。
+      # 缓存按 Electron 和 electron-builder 的版本分（发版只改应用版本号，缓存不变）。
+      # 标签上的构建只能读到 main 上存的缓存，由 electron-cache.yml 在 main 上填好。
+      - id: ver
+        shell: bash
+        run: echo "v=$(node -p "const l=require('./package-lock.json').packages; l['node_modules/electron'].version+'-'+l['node_modules/electron-builder'].version")" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
-          key: electron-mac-${{ hashFiles('node_modules/electron/package.json', 'node_modules/electron-builder/package.json') }}
-          restore-keys: electron-mac-
+          key: electron-mac-${{ steps.ver.outputs.v }}
           path: |
             apps/desktop/.electron-dist
             ~/Library/Caches/electron-builder
@@ -90,10 +94,14 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       # 没有代码签名证书：第一次运行时 SmartScreen 会提示，点"更多信息 › 仍要运行"
+      # 缓存按 Electron 和 electron-builder 的版本分（发版只改应用版本号，缓存不变）。
+      # 标签上的构建只能读到 main 上存的缓存，由 electron-cache.yml 在 main 上填好。
+      - id: ver
+        shell: bash
+        run: echo "v=$(node -p "const l=require('./package-lock.json').packages; l['node_modules/electron'].version+'-'+l['node_modules/electron-builder'].version")" >> "$GITHUB_OUTPUT"
       - uses: actions/cache@v4
         with:
-          key: electron-win-${{ hashFiles('node_modules/electron/package.json', 'node_modules/electron-builder/package.json') }}
-          restore-keys: electron-win-
+          key: electron-win-${{ steps.ver.outputs.v }}
           path: |
             apps/desktop/.electron-dist
             ~\AppData\Local\electron-builder\Cache

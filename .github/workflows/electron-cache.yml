@@ -1,0 +1,94 @@
+# 给发版构建准备 Electron 缓存。
+# GitHub Actions 的缓存按分支 / 标签隔开：v0.1.3 存的缓存 v0.1.4 读不到，只有 main 上存的大家都能读。
+# 所以在 main 上打一次包，把 Electron 的 zip 和 electron-builder 的工具存成缓存（键和路径与 build.yml 完全一样）。
+# 缓存已经在的话第一步就结束，不打包。每周跑一次：缓存 7 天没人用会被 GitHub 删掉，删了就再填上。
+name: Electron cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 3 * * 1"
+  push:
+    branches: [main]
+    paths:
+      - package-lock.json
+      - .github/workflows/build.yml
+      - .github/workflows/electron-cache.yml
+
+concurrency:
+  group: electron-cache
+  cancel-in-progress: false
+
+jobs:
+  mac:
+    name: macOS
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        shell: bash
+        run: echo "v=$(node -p "const l=require('./package-lock.json').packages; l['node_modules/electron'].version+'-'+l['node_modules/electron-builder'].version")" >> "$GITHUB_OUTPUT"
+      - id: look
+        uses: actions/cache/restore@v4
+        with:
+          lookup-only: true
+          key: electron-mac-${{ steps.ver.outputs.v }}
+          path: |
+            apps/desktop/.electron-dist
+            ~/Library/Caches/electron-builder
+      - if: steps.look.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.look.outputs.cache-hit != 'true'
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      - if: steps.look.outputs.cache-hit != 'true'
+        name: Package
+        run: for i in 1 2 3; do npm run dist && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
+      - if: steps.look.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: electron-mac-${{ steps.ver.outputs.v }}
+          path: |
+            apps/desktop/.electron-dist
+            ~/Library/Caches/electron-builder
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: ver
+        shell: bash
+        run: echo "v=$(node -p "const l=require('./package-lock.json').packages; l['node_modules/electron'].version+'-'+l['node_modules/electron-builder'].version")" >> "$GITHUB_OUTPUT"
+      - id: look
+        uses: actions/cache/restore@v4
+        with:
+          lookup-only: true
+          key: electron-win-${{ steps.ver.outputs.v }}
+          path: |
+            apps/desktop/.electron-dist
+            ~\AppData\Local\electron-builder\Cache
+      - if: steps.look.outputs.cache-hit != 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - if: steps.look.outputs.cache-hit != 'true'
+        run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      - if: steps.look.outputs.cache-hit != 'true'
+        name: Package
+        shell: bash
+        run: for i in 1 2 3; do npm run dist:win -w @paper/desktop && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
+      - if: steps.look.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v4
+        with:
+          key: electron-win-${{ steps.ver.outputs.v }}
+          path: |
+            apps/desktop/.electron-dist
+            ~\AppData\Local\electron-builder\Cache
