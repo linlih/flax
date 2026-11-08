@@ -1,6 +1,6 @@
 // 资料文件夹放在哪：默认在系统的应用数据目录里，用户可以在设置里换到别处（比如另一块硬盘）。
 // 换过的位置记在一个固定的小文件里（不能记在资料文件夹自己里面），启动时先读它。
-import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { cp } from 'node:fs/promises'
 import { join, resolve, sep } from 'node:path'
 
@@ -62,4 +62,23 @@ function real(p: string): string {
 
 function same(a: string, b: string): boolean {
   return real(a) === real(b)
+}
+
+/** 资料文件夹里属于 Flax 的几项。数据库的三个文件放在最后挪：中途出错时，旧位置还认得出是一个资料库，下次启动接着挪 */
+const LEGACY_ITEMS = ['files', 'notes', 'ai', 'prefs.json', 'library.sqlite-wal', 'library.sqlite-shm', 'library.sqlite']
+
+/** 改名前（0.1.4 及以前）资料在应用数据目录的 Paper 文件夹里，和 Electron 自己的缓存混在一起。
+ *  现在默认位置是 Flax/Library：第一次启动时把属于资料的那几项挪过去（同一块盘上只是改名，瞬间完成），
+ *  Paper 里剩下的缓存不管。新位置已经有资料库时什么都不动。返回挪了没有 */
+export function migrateLegacyDataDir(legacy: string, target: string): boolean {
+  if (!existsSync(join(legacy, 'library.sqlite')) || existsSync(join(target, 'library.sqlite'))) return false
+  mkdirSync(target, { recursive: true })
+  for (const name of LEGACY_ITEMS) {
+    const from = join(legacy, name)
+    const to = join(target, name)
+    if (!existsSync(from)) continue
+    if (existsSync(to)) throw new Error(`新的资料文件夹里已经有 ${name}，没有搬动：${target}`)
+    renameSync(from, to)
+  }
+  return true
 }

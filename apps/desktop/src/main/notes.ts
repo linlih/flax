@@ -2,7 +2,7 @@
 // 用 Obsidian 之类的编辑器直接改文件也可以，这边监听目录变化后重新读。
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, statSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
 import { join } from 'node:path'
-import { extractAnnotationRefs, extractLinks, noteExcerpt, parseNote, safeNoteTitle, serializeNote, type NoteHead } from '@paper/core'
+import { extractAnnotationRefs, extractLinks, noteExcerpt, parseNote, safeNoteTitle, serializeNote, type NoteDoc, type NoteFiles, type NoteHead } from '@flax/core'
 import type { NoteSummary } from '../shared/api'
 
 interface Entry extends NoteSummary {
@@ -125,6 +125,38 @@ export class NoteStore {
     const e = this.must(id)
     await this.deps.trash(join(this.dir, e.file))
     this.entries.delete(id)
+  }
+
+  /** 给同步用：读、写、删都按 id。写的时候不改别的笔记里的 [[链接]]（那些改动会作为别的笔记的修改同步过来） */
+  syncFiles(onTrashError: (e: unknown) => void = () => {}): NoteFiles {
+    return {
+      all: () => {
+        // 用别的编辑器新建、还没有头信息的笔记：补上 id 才能同步
+        for (const e of [...this.entries.values()]) if (!e.hasHead) this.save(e.id, e.body)
+        return [...this.entries.values()].map((e): NoteDoc => ({ id: e.id, title: e.title, createdAt: e.createdAt, body: e.body, ...(e.paperId ? { paperId: e.paperId } : {}) }))
+      },
+      put: (doc) => {
+        const e = this.entries.get(doc.id)
+        const head: NoteHead = { id: doc.id, paperId: doc.paperId, createdAt: doc.createdAt }
+        let file = e?.file
+        const wanted = safeNoteTitle(doc.title)
+        if (!e || wanted !== e.title) {
+          if (e) this.entries.delete(doc.id)
+          const free = this.freeTitle(wanted)
+          if (e) renameSync(join(this.dir, e.file), join(this.dir, `${free}.md`))
+          file = `${free}.md`
+        }
+        this.write(file!, serializeNote(head, doc.body, e?.extra ?? []))
+        const next = this.load(file!)
+        if (next) this.entries.set(next.id, next)
+      },
+      remove: (id) => {
+        const e = this.entries.get(id)
+        if (!e) return
+        this.entries.delete(id)
+        this.deps.trash(join(this.dir, e.file)).catch(onTrashError)
+      }
+    }
   }
 
   /** 按标题找（[[链接]] 用），不分大小写 */

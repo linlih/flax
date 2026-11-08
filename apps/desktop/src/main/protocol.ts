@@ -1,13 +1,13 @@
-// paper:// 协议：给渲染进程读 PDF 和 PDF.js 的资源文件。
-//   paper://file/<sha256>      库里的 PDF，支持 Range，大文件也能先显示第一页
-//   paper://pdfjs/<dir>/<name> PDF.js 的字体、CMap（中日韩文字）、wasm 解码器
+// flax:// 协议：给渲染进程读 PDF 和 PDF.js 的资源文件。
+//   flax://file/<sha256>      库里的 PDF，支持 Range，大文件也能先显示第一页
+//   flax://pdfjs/<dir>/<name> PDF.js 的字体、CMap（中日韩文字）、wasm 解码器
 // 渲染进程拿不到任意路径，只能按哈希读库里的文件。
 import { createReadStream } from 'node:fs'
 import { open, stat } from 'node:fs/promises'
 import { dirname, join, normalize, sep } from 'node:path'
 import { Readable } from 'node:stream'
 
-export const SCHEME = 'paper'
+export const SCHEME = 'flax'
 export const SCHEME_PRIVILEGES = { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true, stream: true }
 
 const PDFJS_DIRS = new Set(['cmaps', 'standard_fonts', 'wasm', 'iccs'])
@@ -15,6 +15,8 @@ const PDFJS_DIRS = new Set(['cmaps', 'standard_fonts', 'wasm', 'iccs'])
 export interface ProtocolDeps {
   /** 哈希对应的本地路径；不是库里的文件就返回 null */
   fileFor: (hash: string) => string | null
+  /** 本机没有这个文件时（比如在别的设备上加的论文）先下载；下载到了返回 true */
+  fetchMissing?: (hash: string) => Promise<boolean>
   pdfjsRoot?: string
 }
 
@@ -27,7 +29,13 @@ export function createHandler(d: ProtocolDeps): (req: Request) => Promise<Respon
       if (url.host === 'file' && parts.length === 1) {
         const path = d.fileFor(parts[0]!)
         if (!path) return notFound()
-        return await serveFile(path, req.headers.get('range'), 'application/pdf')
+        try {
+          return await serveFile(path, req.headers.get('range'), 'application/pdf')
+        } catch (e) {
+          if ((e as NodeJS.ErrnoException).code !== 'ENOENT' || !d.fetchMissing) throw e
+          if (!(await d.fetchMissing(parts[0]!).catch(() => false))) return notFound()
+          return await serveFile(path, req.headers.get('range'), 'application/pdf')
+        }
       }
       if (url.host === 'pdfjs' && parts.length === 2 && PDFJS_DIRS.has(parts[0]!)) {
         const path = normalize(join(pdfjsRoot, parts[0]!, parts[1]!))
@@ -52,7 +60,7 @@ async function serveFile(path: string, range: string | null, type: string): Prom
     'Content-Type': type,
     'Accept-Ranges': 'bytes',
     'Cache-Control': 'no-store',
-    // 开发时页面来自 http://localhost，读 paper:// 算跨域；PDF.js 要读这几个响应头才会分段加载
+    // 开发时页面来自 http://localhost，读 flax:// 算跨域；PDF.js 要读这几个响应头才会分段加载
     'Access-Control-Allow-Origin': '*',
     'Access-Control-Expose-Headers': 'Accept-Ranges, Content-Range, Content-Length'
   }

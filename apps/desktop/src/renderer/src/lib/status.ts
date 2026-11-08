@@ -1,5 +1,5 @@
 // 阅读状态在界面上怎么显示：列表前面的标记、在读视图的进度和排序。
-import type { Paper, ReadingStatus } from '@paper/core'
+import type { Paper, ReadingStatus } from '@flax/core'
 import type { IconName } from '../components/Icon'
 
 export const STATUSES: ReadingStatus[] = ['inbox', 'to_read', 'reading', 'done']

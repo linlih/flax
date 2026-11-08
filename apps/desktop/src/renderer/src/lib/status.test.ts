@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import type { Paper } from '@paper/core'
+import type { Paper } from '@flax/core'
 import { isNew, isStale, nearEnd, progress, sortReading } from './status'
 
 const now = Date.parse('2026-11-08T12:00:00Z')

@@ -7,7 +7,7 @@ GlobalWorkerOptions.workerSrc = workerUrl
 // pdf_viewer.mjs 在加载时读 globalThis.pdfjsLib，所以 Reader 要先导入这个文件
 ;(globalThis as unknown as { pdfjsLib: typeof pdfjsLib }).pdfjsLib = pdfjsLib
 
-const ASSETS = 'paper://pdfjs'
+const ASSETS = 'flax://pdfjs'
 
 // 启动 worker 要一两秒（解析 1 MB 多的脚本）。应用打开后空闲时先启动好，所有文档共用一个
 let worker: PDFWorker | null = null
@@ -17,7 +17,7 @@ export function warmUp(): PDFWorker {
 }
 
 export function fileUrl(hash: string): string {
-  return `paper://file/${hash}`
+  return `flax://file/${hash}`
 }
 
 export function loadDocument(hash: string): { promise: Promise<PDFDocumentProxy>; destroy: () => void } {

@@ -4,7 +4,7 @@
 // 不依赖 Electron，方便测试。
 import { readFile } from 'node:fs/promises'
 import { basename } from 'node:path'
-import { bibToPaper, findIdentifiers, guessFromPdf, identifyPdf, parseBibTeX, identifyText, searchByTitle, type FetchText, type FileRef, type Library, type PaperMeta, type PdfFacts } from '@paper/core'
+import { bibToPaper, findIdentifiers, guessFromPdf, identifyPdf, parseBibTeX, identifyText, searchByTitle, type FetchText, type FileRef, type Library, type PaperMeta, type PdfFacts } from '@flax/core'
 import type { Candidate, ImportNotice } from '../shared/api'
 import type { FetchBytes } from './net'
 import { NotAPdfError, readPdfFacts } from './pdf'

@@ -1,5 +1,5 @@
 // 读 PDF 的文字和自带信息，给识别用。只读前两页，大文件也很快。
-import type { PdfFacts, TextLine } from '@paper/core'
+import type { PdfFacts, TextLine } from '@flax/core'
 
 type PdfJs = typeof import('pdfjs-dist/legacy/build/pdf.mjs')
 let pdfjs: Promise<PdfJs> | null = null

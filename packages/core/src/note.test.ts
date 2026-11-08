@@ -30,6 +30,8 @@ describe('titles and links', () => {
   })
   test('annotation refs', () => {
     const id = '1c7b899a-b114-4a2e-82c0-0f2dccebdd4c'
+    expect(extractAnnotationRefs(`> x\n> [第 3 页](flax://annotation/${id})`)).toEqual([id])
+    // 改名前写的链接也认
     expect(extractAnnotationRefs(`> x\n> [第 3 页](paper://annotation/${id})`)).toEqual([id])
   })
 })
@@ -40,5 +42,5 @@ test('excerpt skips headings and quotes', () => {
 })
 
 test('quote block links back to the annotation', () => {
-  expect(quoteBlock('a   b\nc', 3, 'id1', '我的看法')).toBe('> a b c\n> [第 3 页](paper://annotation/id1)\n\n我的看法')
+  expect(quoteBlock('a   b\nc', 3, 'id1', '我的看法')).toBe('> a b c\n> [第 3 页](flax://annotation/id1)\n\n我的看法')
 })

@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AiApi, LibraryApi, NotesApi, PaperApi } from '../shared/api'
+import type { AiApi, LibraryApi, NotesApi, PaperApi, SyncApi } from '../shared/api'
 
 // 渲染进程能用的能力都从这里暴露。不直接暴露 ipcRenderer。
 const invoke = (channel: string) => (...args: unknown[]) => ipcRenderer.invoke(`library:${channel}`, ...args)
@@ -86,6 +86,16 @@ const ai = {
   onStatus: listen('ai:status')
 } as AiApi
 
+const sync: SyncApi = {
+  status: () => ipcRenderer.invoke('sync:status'),
+  probe: (c) => ipcRenderer.invoke('sync:probe', c),
+  connect: (c, password) => ipcRenderer.invoke('sync:connect', c, password),
+  pickFolder: () => ipcRenderer.invoke('sync:pickFolder'),
+  disconnect: () => ipcRenderer.invoke('sync:disconnect'),
+  syncNow: () => ipcRenderer.invoke('sync:syncNow'),
+  onStatus: listen('sync:status')
+}
+
 const api: PaperApi = {
   platform: process.platform,
   pathForFile: (file) => webUtils.getPathForFile(file),
@@ -100,6 +110,7 @@ const api: PaperApi = {
   library,
   notes,
   ai,
+  sync,
   update: {
     state: () => ipcRenderer.invoke('app:updateState'),
     check: () => ipcRenderer.invoke('app:checkUpdate'),

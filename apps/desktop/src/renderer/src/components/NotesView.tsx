@@ -1,8 +1,8 @@
 // 侧边栏"笔记"：左边是全部笔记，右边编辑选中的那篇。
 import { useMemo, useRef, useState } from 'react'
-import type { Paper } from '@paper/core'
+import type { Paper } from '@flax/core'
 import type { NoteSummary } from '../../../shared/api'
-import { normalizeTitle } from '@paper/core'
+import { normalizeTitle } from '@flax/core'
 import { editedLabel } from '../lib/notes'
 import { Icon } from './Icon'
 import { NoteEditor } from './NoteEditor'

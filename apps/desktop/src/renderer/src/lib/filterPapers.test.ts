@@ -1,6 +1,6 @@
 // 性能预算（docs/05-体验原则.md）：1 万篇规模的文献库里搜索 ≤ 100ms
 import { describe, expect, it } from 'vitest'
-import type { Paper } from '@paper/core'
+import type { Paper } from '@flax/core'
 import { filterPapers } from './filterPapers'
 
 const WORDS = ['attention', 'graph', 'neural', 'retrieval', 'diffusion', 'protein', 'language', 'vision', 'robust', 'sparse', 'learning', 'transformer', '学习', '检索']

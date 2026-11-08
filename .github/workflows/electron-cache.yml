@@ -84,7 +84,7 @@ jobs:
       - if: steps.look.outputs.cache-hit != 'true'
         name: Package
         shell: bash
-        run: for i in 1 2 3; do npm run dist:win -w @paper/desktop && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
+        run: for i in 1 2 3; do npm run dist:win -w @flax/desktop && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
       - if: steps.look.outputs.cache-hit != 'true'
         uses: actions/cache/save@v4
         with:

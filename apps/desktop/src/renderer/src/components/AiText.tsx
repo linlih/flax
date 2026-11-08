@@ -1,7 +1,7 @@
 // 模型回答的显示：简单的 Markdown（段落、列表、粗体、斜体、行内代码）+ 原文定位。
 // ⟦页码|原文⟧ 显示成小号的编号，悬停看原文，点击跳到论文里那一句。
 import { Fragment, type ReactNode } from 'react'
-import { splitCitations } from '@paper/core'
+import { splitCitations } from '@flax/core'
 
 interface Props {
   text: string

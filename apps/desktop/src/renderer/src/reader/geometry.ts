@@ -1,5 +1,5 @@
 // 屏幕坐标和 PDF 页面坐标之间的换算，以及从选中的文字算出批注位置。
-import { mergeRects, quoteAt, type PdfRect, type TextQuote } from '@paper/core'
+import { mergeRects, quoteAt, type PdfRect, type TextQuote } from '@flax/core'
 
 interface Viewport {
   width: number

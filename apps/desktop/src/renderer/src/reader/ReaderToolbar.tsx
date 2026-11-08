@@ -1,7 +1,7 @@
 // 页面底部居中的工具栏，照 Figma 编辑页面的做法：工具平铺，当前工具实心高亮，悬停显示名字和快捷键。
 // 按住空格临时变抓手、松开回来，Esc 回到选择（这些逻辑在 Reader 里）。
 import { useEffect, useRef, useState } from 'react'
-import type { HighlightColor } from '@paper/core'
+import type { HighlightColor } from '@flax/core'
 import { Icon } from '../components/Icon'
 import { COLORS } from './colors'
 

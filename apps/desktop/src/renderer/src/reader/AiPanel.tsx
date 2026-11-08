@@ -1,7 +1,7 @@
 // 阅读器右栏的 AI 标签：就是一个对话框。不会自己去读论文；
 // 在论文里选中一段、点"问 AI"（或右键），那段文字挂在输入框上，跟问题一起发出去。
 import { useEffect, useRef, useState } from 'react'
-import { stripCitations } from '@paper/core'
+import { stripCitations } from '@flax/core'
 import type { AiChatTurn, AiConversationList, AiStatus } from '../../../shared/api'
 import { editedLabel } from '../lib/notes'
 import { AiText } from '../components/AiText'

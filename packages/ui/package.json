@@ -1,5 +1,5 @@
 {
-  "name": "@paper/ui",
+  "name": "@flax/ui",
   "version": "0.0.0",
   "private": true,
   "files": ["tokens.css"]

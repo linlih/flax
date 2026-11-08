@@ -3,6 +3,8 @@
 import type { Annotation, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingStatus, TagColor, Term, UUID } from './model'
 import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
+import { createLibrarySyncStore, LIBRARY_SYNC_SCHEMA } from './sync/libraryStore'
+import type { SyncStore } from './sync/store'
 
 // Node、浏览器和 React Native（加 polyfill）都有全局 crypto.randomUUID
 declare const crypto: { randomUUID(): string }
@@ -31,7 +33,7 @@ export type PaperPatch = Partial<
 
 const METADATA_KEYS = ['title', 'authors', 'year', 'venue', 'abstract', 'identifiers'] as const
 
-const SCHEMA_VERSION = 3
+const SCHEMA_VERSION = 4
 
 export type NewAnnotation = Omit<Annotation, 'id' | 'updatedAt' | 'deviceId' | 'createdAt'>
 export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'type' | 'comment'>>
@@ -96,6 +98,30 @@ export class Library {
         );
         CREATE INDEX IF NOT EXISTS terms_norm ON terms(term_norm);
       `)
+      if (v < 4) {
+        // 标签颜色原来是 meta 里的一个 JSON，两台设备各改一个颜色会互相覆盖；拆成每个标签一行
+        this.db.exec(`
+          CREATE TABLE IF NOT EXISTS tag_colors (
+            id TEXT PRIMARY KEY,
+            data TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            deleted INTEGER NOT NULL DEFAULT 0
+          );
+          ${LIBRARY_SYNC_SCHEMA}
+        `)
+        const row = this.db.prepare("SELECT value FROM meta WHERE key = 'tagColors'").get() as { value: string } | undefined
+        let old: Record<string, unknown> = {}
+        try {
+          old = row ? (JSON.parse(row.value) as Record<string, unknown>) : {}
+        } catch {
+          /* 读不懂就不要了 */
+        }
+        const now = this.now()
+        for (const [tag, color] of Object.entries(old)) {
+          if (TAG_COLORS.includes(color as TagColor)) this.db.prepare('INSERT OR REPLACE INTO tag_colors (id, data, updated_at) VALUES (?, ?, ?)').run(tag, JSON.stringify({ id: tag, color }), now)
+        }
+        this.db.prepare("DELETE FROM meta WHERE key = 'tagColors'").run()
+      }
       this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     })
   }
@@ -118,6 +144,45 @@ export class Library {
       this.db.exec('ROLLBACK')
       throw e
     }
+  }
+
+  // —— 同步 ——
+
+  /** 给同步引擎用的接口（见 sync/libraryStore.ts） */
+  syncStore(): SyncStore {
+    return createLibrarySyncStore(this.db, this.deviceId, (fn) => this.tx(fn), this.now)
+  }
+
+  /** 已经传到云端的 PDF（按哈希） */
+  syncedFiles(): Set<string> {
+    return new Set((this.db.prepare('SELECT hash FROM sync_files').all() as { hash: string }[]).map((r) => r.hash))
+  }
+
+  markFileSynced(hash: string): void {
+    this.db.prepare('INSERT OR IGNORE INTO sync_files (hash) VALUES (?)').run(hash)
+  }
+
+  /** 换了同步库：所有 PDF 都要重新传 */
+  forgetSyncedFiles(): void {
+    this.db.prepare('DELETE FROM sync_files').run()
+  }
+
+  /** 所有没删的论文用到的 PDF 哈希 */
+  liveFileHashes(): string[] {
+    const out = new Set<string>()
+    for (const p of this.listPapers()) for (const f of p.files) out.add(f.hash)
+    return [...out]
+  }
+
+  /** 同步引擎自己的状态（读到哪了、本机时钟）也记在 meta 表里 */
+  metaGet(key: string): string | null {
+    const row = this.db.prepare('SELECT value FROM meta WHERE key = ?').get(key) as { value: string } | undefined
+    return row?.value ?? null
+  }
+
+  metaSet(key: string, value: string | null): void {
+    if (value === null) this.db.prepare('DELETE FROM meta WHERE key = ?').run(key)
+    else this.db.prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value').run(key, value)
   }
 
   // —— 论文 ——
@@ -420,24 +485,29 @@ export class Library {
       .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
   }
 
-  /** 标签颜色，存在 meta 表里（标签本身只是论文上的字符串，没有自己的表） */
+  /** 标签颜色，每个标签一行（标签本身只是论文上的字符串，没有自己的表） */
   tagColors(): Record<string, TagColor> {
-    const row = this.db.prepare("SELECT value FROM meta WHERE key = 'tagColors'").get() as { value: string } | undefined
-    if (!row) return {}
-    try {
-      const v = JSON.parse(row.value) as Record<string, unknown>
-      return Object.fromEntries(Object.entries(v).filter((e): e is [string, TagColor] => TAG_COLORS.includes(e[1] as TagColor)))
-    } catch {
-      return {}
+    const rows = this.db.prepare('SELECT id, data FROM tag_colors WHERE deleted = 0').all() as { id: string; data: string }[]
+    const out: Record<string, TagColor> = {}
+    for (const r of rows) {
+      try {
+        const c = (JSON.parse(r.data) as { color?: unknown }).color
+        if (TAG_COLORS.includes(c as TagColor)) out[r.id] = c as TagColor
+      } catch {
+        /* 跳过读不懂的 */
+      }
     }
+    return out
   }
 
-  /** 给标签设颜色；null 去掉颜色 */
+  /** 给标签设颜色；null 去掉颜色（软删除，同步时别的设备也去掉） */
   setTagColor(tag: string, color: TagColor | null): void {
-    const c = this.tagColors()
-    if (color) c[tag] = color
-    else delete c[tag]
-    this.db.prepare("INSERT INTO meta (key, value) VALUES ('tagColors', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(c))
+    const now = this.now()
+    if (color) {
+      this.db
+        .prepare('INSERT INTO tag_colors (id, data, updated_at, deleted) VALUES (?, ?, ?, 0) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at, deleted = 0')
+        .run(tag, JSON.stringify({ id: tag, color }), now)
+    } else this.db.prepare('UPDATE tag_colors SET deleted = 1, updated_at = ? WHERE id = ? AND deleted = 0').run(now, tag)
   }
 
   /** 改名；新名字已存在时就是合并 */

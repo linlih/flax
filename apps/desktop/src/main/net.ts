@@ -1,8 +1,8 @@
 // 联网请求：超时、标识自己、按服务方的要求限速。
 // 元数据查询和下载 PDF 共用一个限速表，arXiv 的两个域名都算在它的 3 秒里。
-import type { FetchText } from '@paper/core'
+import type { FetchText } from '@flax/core'
 
-const USER_AGENT = 'Paper/0.1 (open-source desktop reference manager)'
+const USER_AGENT = 'Flax/0.1 (open-source desktop reference manager)'
 /** arXiv 要求每 3 秒最多一次请求；Crossref 对礼貌请求没有硬限制，留一点间隔 */
 const SPACING_MS: Record<string, number> = { 'export.arxiv.org': 3000, 'arxiv.org': 3000, 'api.crossref.org': 250 }
 /** 再大的 PDF 也不该超过这个，防止对方返回异常内容把内存撑满 */

@@ -1,6 +1,6 @@
 // 渲染进程这边的文献库状态：拿快照、订阅变化、收导入提示。
 import { useCallback, useEffect, useState } from 'react'
-import type { Paper, ReadingStatus } from '@paper/core'
+import type { Paper, ReadingStatus } from '@flax/core'
 import type { ImportNotice, LibrarySnapshot, PaperApi } from '../../../shared/api'
 
 declare global {

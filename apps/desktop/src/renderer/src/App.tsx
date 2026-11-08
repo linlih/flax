@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from 'react'
-import type { MenuCommand } from '../../shared/api'
+import type { MenuCommand, UpdateState } from '../../shared/api'
 import { Sidebar, PAPER_DRAG_TYPE } from './components/Sidebar'
 import { EmptyLibrary } from './components/EmptyLibrary'
 import { LibraryTable } from './components/LibraryTable'
@@ -11,13 +11,14 @@ import { NotesView } from './components/NotesView'
 import { SettingsView } from './components/SettingsView'
 import { Shortcuts } from './components/Shortcuts'
 import { AddPaper } from './components/AddPaper'
+import { UpdateSheet } from './components/UpdateSheet'
 import { TermsView } from './components/TermsView'
 import { useNotes } from './lib/notes'
 import { warmUp } from './reader/pdf'
 import { api, papersIn, useLibrary, type View } from './lib/library'
 import { TRASH } from './lib/platform'
 import { STATUS_LABEL } from './lib/format'
-import type { ReadingStatus } from '@paper/core'
+import type { ReadingStatus } from '@flax/core'
 
 const TITLES: Record<string, string> = {
   all: '全部论文', reading: '在读', toread: '待读', terms: '术语', notes: '笔记', settings: '设置'
@@ -144,18 +145,28 @@ export function App() {
   }
   useEffect(() => api.onMenu((c) => onMenu.current(c)), [])
 
-  // 更新：下好了提示重启；手动检查的结果也告诉用户
-  const toldUpdate = useRef('')
+  // 更新：发现新版本就问用户（同一个版本自动检查只问一次，手动检查每次都问）；手动检查的其他结果也告诉用户
+  const [upd, setUpd] = useState<UpdateState>({ kind: 'idle' })
+  const [updOpen, setUpdOpen] = useState(false)
+  const updOpenRef = useRef(false)
+  updOpenRef.current = updOpen
+  const askedUpdate = useRef('')
+  const [appVersion, setAppVersion] = useState('')
+  useEffect(() => void api.info().then((i) => setAppVersion(i.version)), [])
   useEffect(() => {
     return api.update.onState((st) => {
-      if (st.kind === 'ready' && toldUpdate.current !== st.version) {
-        toldUpdate.current = st.version
-        toast({ text: `新版本 ${st.version} 已经下载好`, action: { label: '重启更新', run: () => void api.update.install() } })
+      setUpd(st)
+      // 框里只显示这几种状态；别的状态（比如又检查了一次）来了就收起来
+      if (!['available', 'downloading', 'ready', 'error'].includes(st.kind)) setUpdOpen(false)
+      if (st.kind === 'available' && (st.manual || askedUpdate.current !== st.version)) {
+        askedUpdate.current = st.version
+        setUpdOpen(true)
+      } else if (st.kind === 'error' && st.manual && !updOpenRef.current && view !== 'settings') {
+        // 更新框开着就显示在框里；设置页里显示在"关于"那一行
+        toast({ text: `更新失败：${st.message}` })
       } else if (st.manual && view !== 'settings') {
         // 在设置页里点的，结果就显示在那一行，不再弹提示
         if (st.kind === 'latest') toast({ text: '已经是最新版本' })
-        else if (st.kind === 'downloading' && st.percent === undefined) toast({ text: `发现新版本 ${st.version}，正在后台下载` })
-        else if (st.kind === 'error') toast({ text: `检查更新失败：${st.message}` })
         else if (st.kind === 'dev') toast({ text: '开发版不检查更新' })
       }
     })
@@ -284,6 +295,7 @@ export function App() {
           onStatus={(st) => setStatus(selected.id, st)}
         />
       )}
+      {updOpen && <UpdateSheet state={upd} version={appVersion} onClose={() => setUpdOpen(false)} />}
       {dragging && (
         <div className="drop-overlay" aria-hidden="true">
           <div className="drop-overlay-card"><Icon name="upload" size={28} /><span>松开导入 PDF</span></div>

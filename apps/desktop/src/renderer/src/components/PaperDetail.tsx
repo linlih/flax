@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
-import { splitName, suggestFileName, TAG_COLORS, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus, type TagColor } from '@paper/core'
-import type { PaperPatch } from '@paper/core'
+import { splitName, suggestFileName, TAG_COLORS, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus, type TagColor } from '@flax/core'
+import type { PaperPatch } from '@flax/core'
 import type { Candidate } from '../../../shared/api'
 import { Icon, Spinner } from './Icon'
 import { api } from '../lib/library'

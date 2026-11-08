@@ -1,7 +1,7 @@
 // 选中文字、右键"翻译"弹出的卡片：只把这段文字（和其中出现的术语译法）发给选中的模型，译文流式显示。
 // 选的是一个词或短语时，可以把它加进术语表，之后翻译都按这个译法。
 import { useEffect, useRef, useState, type CSSProperties } from 'react'
-import type { Term } from '@paper/core'
+import type { Term } from '@flax/core'
 import { Icon, Spinner } from '../components/Icon'
 import { stream } from '../lib/ai'
 import { api } from '../lib/library'

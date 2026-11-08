@@ -34,14 +34,14 @@
 仓库骨架、浅色和深色 token、桌面外壳（侧边栏 + 空文献库）。
 
 ### M1（已完成，待用真实论文验收）
-- **存储**：数据在 `~/Library/Application Support/Paper/`（`library.sqlite` + `files/ab/<sha256>.pdf`）。不放"文稿"文件夹，因为它常开着 iCloud 同步，SQLite 放在那里容易损坏。测试时用环境变量 `PAPER_DATA_DIR` 换目录。
+- **存储**：数据在 `~/Library/Application Support/Flax/Library/`（`library.sqlite` + `files/ab/<sha256>.pdf`；Windows 是 `%APPDATA%\Flax\Library`）。不放"文稿"文件夹，因为它常开着 iCloud 同步，SQLite 放在那里容易损坏。测试时用环境变量 `FLAX_DATA_DIR` 换目录。2026-11-09 之前在 `Paper/` 下，第一次启动新版本时自动搬过来（见下面的"改名"）。
 - **仓储层**：`packages/core/src/library.ts`。每条记录存 JSON，另抽 DOI、arXiv、规范化标题做索引；删除是软删除，可以撤销，以后同步时作为删除标记。
 - **识别**：arXiv 页边戳 → 文件名里的编号 → 正文里的编号 / DOI；有 arXiv 编号先查 arXiv，否则查 Crossref；都没有就用 PDF 自带标题或首页最大字号的几行，标记"需要匹配"。arXiv 请求间隔 3 秒。
 - **查重**：同一个文件（哈希相同）只提示；编号或长标题相同但文件不同，问"加为另一个版本 / 不导入"。
 - **自动下载 PDF**：粘贴 arXiv 链接或编号后，先补元数据，再在后台从 `arxiv.org/pdf/<编号>` 下载 PDF（和 arXiv 查询共用 3 秒间隔，最大 200 MB）。失败时提示并可重试，详情页也有"从 arXiv 下载"。拖入的 PDF 如果对上库里还没有文件的论文，直接配上，不再问"另一个版本"。只有 DOI 的论文暂不自动下载（开放获取版本的查找放到以后）。
 - **需要匹配**：按标题搜 Crossref 和 arXiv，按相似度排序让用户选；也可以手动填写。
 - **还没做**：阅读器（现在"打开 PDF"用系统默认程序，M2 换掉）；文件名规则只用于显示，真正按规则导出放到 M6；验收需要用 10 篇真实论文跑一遍（我只用自己生成的 PDF 测过，其中两篇带真实编号，在线查询结果正确）。
-- **应用名**：2026-11-06 定为 Flax，`app.setName` 和 Dock 图标已改。数据目录（`~/Library/Application Support/Paper`）、`paper://` 协议和 `@paper/*` 包名暂不改，以免已有的库找不到。
+- **应用名**：2026-11-06 定为 Flax，`app.setName` 和 Dock 图标已改。2026-11-09 把剩下的也改了（见下面的"改名"）。
 
 ### M2（阅读器，已完成）
 - **打开**：有 PDF 的论文双击或回车直接进阅读器，点标题看详情；详情页按钮叫"开始读"。打开时记打开时间，收件箱和待读里的论文自动变成"在读"。
@@ -119,9 +119,9 @@
   | 打开 PDF 到第一页画出来 | ≤ 300ms | 第一次 101ms，之后 29–39ms |
   | 1 万篇里搜索 | ≤ 100ms | 每敲一个字约 1ms，输入到画面更新 30ms（`filterPapers.test.ts` 里有断言） |
   | 划词翻译开始显示 | ≤ 1 秒 | 取决于模型，要用真实 Key 测 |
-- **打包**：electron-builder 26.18.0（固定版本）。`npm run dist -w @paper/desktop` 出未签名的通用包 `dist/Flax-<版本>-universal.dmg` 和 `.zip`（Apple 芯片和 Intel 都能装）；会下载两种架构的 Electron，第一次打 dmg 时还会下载 7-Zip 和 dmgbuild 两个构建工具。`@napi-rs/canvas`（pdf.js 在 Node 里画图用的可选依赖）只装了 arm64 版，用 `x64ArchFiles` 放行；Intel 上它加载不了，pdf.js 只打警告，主进程只读 PDF 文字，不受影响。在本机用 Rosetta 按 Intel 跑过：文献库、打开 PDF、导入 PDF、AI 翻译都正常（Rosetta 第一次翻译代码时打开 PDF 要十几秒，真 Intel 机器上是原生运行）。运行时只带 `@anthropic-ai/sdk` 和 `pdfjs-dist`（主进程读 PDF、阅读器的字体和 CMap），其余都由 Vite 打进 `out/`，所以挪到了 devDependencies。打包后的 App 测过：文献库、打开 PDF、导入 PDF、AI 翻译都正常。打包时发现并修了一个问题：主进程启动时加载开发用的 png 图标失败会挡住窗口，现在只在开发时设置，打包后用 `.icns`。
+- **打包**：electron-builder 26.18.0（固定版本）。`npm run dist -w @flax/desktop` 出未签名的通用包 `dist/Flax-<版本>-universal.dmg` 和 `.zip`（Apple 芯片和 Intel 都能装）；会下载两种架构的 Electron，第一次打 dmg 时还会下载 7-Zip 和 dmgbuild 两个构建工具。`@napi-rs/canvas`（pdf.js 在 Node 里画图用的可选依赖）只装了 arm64 版，用 `x64ArchFiles` 放行；Intel 上它加载不了，pdf.js 只打警告，主进程只读 PDF 文字，不受影响。在本机用 Rosetta 按 Intel 跑过：文献库、打开 PDF、导入 PDF、AI 翻译都正常（Rosetta 第一次翻译代码时打开 PDF 要十几秒，真 Intel 机器上是原生运行）。运行时只带 `@anthropic-ai/sdk` 和 `pdfjs-dist`（主进程读 PDF、阅读器的字体和 CMap），其余都由 Vite 打进 `out/`，所以挪到了 devDependencies。打包后的 App 测过：文献库、打开 PDF、导入 PDF、AI 翻译都正常。打包时发现并修了一个问题：主进程启动时加载开发用的 png 图标失败会挡住窗口，现在只在开发时设置，打包后用 `.icns`。
 - **签名**（2026-11-08 改，跟 Folio 一样）：不用苹果的 Developer ID，也不公证。`apps/desktop/scripts/macos-signing.sh` 生成一张 Flax 自己的自签名代码证书（`~/.flax-signing/`，名字 "Flax Code Signing"），放进登录钥匙串；打包时 `build/sign.cjs`（electron-builder 的 afterPack）用它签合并后的通用包（electron-builder 自己的签名关掉了：`mac.identity: null`；不开 hardened runtime，它只是公证要用）。每个版本同一张证书签，macOS 认得是同一个应用：Squirrel.Mac 要求新版本和旧版本签名一致，自动更新才装得上，钥匙串里的 API Key 也不会每次更新都重新问。钥匙串里没有这张证书时退回临时签名，打包不会失败，但装好的应用不能自动更新到这个版本。证书要备份：换一张就是另一个应用。代价：第一次打开时 macOS 会拦一下，到"系统设置 › 隐私与安全性"点"仍要打开"（README 里写了）；通过自动更新装的新版本不会再拦。
-- **自动更新**：electron-updater 6.8.11，从 GitHub Releases（`linlih/flax`，见 package.json 的 `build.publish`）读 `latest-mac.yml`。打开应用 10 秒后检查一次，之后每 6 小时一次；有新版本就在后台下载，下好了弹一条"新版本 X 已经下载好 · 重启更新"，不点也会在退出时装上。菜单 Flax › 检查更新… 和 设置 › 关于 可以手动检查，只有手动检查才告诉用户"已经是最新"或失败原因。开发时不检查。打包时发现 `import('electron-updater')` 拿到的具名导出是空的（CommonJS 的 getter），改成从 default 上取。
+- **自动更新**：electron-updater 6.8.11，从 GitHub Releases（`linlih/flax`，见 package.json 的 `build.publish`）读 `latest-mac.yml`。打开应用 10 秒后检查一次，之后每 6 小时一次；有新版本就弹一个框（版本号、发布说明，"稍后"/"立即更新"），不自己下载（2026-11-08 改：以前是自动在后台下载、退出时装上，用户没得选）。点"立即更新"才下载，框里显示进度，可以"在后台下载"收起来；下好后直接重启安装。自动检查对同一个版本只问一次，手动检查每次都问；设置 › 关于 里也显示"发现新版本"和"立即更新"。菜单 Flax › 检查更新… 和 设置 › 关于 可以手动检查，只有手动检查才告诉用户"已经是最新"或失败原因。开发时不检查。打包时发现 `import('electron-updater')` 拿到的具名导出是空的（CommonJS 的 getter），改成从 default 上取。
 - **发布一个版本**：在仓库根目录 `npm run release -- 0.1.2 -m "发布说明" --push`（`apps/desktop/scripts/release.sh`）：改 `apps/desktop/package.json` 的版本号、提交、打带说明的标签、推到 GitHub。`.github/workflows/build.yml` 收到 `v*` 标签后在 macos-26 上（系统翻译小助手要 Xcode 26）跑类型检查和测试，用仓库 secrets 里的 `MAC_CERTIFICATE`、`MAC_CERTIFICATE_PASSWORD` 签名，打包，按标签说明建 Release，传 dmg、zip、blockmap 和 `latest-mac.yml`。在 Actions 页手动 "Run workflow" 只出构建产物不发布。打包时发现 package.json 里写了两个 `extraResources`，后一个把小助手那条盖掉了，合成一个。
 - **标签颜色**（2026-11-08）：详情栏里右键标签选颜色（红、橙、黄、绿、蓝、紫、灰，和访达标签同一组）或"无颜色"，菜单里也能"修改名字"。颜色跟着标签走，整个库里同一个标签是同一种颜色，存在数据库 meta 表的 tagColors 里；库级改名（renameTag）时颜色跟着改。列表和详情栏里的标签都按颜色着色，文字和底色的对比度在浅色、深色下都 ≥ 4.5。
 - **列表里显示标签**（2026-11-08）：每行标题右边显示这篇的标签，放几个看列表宽度（宽 3 个、开着详情栏时 1–2 个），其余收进"+N"，悬停看全部。原来那里的"读"按钮去掉了：双击或回车就能读。
@@ -135,7 +135,7 @@
   - 改状态：详情栏"开始读"下面一排分段按钮（在读时下面显示读到哪页、哪天打开过），列表右键菜单"阅读状态"。手动改都弹提示，可以撤销；自动变成在读不提示。列表里选中一篇按 1–4 直接标成未读 / 待读 / 在读 / 读过（右键菜单里标着这几个键）；连着改几次只留最后一条提示。
   - 规则在 `renderer/src/lib/status.ts`（有测试）。
 - **开着 AI 时"批注"标签点不到**（2026-11-08 修）：阅读器是盖在文献库上面的（`position: fixed`），但 macOS 仍按下面文献库的拖动区域（侧栏、标题栏 `-webkit-app-region: drag`）处理真实点击：开着 AI 时笔记栏的标签挪进了文献库标题栏的位置，点一下变成拖窗口。只开笔记栏时标签刚好落在"导入 PDF"按钮（no-drag）下面，所以没事。阅读时 `.app.reading` 把文献库的拖动区域关掉。用 CDP 发的点击不经过系统的拖动判断，测不出来，要在真窗口里点。
-- **资料文件夹可以换位置**（2026-11-08）：设置 › 数据 › 资料文件夹 › 更改…。选一个空文件夹就把资料搬过去（先把 WAL 写回数据库再关掉，整个文件夹拷过去，拷好后原来的移到废纸篓 / 回收站，然后重启）；选一个已有的 Flax 资料文件夹（里面有 library.sqlite）就改用它，原来的不动；有别的文件的文件夹不接受，免得和别人的文件混在一起。新位置记在 `<appData>/Flax/data-location.json`（不能记在资料文件夹自己里面），换回默认位置时删掉这条记录。启动时换过的文件夹找不到（移动硬盘没接上），弹框让用户"再试一次"、另选一个 Flax 资料文件夹或退出，不会悄悄打开一个空库。PDF 和笔记的路径都是相对资料文件夹算的，搬家不用改数据库。测试时 `PAPER_DATA_DIR` 换默认位置，记录跟着放到它旁边的 config 文件夹（或 `PAPER_CONFIG_DIR`），不读真实的记录。
+- **资料文件夹可以换位置**（2026-11-08）：设置 › 数据 › 资料文件夹 › 更改…。选一个空文件夹就把资料搬过去（先把 WAL 写回数据库再关掉，整个文件夹拷过去，拷好后原来的移到废纸篓 / 回收站，然后重启）；选一个已有的 Flax 资料文件夹（里面有 library.sqlite）就改用它，原来的不动；有别的文件的文件夹不接受，免得和别人的文件混在一起。新位置记在 `<appData>/Flax/data-location.json`（不能记在资料文件夹自己里面），换回默认位置时删掉这条记录。启动时换过的文件夹找不到（移动硬盘没接上），弹框让用户"再试一次"、另选一个 Flax 资料文件夹或退出，不会悄悄打开一个空库。PDF 和笔记的路径都是相对资料文件夹算的，搬家不用改数据库。测试时 `FLAX_DATA_DIR` 换默认位置，记录跟着放到它旁边的 config 文件夹（或 `FLAX_CONFIG_DIR`），不读真实的记录。
 - **Windows 版**（2026-11-08）：CI 里加一个 windows-latest 任务，`npm run dist:win` 打 64 位 NSIS 安装包（`Flax-<版本>-setup.exe`，装到当前用户，不要管理员权限）和 `latest.yml`；Mac 和 Windows 都打好后由单独的 release 任务一起传到 Release，免得只发一半。没有代码签名证书，第一次运行 SmartScreen 会提示（README 写了）；electron-updater 在 Windows 上不要求签名，自动更新照常。应用里的差异：
   - 窗口：macOS 保留红绿灯（`hiddenInset`）；Windows 用 `titleBarStyle: 'hidden'` 加 `titleBarOverlay`，右上角是系统的最小化、最大化、关闭按钮（高 36px，底色和图标色跟浅色 / 深色走，切外观时 `setTitleBarOverlay` 更新）。`<html>` 上的 `os-mac` / `os-other` 让顶栏在 Windows 上右边让出 148px、左边不再给红绿灯留位置。
   - 菜单：Windows 没有菜单栏，侧栏左上角一个菜单按钮弹出同一份应用菜单（`app:popupMenu`）。Windows 的菜单没有"服务、隐藏"这些 macOS 才有的项，设置和退出放进"文件"，检查更新和关于放进"帮助"。
@@ -149,3 +149,21 @@
 
 - **CRDT（Automerge 还是 Yjs）**：阶段 1 只需要"数据结构为同步做好准备"。M1 起所有记录都带 `id`（UUID）、`updatedAt`、`deviceId`，写操作集中在一个仓储层，以后接 CRDT 只改这一层。真正的选型放到阶段 2 开始前。
 - **MuPDF**：先用 PDF.js，遇到渲染或性能问题再评估。
+
+### 改名（2026-11-09）
+- **资料文件夹**：默认位置从 `<appData>/Paper` 改成 `<appData>/Flax/Library`。不直接用 `<appData>/Flax`，因为那里是 Electron 自己的缓存（Cookies、GPUCache 等），混在一起时"在访达中显示"很乱，换位置时也会把缓存拷过去。第一次启动新版本时，把 Paper 里属于资料的几项（`files`、`notes`、`ai`、`prefs.json`、数据库三个文件）挪过去；同一块盘上只是改名，瞬间完成。数据库的三个文件最后挪，中途出错时旧位置还认得出是资料库，下次启动接着挪。新位置已经有资料库时什么都不动；挪的时候发现新位置已经有同名的东西就停下来报错，不打开空库。用户在设置里换过位置的不受影响。Paper 里剩下的 Electron 缓存不管。
+- **包名**：`@paper/*` → `@flax/*`。
+- **协议**：`paper://` → `flax://`。笔记里新摘录的引用块写 `flax://annotation/…`；以前写的 `paper://annotation/…` 照样能跳回原文（不改用户的笔记文件）。
+- **环境变量**：`PAPER_DATA_DIR`、`PAPER_CONFIG_DIR` → `FLAX_DATA_DIR`、`FLAX_CONFIG_DIR`。
+- 顺手修了一个问题：新装的应用第一次启动时，默认资料文件夹还不存在，以前会弹"找不到资料文件夹"；现在只有用户换过的位置找不到才问。
+
+### S1 同步（桌面，2026-11-09）
+按 [11-移动端与同步规划](11-移动端与同步规划.md) 做的，细节见那里。
+- **代码**：合并规则、日志格式、加密封装、WebDAV 都在 `packages/core/src/sync/`（不依赖平台，手机版直接用）；桌面端的 `main/sync.ts`（定时、PDF 上传下载、设置）、`main/syncCodec.ts`（node:crypto + zlib）、`main/syncFolder.ts`（本地文件夹后端）。
+- **数据库版本 4**：标签颜色从 meta 的一个 JSON 拆成 `tag_colors` 表（旧数据自动搬过去）；新增 `sync_shadow`（每条记录上次同步时的样子和每个字段的时间戳）、`sync_outbox`（待发送）、`sync_files`（已经传上去的 PDF）。原来各个写操作没改：表里的 `updated_at` 和 shadow 不一样就是本机改过。
+- **设置 › 同步**：坚果云 / 其他 WebDAV / 本地文件夹。第一步填连接信息并检查那里有没有 Flax 同步库；没有就新建，默认加密，要设至少 8 位的同步密码（可以取消勾选不加密）；有就输入当时的同步密码加入，这台电脑的资料和它合并。开启后显示上次同步时间、还有几个 PDF 在传、出错原因，有"立即同步"和"停用"。
+- **什么时候同步**：开启时、启动 3 秒后、本机改了东西 4 秒后（只查本地数据库，有修改才联网）、每 5 分钟、窗口回到前台且离上次超过 1 分钟。出错后 1、2、4… 分钟退避，最长 30 分钟。没有修改时一次同步 4 个请求（坚果云免费版限制请求次数）。
+- **PDF**：同步完后把本机有、云端没有的 PDF 一个个传上去，再把本机没有的下载下来。打开一篇本机还没有 PDF 的论文时，阅读器读文件那一刻先从云端下载（校验 SHA-256），不用等后台。
+- **密码**：WebDAV 密码和库密钥用系统钥匙串加密，存在资料文件夹的 `sync/secret.bin`；同步密码本身不保存。备份不包含 `sync/`。
+- **验证**：core 里 17 个同步测试（字段合并、标签集合、删除、同步时又改、笔记三方合并和冲突副本、快照和清理、加密、换了同步库、WebDAV 协议、两台设备经 WebDAV 端到端）。在真实窗口里用本地 WebDAV（模拟坚果云）开两个 Flax 测过：新建加密库、第二台输错密码被拒、输对后论文 / 标签颜色 / 术语 / 批注 / 笔记 / PDF 都过来了；两边同时改同一篇笔记的不同位置自动合并；删掉第二台的 PDF 后打开论文，自动下载并显示高亮；服务器停了显示"连不上同步服务器"。
+- **还没做**：AI 对话不同步（还在 `ai/conversations` 的文件里）；别的设备的阅读位置（规划里的"在 iPad 上读到第 12 页"）；S3 和 iCloud 后端；没用真实的坚果云测过。

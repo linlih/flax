@@ -1,5 +1,5 @@
 {
-  "name": "paper",
+  "name": "flax",
   "private": true,
   "type": "module",
   "license": "AGPL-3.0-only",
@@ -8,11 +8,11 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "npm run dev -w @paper/desktop",
-    "build": "npm run build -w @paper/desktop",
+    "dev": "npm run dev -w @flax/desktop",
+    "build": "npm run build -w @flax/desktop",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/core && tsc -p packages/core/tsconfig.test.json && npm run typecheck -w @paper/desktop",
-    "dist": "npm run dist -w @paper/desktop",
+    "typecheck": "tsc -p packages/core && tsc -p packages/core/tsconfig.test.json && npm run typecheck -w @flax/desktop",
+    "dist": "npm run dist -w @flax/desktop",
     "release": "bash apps/desktop/scripts/release.sh"
   },
   "devDependencies": {

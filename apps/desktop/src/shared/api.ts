@@ -1,5 +1,5 @@
 // 主进程和渲染进程之间的接口。渲染进程只能通过 window.api 调这些方法。
-import type { Annotation, AnnotationPatch, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@paper/core'
+import type { Annotation, AnnotationPatch, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
 
 export interface LibrarySnapshot {
   papers: Paper[]
@@ -131,12 +131,13 @@ export interface PaperApi {
   library: LibraryApi
   notes: NotesApi
   ai: AiApi
+  sync: SyncApi
   /** 自动更新 */
   update: {
     state(): Promise<UpdateState>
     /** 手动检查：结果会通过 onState 告诉界面 */
     check(): Promise<UpdateState>
-    /** 新版本已经下好：重启并安装 */
+    /** 立即更新：下载新版本，下好后重启安装 */
     install(): Promise<void>
     onState(cb: (s: UpdateState) => void): () => void
   }
@@ -144,9 +145,46 @@ export interface PaperApi {
   onMenu(cb: (cmd: MenuCommand) => void): () => void
 }
 
+// —— 同步 ——
+
+/** 怎么连到同步的地方。坚果云就是 WebDAV，地址是 https://dav.jianguoyun.com/dav/ */
+export type SyncConnect =
+  | { kind: 'webdav'; url: string; username: string; password: string; folder?: string }
+  | { kind: 'folder'; path: string }
+
+export interface SyncStatus {
+  /** 没开启同步时是 null（不含密码） */
+  config: { kind: 'webdav'; url: string; username: string; folder: string } | { kind: 'folder'; path: string } | null
+  encrypted: boolean
+  state: 'off' | 'idle' | 'syncing' | 'error'
+  /** 上次成功同步的时间 */
+  lastSync?: string
+  error?: string
+  /** 还有几个 PDF 要传或下载 */
+  files?: { left: number }
+  /** 系统钥匙串能不能用（不能用就不能保存密码） */
+  canEncrypt: boolean
+}
+
+export interface SyncApi {
+  status(): Promise<SyncStatus>
+  /** 那里有没有已经建好的同步库、加没加密 */
+  probe(c: SyncConnect): Promise<{ exists: boolean; encrypted: boolean }>
+  /** 开启同步：已有同步库时 syncPassword 是当时设的同步密码；新建时 null 表示不加密 */
+  connect(c: SyncConnect, syncPassword: string | null): Promise<void>
+  /** 选一个本地文件夹当同步的地方 */
+  pickFolder(): Promise<string | null>
+  /** 这台设备停用同步，云端的数据不动 */
+  disconnect(): Promise<void>
+  syncNow(): Promise<void>
+  onStatus(cb: (s: SyncStatus) => void): () => void
+}
+
 /** 更新状态。manual：这次检查是用户点的，结果要告诉他 */
 export type UpdateState = (
   | { kind: 'idle' | 'checking' | 'latest' | 'dev' }
+  /** 有新版本，等用户决定（不会自己下载） */
+  | { kind: 'available'; version: string; notes?: string }
   | { kind: 'downloading'; version: string; percent?: number }
   | { kind: 'ready'; version: string }
   | { kind: 'error'; message: string }

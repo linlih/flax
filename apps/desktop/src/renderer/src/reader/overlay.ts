@@ -2,7 +2,7 @@
 // PDF.js 重绘页面时会清掉这一层，所以每次 pagerendered 都补上。
 // 有评论的高亮在页边放一个小标记（跟 Apple Books、Readwise 一样）：悬停看评论，点一下打开。
 // 标记在文字层上面一层，只有标记本身能点，不挡选字。
-import type { Annotation } from '@paper/core'
+import type { Annotation } from '@flax/core'
 import { rectToPercent, type PageViewLike } from './geometry'
 
 const LAYER = 'hl-layer'

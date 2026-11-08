@@ -7,7 +7,7 @@ export function linkAt(line: string, col: number): Hit | null {
   for (const m of line.matchAll(/\[[^\]]*\]\(([^)\s]+)\)|(https?:\/\/[^\s)>\]]+)/g)) {
     if (col < m.index! || col > m.index! + m[0].length) continue
     const url = m[1] ?? m[2]!
-    const anno = /^paper:\/\/annotation\/(.+)$/.exec(url)
+    const anno = /^(?:flax|paper):\/\/annotation\/(.+)$/.exec(url)
     if (anno) return { kind: 'annotation', target: anno[1]! }
     if (/^https?:/.test(url)) return { kind: 'web', target: url }
   }

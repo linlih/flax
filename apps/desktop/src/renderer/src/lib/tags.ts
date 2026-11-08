@@ -1,4 +1,4 @@
-import type { TagColor } from '@paper/core'
+import type { TagColor } from '@flax/core'
 
 /** 把一篇论文的标签 old 改成 next：位置不变；改成空就是删掉；改成已有的标签就合并成一个 */
 export function renameTag(tags: string[], old: string, next: string): string[] {

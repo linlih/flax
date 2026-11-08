@@ -21,6 +21,7 @@
 | [07-阅读格式与手写策略](07-阅读格式与手写策略.md) | 第一版只做 PDF；HTML 阅读模式的规划；HTML 模式下手写的替代方案 |
 | [08-界面设计调研](08-界面设计调研.md) | 好看的应用（Linear、Craft、Reeder、Things 等）的共同做法，对 v0.3 的诊断和 v0.4 的改法 |
 | [09-BoardUI与appllama参考](09-BoardUI与appllama参考.md) | BoardUI 的视觉语言（实测 token）、appllama 免费设计 Skill 的规则，以及 v0.5 的改法 |
+| [11-移动端与同步规划](11-移动端与同步规划.md) | iPhone、iPad、Android 怎么做（React Native + 原生 PDFKit 阅读器）；同步的数据范围、合并规则、存储格式、后端和加密；阶段顺序和待决定的事 |
 | [DESIGN.md](../DESIGN.md) / [PRODUCT.md](../PRODUCT.md) | 视觉方向 v0.5「托盘 + 白卡」（参考 BoardUI；单一蓝色强调色、纯中性灰、真实论文缩略图）、设计 token 和规则；产品简介（供项目内的设计类 Skill 读取） |
 | 交互原型 v0.5（托盘 + 白卡，参考 BoardUI） | [在线画布](https://claude.ai/artifact/98uxYRkg1eKxqGY2yHy2kr)（文献库首页、阅读器 + 笔记分栏、iPad 用笔圈选问 AI）；源文件备份在 [prototype/](../prototype/) |
 
@@ -39,14 +40,16 @@
 | 2026-11-04 | 视觉方向改为「Apple 原生感」（v0.2「墨与荧光笔」被否决） | v0.2 颜色杂乱、深色侧边栏突兀；按 Apple HIG 让界面像系统自带应用一样安静，颜色只留给强调色和论文高亮 |
 | 2026-11-06 | 产品名定为 Flax | 单音节、只有一种读法的真实英文词；亚麻是早期造纸原料，和“纸、论文”有关；同品类（论文/PDF/笔记/AI 阅读）没有重名。已知同名：Google 的 JAX 神经网络库 Flax（不同类）；USPTO 有一件待审的 FLAX 申请（Erply Software，零售收银软件，第 9/35/42 类） |
 | 2026-11-06 | 图标定为「折纸 F · 全蓝冷调」 | 一条纸带折成 F，正反两面表现“纸”；小尺寸可辨认。源文件和各平台尺寸在 [brand/](../brand/README.md) |
+| 2026-11-09 | 同步不用 Automerge 或 Yjs，改成按记录、按字段合并的变更日志；笔记正文用版本向量 + 按行三方合并 | 数据本来就是一条条记录；笔记是 Obsidian 也能改的 .md 文件，CRDT 文本用不上。见 [11-移动端与同步规划](11-移动端与同步规划.md) |
+| 2026-11-09 | 先做同步，再做移动端；手机先于 iPad；第一个后端是坚果云（WebDAV）；端到端加密默认开启 | 没有同步的移动端没有意义；国内用户首选坚果云；存储在第三方手里 |
+| 2026-11-09 | 资料文件夹、包名、协议改成 Flax（`Flax/Library`、`@flax/*`、`flax://`） | 有同步之后再改，云端也要跟着迁移；旧的资料第一次启动时自动搬过来 |
 
 ## 待决策
 
 - 商标注册：Flax 在第 9、42 类（建议用“Flax + 图形”并写明“学术文献阅读与批注软件”，申请前请代理检索 USPTO 和中国商标网）
 - 域名和账号：flax.app/.io/.dev 已被注册；readflax.app、getflax.app、flaxreader.com 和 GitHub 的 `flaxhq` 看起来可用，尽快注册
 - 字标字体：暂用 Bricolage Grotesque Bold，定稿后转轮廓
-- 数据目录和包名迁移：代码里仍是 `Paper` / `@paper/*`
-- CRDT 选型（Automerge 还是 Yjs）
 - 桌面 PDF 渲染（PDF.js 还是 MuPDF）
 - 全文翻译：集成 BabelDOC 还是自己实现
 - 团队技术栈与分工（至少需要一位 iOS 原生开发）
+- Apple 开发者账号：iPhone、iPad 上架和 iCloud 同步需要，暂缓

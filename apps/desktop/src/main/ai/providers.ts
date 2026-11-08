@@ -2,7 +2,7 @@
 // 只发对话本身，不会自己把论文发出去。用户选中一段问 AI 时，那段文字写在问题里。
 import Anthropic from '@anthropic-ai/sdk'
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
-import { costOf, stripCitations } from '@paper/core'
+import { costOf, stripCitations } from '@flax/core'
 import { endpointOf } from '../../shared/aiVendors'
 import { EFFORT_LEVELS } from '../../shared/effort'
 import type { AiConfig, AiEffort, AiErrorCode, AiModel, AiUsage } from '../../shared/api'

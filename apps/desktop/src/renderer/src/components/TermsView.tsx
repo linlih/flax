@@ -1,6 +1,6 @@
 // 术语页：读论文时加入的术语都在这里。点译法或备注直接改，翻译时同一个词都按这里的译法。
 import { useMemo, useState } from 'react'
-import type { Paper, Term } from '@paper/core'
+import type { Paper, Term } from '@flax/core'
 import { Icon } from './Icon'
 import { api } from '../lib/library'
 

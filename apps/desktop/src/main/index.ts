@@ -4,8 +4,8 @@ import { DatabaseSync } from 'node:sqlite'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { cp, mkdir, rename } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
-import { Library, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@paper/core'
-import type { ImportNotice, LibrarySnapshot, MenuCommand } from '../shared/api'
+import { Library, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
+import type { ImportNotice, LibrarySnapshot, MenuCommand, SyncConnect } from '../shared/api'
 import { Importer } from './importer'
 import { createNet } from './net'
 import { createHandler, SCHEME, SCHEME_PRIVILEGES } from './protocol'
@@ -13,26 +13,40 @@ import { createAppearance } from './appearance'
 import { AiService } from './ai/service'
 import { AiSettings } from './ai/settings'
 import { AppleTranslator } from './ai/apple'
-import { copyData, saveDataDir, savedDataDir, targetKind } from './dataLocation'
+import { copyData, migrateLegacyDataDir, saveDataDir, savedDataDir, targetKind } from './dataLocation'
 import { NoteStore } from './notes'
 import { Updater, realUpdater } from './updater'
 import { FileStore } from './store'
+import { SyncService } from './sync'
 
 app.setName('Flax')
 
 /** 应用图标（源文件在 brand/，这里是 macOS 网格留边版）。打包后由 .icns 接管，这里主要给开发态的 Dock 和 Windows/Linux 窗口用 */
 const iconPath = join(__dirname, '../../resources/icon.png')
 
-// 必须在 ready 之前登记，渲染进程才能用 fetch 读 paper://
+// 必须在 ready 之前登记，渲染进程才能用 fetch 读 flax://
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: SCHEME_PRIVILEGES }])
 
-/** 默认的资料文件夹：数据库、PDF、笔记。测试时可以用环境变量换到别处。
- *  目录名仍是改名前的 Paper：直接改会让已有的库“消失” */
-const defaultDataDir = process.env['PAPER_DATA_DIR'] ?? join(app.getPath('appData'), 'Paper')
-/** 记"资料文件夹换到了哪"的地方。测试时跟着 PAPER_DATA_DIR 走，不读真实的记录 */
-const configDir = process.env['PAPER_CONFIG_DIR'] ?? (process.env['PAPER_DATA_DIR'] ? join(process.env['PAPER_DATA_DIR'], '..', 'config') : join(app.getPath('appData'), 'Flax'))
+/** 默认的资料文件夹：数据库、PDF、笔记。放在应用数据目录的 Flax/Library，不和 Electron 自己的缓存混在一起。
+ *  测试时可以用环境变量 FLAX_DATA_DIR 换到别处 */
+const testDataDir = process.env['FLAX_DATA_DIR']
+const defaultDataDir = testDataDir ?? join(app.getPath('appData'), 'Flax', 'Library')
+/** 记"资料文件夹换到了哪"的地方。测试时跟着 FLAX_DATA_DIR 走，不读真实的记录 */
+const configDir = process.env['FLAX_CONFIG_DIR'] ?? (testDataDir ? join(testDataDir, '..', 'config') : join(app.getPath('appData'), 'Flax'))
 /** 现在用的资料文件夹：用户在设置里换过就用换过的 */
 let dataDir = savedDataDir(configDir) ?? defaultDataDir
+
+/** 改名前的资料在 Paper 文件夹里：用默认位置时先搬过来。出错就报出来，不悄悄打开一个空的资料库 */
+function moveLegacyData(): boolean {
+  if (testDataDir || dataDir !== defaultDataDir) return true
+  try {
+    migrateLegacyDataDir(join(app.getPath('appData'), 'Paper'), defaultDataDir)
+    return true
+  } catch (e) {
+    dialog.showErrorBox('没能搬动资料文件夹', `${e instanceof Error ? e.message : String(e)}\n\n原来的资料还在 ${join(app.getPath('appData'), 'Paper')}，没有删除。`)
+    return false
+  }
+}
 
 let win: BrowserWindow | null = null
 let updater: Updater | null = null
@@ -40,7 +54,8 @@ let appearance!: ReturnType<typeof createAppearance>
 
 /** 换过的资料文件夹找不到（比如在没接上的移动硬盘上）：让用户接上再试、另选一个，或者退出。不悄悄换成空的资料库 */
 async function findDataDir(): Promise<boolean> {
-  while (!existsSync(dataDir)) {
+  // 默认位置第一次用时还不存在，后面会建好；只有换过的位置找不到才问
+  while (dataDir !== defaultDataDir && !existsSync(dataDir)) {
     // 还没有窗口，提示框要自己到最前面，不然会被别的应用挡住
     app.focus({ steal: true })
     const r = await dialog.showMessageBox({
@@ -125,7 +140,9 @@ function setup(): void {
     onNotice: (n: ImportNotice) => send('library:notice', n)
   })
   const changed = () => send('library:changed')
+  let sync: SyncService | null = null
   protocol.handle(SCHEME, createHandler({
+    fetchMissing: (hash) => sync?.download(hash) ?? Promise.resolve(false),
     fileFor: (hash) => {
       try {
         return library.findDuplicate({ hash }) ? store.pathFor(hash) : null
@@ -148,6 +165,8 @@ function setup(): void {
     ipcMain.handle(channel, (e, ...args) => {
       // 只接受自己窗口的请求
       if (e.sender !== win?.webContents) throw new Error('unknown sender')
+      // 改了东西的话，同步过几秒会传上去（只查本地数据库，不联网）
+      sync?.poke()
       return fn(...args)
     })
 
@@ -313,9 +332,13 @@ function setup(): void {
     const p = mainFile(str(id, 'id'))
     if (p) await shell.openPath(p)
   })
-  handle('library:fileMissing', (id) => {
+  handle('library:fileMissing', async (id) => {
     const p = mainFile(str(id, 'id'))
-    return !p || !existsSync(p)
+    if (!p) return true
+    if (existsSync(p)) return false
+    // 在别的设备上加的论文：先从同步下载
+    const hash = p.split(/[\\/]/).pop()!.replace(/\.pdf$/, '')
+    return !(await (sync?.download(hash) ?? Promise.resolve(false)).catch(() => false))
   })
   handle('library:relink', async (id) => {
     if (!win) return 'cancel'
@@ -362,6 +385,47 @@ function setup(): void {
   const notesChanged = () => send('notes:changed')
   notes.watch(notesChanged)
   app.on('before-quit', () => notes.close())
+
+  // —— 同步：设置和密钥存在资料文件夹的 sync/ 里，密钥用系统钥匙串加密 ——
+  sync = new SyncService({
+    dataDir,
+    db,
+    library,
+    notes,
+    files: store,
+    crypt: {
+      available: () => safeStorage.isEncryptionAvailable(),
+      encrypt: (t) => safeStorage.encryptString(t),
+      decrypt: (b) => safeStorage.decryptString(b)
+    },
+    fetch: (url, init) => net.fetch(url, init as RequestInit),
+    onStatus: (st) => send('sync:status', st),
+    onReceived: () => {
+      notes.scan()
+      changed()
+      notesChanged()
+    }
+  })
+  const syncSvc = sync
+  const conn = (v: unknown): SyncConnect => {
+    const o = (v ?? {}) as Record<string, unknown>
+    if (o['kind'] === 'folder') return { kind: 'folder', path: str(o['path'], 'path') }
+    if (o['kind'] !== 'webdav') throw new Error('bad sync kind')
+    return { kind: 'webdav', url: str(o['url'] ?? '', 'url'), username: str(o['username'], 'username'), password: str(o['password'], 'password'), ...(typeof o['folder'] === 'string' ? { folder: o['folder'] } : {}) }
+  }
+  handle('sync:status', () => syncSvc.get())
+  handle('sync:probe', (c) => syncSvc.probe(conn(c)))
+  handle('sync:connect', (c, pw) => syncSvc.connect(conn(c), pw === null ? null : str(pw, 'password')))
+  handle('sync:disconnect', () => syncSvc.disconnect())
+  handle('sync:syncNow', () => syncSvc.syncNow())
+  handle('sync:pickFolder', async () => {
+    if (!win) return null
+    const r = await dialog.showOpenDialog(win, { title: '选择同步文件夹', message: '比如 Dropbox、OneDrive 或 iCloud 云盘里的一个文件夹。Flax 会在里面建一个 Flax 文件夹。', buttonLabel: '用这个文件夹', properties: ['openDirectory', 'createDirectory'] })
+    return r.canceled ? null : (r.filePaths[0] ?? null)
+  })
+  app.on('browser-window-focus', () => syncSvc.focused())
+  app.on('before-quit', () => syncSvc.stop())
+  syncSvc.start()
   handle('notes:list', () => notes.list())
   handle('notes:read', (id) => notes.read(str(id, 'id')))
   handle('notes:create', (opts) => {
@@ -578,7 +642,7 @@ function setMenu(): void {
 }
 
 app.whenReady().then(async () => {
-  if (!(await findDataDir())) return app.quit()
+  if (!moveLegacyData() || !(await findDataDir())) return app.quit()
   mkdirSync(dataDir, { recursive: true })
   appearance = createAppearance(dataDir, () => setMenu())
   // 打包后的图标来自 .icns；开发时用 png 换掉 Electron 的默认图标。图标出问题不能挡住窗口打开

@@ -14,3 +14,7 @@ test('bare url', () => {
 test('plain text is not a link', () => {
   expect(linkAt(line, 0)).toBeNull()
 })
+test('annotation link written after the rename', () => {
+  const l = '[第 2 页](flax://annotation/def-456)'
+  expect(linkAt(l, 2)).toEqual({ kind: 'annotation', target: 'def-456' })
+})

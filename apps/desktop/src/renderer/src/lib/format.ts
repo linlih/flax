@@ -1,5 +1,5 @@
 // 界面上显示的文字：状态、来源、时间、大小。
-import type { MatchIssue, MetadataSource, Paper, ReadingStatus } from '@paper/core'
+import type { MatchIssue, MetadataSource, Paper, ReadingStatus } from '@flax/core'
 
 export const STATUS_LABEL: Record<ReadingStatus, string> = { inbox: '未读', to_read: '待读', reading: '在读', done: '读过' }
 

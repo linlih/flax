@@ -3,7 +3,7 @@
 // 不再弹页面上的浮动卡片。在页面上点高亮时，列表滚到那一条并标出来。批注多了才显示按颜色、有没有评论筛选。
 // 右键一条：添加/编辑评论、摘到笔记、复制原文、删除，和页面上右键高亮一样。
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { quoteBlock, type Annotation, type HighlightColor } from '@paper/core'
+import { quoteBlock, type Annotation, type HighlightColor } from '@flax/core'
 import { Icon } from '../components/Icon'
 import { COLORS } from './colors'
 import { kbd, mod } from '../lib/platform'

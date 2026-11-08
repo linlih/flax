@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, describe, expect, it } from 'vitest'
-import { copyData, saveDataDir, savedDataDir, targetKind } from './dataLocation'
+import { copyData, migrateLegacyDataDir, saveDataDir, savedDataDir, targetKind } from './dataLocation'
 
 const dirs: string[] = []
 const tmp = () => {
@@ -63,5 +63,54 @@ describe('data location', () => {
 
   it('fails when there is no database to copy', async () => {
     await expect(copyData(tmp(), join(tmp(), 'x'))).rejects.toThrow()
+  })
+
+  it('moves the pre-rename Paper data into Flax/Library and leaves Electron caches behind', () => {
+    const root = tmp()
+    const legacy = join(root, 'Paper')
+    const target = join(root, 'Flax', 'Library')
+    mkdirSync(join(legacy, 'files', 'ab'), { recursive: true })
+    mkdirSync(join(legacy, 'notes'))
+    mkdirSync(join(legacy, 'ai', 'keys'), { recursive: true })
+    mkdirSync(join(legacy, 'Cache'))
+    writeFileSync(join(legacy, 'library.sqlite'), 'db')
+    writeFileSync(join(legacy, 'files', 'ab', 'x.pdf'), 'pdf')
+    writeFileSync(join(legacy, 'notes', 'a.md'), 'note')
+    writeFileSync(join(legacy, 'ai', 'keys', 'k'), 'key')
+    writeFileSync(join(legacy, 'prefs.json'), '{}')
+    expect(migrateLegacyDataDir(legacy, target)).toBe(true)
+    expect(readFileSync(join(target, 'library.sqlite'), 'utf8')).toBe('db')
+    expect(readFileSync(join(target, 'files', 'ab', 'x.pdf'), 'utf8')).toBe('pdf')
+    expect(readFileSync(join(target, 'notes', 'a.md'), 'utf8')).toBe('note')
+    expect(readFileSync(join(target, 'ai', 'keys', 'k'), 'utf8')).toBe('key')
+    expect(existsSync(join(target, 'prefs.json'))).toBe(true)
+    expect(existsSync(join(legacy, 'library.sqlite'))).toBe(false)
+    expect(existsSync(join(legacy, 'Cache'))).toBe(true)
+    expect(existsSync(join(target, 'Cache'))).toBe(false)
+    // 第二次启动什么都不做
+    expect(migrateLegacyDataDir(legacy, target)).toBe(false)
+  })
+
+  it('leaves both folders alone when the new place already has a library', () => {
+    const root = tmp()
+    const legacy = join(root, 'Paper')
+    const target = join(root, 'Flax', 'Library')
+    mkdirSync(legacy)
+    mkdirSync(target, { recursive: true })
+    writeFileSync(join(legacy, 'library.sqlite'), 'old')
+    writeFileSync(join(target, 'library.sqlite'), 'new')
+    expect(migrateLegacyDataDir(legacy, target)).toBe(false)
+    expect(readFileSync(join(legacy, 'library.sqlite'), 'utf8')).toBe('old')
+  })
+
+  it('stops without touching the database when an item is already at the new place', () => {
+    const root = tmp()
+    const legacy = join(root, 'Paper')
+    const target = join(root, 'Flax', 'Library')
+    mkdirSync(join(legacy, 'notes'), { recursive: true })
+    mkdirSync(join(target, 'notes'), { recursive: true })
+    writeFileSync(join(legacy, 'library.sqlite'), 'db')
+    expect(() => migrateLegacyDataDir(legacy, target)).toThrow(/notes/)
+    expect(existsSync(join(legacy, 'library.sqlite'))).toBe(true)
   })
 })

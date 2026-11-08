@@ -1,5 +1,5 @@
 // 标注颜色，阅读器和工具栏共用（单独放一个文件，组件文件只导出组件，热更新才能生效）
-import type { HighlightColor } from '@paper/core'
+import type { HighlightColor } from '@flax/core'
 
 export const COLORS: { id: HighlightColor; label: string }[] = [
   { id: 'yellow', label: '黄色' },

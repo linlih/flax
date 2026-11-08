@@ -1,4 +1,4 @@
-// 设置：AI 服务、翻译、外观、数据（资料文件夹、备份）、关于。
+// 设置：AI 服务、翻译、外观、同步、数据（资料文件夹、备份）、关于。
 // AI 服务可以加好几家，每家填自己的 Key；用哪个模型在对话里选，这里不管。
 import { useEffect, useState } from 'react'
 import { AI_VENDORS, vendorOf } from '../../../shared/aiVendors'
@@ -7,6 +7,7 @@ import { host, serviceName, useAiStatus } from '../lib/ai'
 import { api } from '../lib/library'
 import { FILES_APP, kbd, KEYCHAIN } from '../lib/platform'
 import { Icon, Spinner } from './Icon'
+import { SyncSettings } from './SyncSettings'
 import { TranslateSettings } from './TranslateSettings'
 
 const GROUPS = ['国际', '国内', '其他'] as const
@@ -72,6 +73,7 @@ export function SettingsView({ onShortcuts }: { onShortcuts: () => void }) {
     </section>
     <TranslateSettings status={status} />
     <AppearanceSection />
+    <SyncSettings />
     <DataSection />
     <AboutSection onShortcuts={onShortcuts} />
     </div>
@@ -157,8 +159,9 @@ function DataSection() {
 function updateText(u: UpdateState): string | null {
   if (u.kind === 'checking') return '正在检查更新…'
   if (u.kind === 'latest') return '已经是最新版本'
+  if (u.kind === 'available') return `发现新版本 ${u.version}`
   if (u.kind === 'downloading') return `正在下载 ${u.version}${u.percent !== undefined ? `（${u.percent}%）` : ''}`
-  if (u.kind === 'ready') return `${u.version} 已经下载好，重启后生效`
+  if (u.kind === 'ready') return `${u.version} 已经下载好，正在重启…`
   if (u.kind === 'error') return `检查更新失败：${u.message}`
   if (u.kind === 'dev') return '开发版不检查更新'
   return null
@@ -178,8 +181,8 @@ function AboutSection({ onShortcuts }: { onShortcuts: () => void }) {
       <div className="card">
         <div className="settings-row">
           <span className="rt"><b>Flax {version}</b><small>{updateText(update) ?? '开源软件，AGPL-3.0 许可'}</small></span>
-          {update.kind === 'ready' ? (
-            <button type="button" className="btn btn-s btn-p" onClick={() => void api.update.install()}>重启更新</button>
+          {update.kind === 'available' ? (
+            <button type="button" className="btn btn-s btn-p" onClick={() => void api.update.install()}>立即更新</button>
           ) : (
             <button type="button" className="btn btn-s" disabled={update.kind === 'checking' || update.kind === 'downloading'} onClick={() => void api.update.check()}>检查更新</button>
           )}

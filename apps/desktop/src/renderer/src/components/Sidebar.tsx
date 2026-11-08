@@ -1,5 +1,5 @@
 import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
-import type { Folder } from '@paper/core'
+import type { Folder } from '@flax/core'
 import { Icon, type IconName } from './Icon'
 import type { View } from '../lib/library'
 import { composing, isMac, kbd } from '../lib/platform'
@@ -16,7 +16,7 @@ const KNOWLEDGE: { id: View; label: string; icon: IconName }[] = [
   { id: 'notes', label: '笔记', icon: 'notes' }
 ]
 
-export const PAPER_DRAG_TYPE = 'application/x-paper-ids'
+export const PAPER_DRAG_TYPE = 'application/x-flax-paper-ids'
 
 interface Props {
   view: View

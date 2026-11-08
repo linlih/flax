@@ -72,9 +72,9 @@ const L = {
   codeLast: line('cm-lp-codeblock cm-lp-codeblock-last')
 }
 
-const ANNO_RE = /\(paper:\/\/annotation\/([\w-]+)\)/
+const ANNO_RE = /\((?:flax|paper):\/\/annotation\/([\w-]+)\)/
 
-/** pos 所在的摘录引用块（"> 原文" + "> [第 N 页](paper://annotation/…)"）和它指向的批注 */
+/** pos 所在的摘录引用块（"> 原文" + "> [第 N 页](flax://annotation/…)"）和它指向的批注 */
 export function excerptAt(state: EditorState, pos: number): { id: string; from: number; to: number } | null {
   for (let n: ReturnType<typeof syntaxTree>['topNode'] | null = syntaxTree(state).resolveInner(pos, 1); n; n = n.parent) {
     if (n.name !== 'Blockquote') continue
@@ -133,7 +133,7 @@ function build(view: EditorView): { all: DecorationSet; atomic: DecorationSet } 
           const open = label[0]
           const close = label[1]
           if (open && close && close.from > open.to) {
-            out.push((href.startsWith('paper://annotation/') ? M.anno : M.link).range(open.to, close.from))
+            out.push((/^(flax|paper):\/\/annotation\//.test(href) ? M.anno : M.link).range(open.to, close.from))
             if (!touches(node.from, node.to)) {
               out.push(hide.range(open.from, open.to), hide.range(close.from, node.to))
             } else {

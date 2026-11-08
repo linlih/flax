@@ -107,7 +107,7 @@ jobs:
             ~\AppData\Local\electron-builder\Cache
       - name: Package
         shell: bash
-        run: for i in 1 2 3; do npm run dist:win -w @paper/desktop && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
+        run: for i in 1 2 3; do npm run dist:win -w @flax/desktop && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: flax-windows

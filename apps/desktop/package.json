@@ -1,5 +1,5 @@
 {
-  "name": "@paper/desktop",
+  "name": "@flax/desktop",
   "version": "0.1.4",
   "private": true,
   "license": "AGPL-3.0-only",
@@ -26,8 +26,8 @@
     "@codemirror/state": "6.7.6",
     "@codemirror/view": "6.43.15",
     "@lezer/highlight": "1.2.5",
-    "@paper/core": "*",
-    "@paper/ui": "*",
+    "@flax/core": "*",
+    "@flax/ui": "*",
     "@types/node": "^26.6.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",

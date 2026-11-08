@@ -62,9 +62,9 @@ export function extractLinks(body: string): string[] {
   return [...out]
 }
 
-/** 正文里引用的批注 id：链接写成 paper://annotation/<id> */
+/** 正文里引用的批注 id：链接写成 flax://annotation/<id>（改名前写的 paper:// 也认） */
 export function extractAnnotationRefs(body: string): string[] {
-  return [...new Set([...body.matchAll(/paper:\/\/annotation\/([0-9a-f-]{8,})/gi)].map((m) => m[1]!))]
+  return [...new Set([...body.matchAll(/(?:flax|paper):\/\/annotation\/([0-9a-f-]{8,})/gi)].map((m) => m[1]!))]
 }
 
 /** 列表里显示的一句摘要：跳过标题、引用和空行 */
@@ -81,7 +81,7 @@ export function noteExcerpt(body: string, max = 80): string {
 /** 批注变成笔记里的引用块，末尾带一个能跳回原文的链接 */
 export function quoteBlock(quote: string, page: number, annotationId: string, comment?: string): string {
   const lines = quote.replace(/\s+/g, ' ').trim()
-  const parts = [`> ${lines}`, `> [第 ${page} 页](paper://annotation/${annotationId})`]
+  const parts = [`> ${lines}`, `> [第 ${page} 页](flax://annotation/${annotationId})`]
   if (comment?.trim()) parts.push('', comment.trim())
   return parts.join('\n')
 }

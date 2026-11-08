@@ -30,7 +30,7 @@ npm run dev        # 开发模式启动
 npm test           # 单元测试
 npm run typecheck  # 类型检查
 npm run dist       # 打 macOS 安装包，输出在 apps/desktop/dist
-npm run dist:win -w @paper/desktop   # 在 Windows 上打安装包
+npm run dist:win -w @flax/desktop   # 在 Windows 上打安装包
 npm run release -- 0.1.2 -m "发布说明" --push   # 发布新版本，GitHub Actions 打包上传
 ```
 
