@@ -8,6 +8,8 @@ import { merge3 } from './diff3'
 import { createLibrary, readLibraryInfo, SyncEngine, unlockLibrary } from './engine'
 import { Hlc } from './hlc'
 import { createNoteSyncStore, type NoteDoc, type NoteFiles } from './noteStore'
+import { mergeTurns } from './conversationStore'
+import type { StoredTurn } from '../conversations'
 import { mergeRecord, stampChanges } from './record'
 import { memoryBackend, nodeCodec, webdavServer } from './node.testutil'
 
@@ -45,7 +47,7 @@ function device(backend: ReturnType<typeof memoryBackend>, key: Uint8Array | nul
   const engine = new SyncEngine({
     backend,
     codec: nodeCodec,
-    stores: [lib.syncStore(), noteStore],
+    stores: [lib.syncStore(), lib.conversationSyncStore(), noteStore],
     state: { get: (k) => lib.metaGet(k), set: (k, v) => lib.metaSet(k, v) },
     deviceId: lib.deviceId,
     deviceName: name,
@@ -283,6 +285,98 @@ describe('sync engine', () => {
     await createLibrary(two, nodeCodec, null)
     const a2 = new SyncEngine({ backend: two, codec: nodeCodec, stores: [a.lib.syncStore()], state: { get: (k) => a.lib.metaGet(k), set: (k, v) => a.lib.metaSet(k, v) }, deviceId: a.lib.deviceId, deviceName: 'Mac', platform: 'test', key: null })
     expect((await a2.sync()).sent).toBe(1)
+  })
+})
+
+describe('ai conversations', () => {
+  const t = (id: string, at: string, role: 'user' | 'assistant' = 'user'): StoredTurn => ({ id, role, text: id, at })
+
+  it('merges messages as a set ordered by time, whichever side they come from', () => {
+    const local = [t('a1', '01'), t('a2', '03')]
+    const remote = [t('a1', '01'), t('b1', '02'), t('b2', '04')]
+    expect(mergeTurns(local, remote).map((x) => x.id)).toEqual(['a1', 'b1', 'a2', 'b2'])
+    // 收到几次都一样；坏掉的条目不要
+    const once = mergeTurns(local, remote)
+    expect(mergeTurns(once, remote)).toEqual(once)
+    expect(mergeTurns(local, [{ id: 'x' }, null, 'y', t('a1', '99')]).map((x) => x.id)).toEqual(['a1', 'a2'])
+    // 两边各自的结果一样
+    expect(mergeTurns(remote, local).map((x) => x.id)).toEqual(['a1', 'b1', 'a2', 'b2'])
+  })
+
+  it('keeps the messages both devices added offline, in time order', async () => {
+    const { a, b } = await pair()
+    const ca = a.lib.conversations()
+    const cb = b.lib.conversations()
+    const conv = ca.create('paper-1', '方法是什么？', '2026-11-09T09:00:00.000Z')
+    ca.append(conv.id, { role: 'user', text: '方法是什么？', at: '2026-11-09T09:00:00.000Z' })
+    ca.append(conv.id, { role: 'assistant', text: '分两步。', model: 'm', raw: [{ type: 'text', text: '分两步。' }], rawProvider: 'anthropic', at: '2026-11-09T09:00:05.000Z' })
+    ca.setCurrent('paper-1', conv.id)
+    await a.engine.sync()
+    await b.engine.sync()
+    expect(cb.get(conv.id)?.turns.map((x) => x.text)).toEqual(['方法是什么？', '分两步。'])
+    // 开着哪个对话只属于那台设备
+    expect(cb.current('paper-1')).toBeNull()
+
+    // 两台都离线各问了一句，iPad 上的那句时间在中间
+    ca.append(conv.id, { role: 'user', text: 'Mac 上问的', at: '2026-11-09T09:10:00.000Z' })
+    ca.append(conv.id, { role: 'assistant', text: 'Mac 上的回答', at: '2026-11-09T09:10:05.000Z' })
+    cb.append(conv.id, { role: 'user', text: 'iPad 上问的', at: '2026-11-09T09:05:00.000Z' })
+    cb.append(conv.id, { role: 'assistant', text: 'iPad 上的回答', at: '2026-11-09T09:05:05.000Z' })
+    await a.engine.sync()
+    await b.engine.sync()
+    await a.engine.sync()
+    const want = ['方法是什么？', '分两步。', 'iPad 上问的', 'iPad 上的回答', 'Mac 上问的', 'Mac 上的回答']
+    expect(ca.get(conv.id)?.turns.map((x) => x.text)).toEqual(want)
+    expect(cb.get(conv.id)?.turns.map((x) => x.text)).toEqual(want)
+    expect(cb.get(conv.id)?.turns[1]?.raw).toEqual([{ type: 'text', text: '分两步。' }])
+    expect(cb.list('paper-1')).toEqual([{ id: conv.id, title: '方法是什么？', updatedAt: '2026-11-09T09:10:05.000Z', questions: 3 }])
+    // 再同步什么都不变，也不再发
+    expect(await a.engine.sync()).toEqual({ received: 0, sent: 0 })
+    expect(await b.engine.sync()).toEqual({ received: 0, sent: 0 })
+  })
+
+  it('keeps a rename from one side and new messages from the other; a delete wins but keeps the messages', async () => {
+    const { a, b } = await pair(null)
+    const ca = a.lib.conversations()
+    const cb = b.lib.conversations()
+    const conv = ca.create('p', '旧标题', '2026-11-09T09:00:00.000Z')
+    ca.append(conv.id, { role: 'user', text: 'q1', at: '2026-11-09T09:00:00.000Z' })
+    await a.engine.sync()
+    await b.engine.sync()
+    ca.rename(conv.id, '新标题')
+    cb.append(conv.id, { role: 'user', text: 'q2', at: '2026-11-09T09:01:00.000Z' })
+    await a.engine.sync()
+    await b.engine.sync()
+    await a.engine.sync()
+    for (const c of [ca, cb]) expect(c.get(conv.id)).toMatchObject({ title: '新标题', turns: [{ text: 'q1' }, { text: 'q2' }] })
+
+    // Mac 上删了，iPad 上（还没收到）又问了一句：仍然是删掉的，但那句话合进来了
+    ca.remove(conv.id)
+    cb.setCurrent('p', conv.id)
+    cb.append(conv.id, { role: 'user', text: 'q3', at: '2026-11-09T09:02:00.000Z' })
+    await a.engine.sync()
+    await b.engine.sync()
+    await a.engine.sync()
+    for (const c of [ca, cb]) {
+      expect(c.get(conv.id)).toBeNull()
+      expect(c.list('p')).toEqual([])
+      expect(c.turns(conv.id).map((x) => x.text)).toEqual(['q1', 'q2', 'q3'])
+    }
+    expect(cb.current('p')).toBeNull()
+  })
+
+  it('a new device gets conversations from a snapshot', async () => {
+    const { backend, a } = await pair(null)
+    const ca = a.lib.conversations()
+    const conv = ca.create('p', '对话', '2026-11-09T09:00:00.000Z')
+    for (let i = 0; i < 6; i++) {
+      ca.append(conv.id, { role: 'user', text: `q${i}`, at: `2026-11-09T09:0${i}:00.000Z` })
+      await a.engine.sync()
+    }
+    expect([...backend.files.keys()].some((k) => k.startsWith('snap/'))).toBe(true)
+    const c = device(backend, null, 'Android')
+    await c.engine.sync()
+    expect(c.lib.conversations().get(conv.id)?.turns.map((x) => x.text)).toEqual(['q0', 'q1', 'q2', 'q3', 'q4', 'q5'])
   })
 })
 

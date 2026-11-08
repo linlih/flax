@@ -3,7 +3,7 @@
 // 删除也是一个字段（_del），所以"删了以后另一台设备又改了"时仍然是删除状态，恢复后改动都在。
 import type { HlcStamp } from './hlc'
 
-export type SyncKind = 'paper' | 'folder' | 'annotation' | 'term' | 'tagColor' | 'note'
+export type SyncKind = 'paper' | 'folder' | 'annotation' | 'term' | 'tagColor' | 'note' | 'conversation'
 
 export interface SyncRecord {
   k: SyncKind

@@ -4,6 +4,8 @@ import type { Annotation, FileRef, Folder, MatchIssue, Paper, PaperMeta, Reading
 import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
 import { createLibrarySyncStore, LIBRARY_SYNC_SCHEMA } from './sync/libraryStore'
+import { createConversationSyncStore } from './sync/conversationStore'
+import { CONVERSATION_SCHEMA, Conversations } from './conversations'
 import type { SyncStore } from './sync/store'
 
 // Node、浏览器和 React Native（加 polyfill）都有全局 crypto.randomUUID
@@ -33,7 +35,7 @@ export type PaperPatch = Partial<
 
 const METADATA_KEYS = ['title', 'authors', 'year', 'venue', 'abstract', 'identifiers'] as const
 
-const SCHEMA_VERSION = 4
+const SCHEMA_VERSION = 5
 
 export type NewAnnotation = Omit<Annotation, 'id' | 'updatedAt' | 'deviceId' | 'createdAt'>
 export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'type' | 'comment'>>
@@ -42,6 +44,7 @@ export class Library {
   readonly deviceId: string
   private now: () => string
   private uuid: () => string
+  private convs: Conversations | null = null
 
   constructor(private db: SqlDb, opts: LibraryOptions = {}) {
     this.now = opts.now ?? (() => new Date().toISOString())
@@ -122,6 +125,8 @@ export class Library {
         }
         this.db.prepare("DELETE FROM meta WHERE key = 'tagColors'").run()
       }
+      // AI 对话原来是 ai/conversations 下的 JSON 文件；进数据库才能同步。旧文件由各平台读进来（Conversations.importLegacy）
+      if (v < 5) this.db.exec(CONVERSATION_SCHEMA)
       this.db.exec(`PRAGMA user_version = ${SCHEMA_VERSION}`)
     })
   }
@@ -147,6 +152,16 @@ export class Library {
   }
 
   // —— 同步 ——
+
+  /** AI 对话 */
+  conversations(): Conversations {
+    return (this.convs ??= new Conversations(this.db, (fn) => this.tx(fn), this.now, this.uuid))
+  }
+
+  /** 给同步引擎用的接口：AI 对话（见 sync/conversationStore.ts） */
+  conversationSyncStore(): SyncStore {
+    return createConversationSyncStore(this.db, this.conversations(), (fn) => this.tx(fn))
+  }
 
   /** 给同步引擎用的接口（见 sync/libraryStore.ts） */
   syncStore(): SyncStore {

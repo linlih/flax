@@ -1,10 +1,12 @@
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { DatabaseSync } from 'node:sqlite'
+import { Library } from '@flax/core'
 import { describe, expect, it } from 'vitest'
 import type { AiEvent } from '../../shared/api'
 import { AiError, anthropicProvider, openaiProvider, type Provider, type RunRequest } from './providers'
-import { AiService, titleFor } from './service'
+import { AiService, importConversationFiles, titleFor } from './service'
 import { AiSettings, type Crypt } from './settings'
 import { levelsFor, resolveEffort } from '../../shared/effort'
 
@@ -14,6 +16,8 @@ const fakeCrypt = (ok = true): Crypt => ({
   decrypt: (b) => b.toString().replace(/^enc:/, '')
 })
 const tmp = () => mkdtempSync(join(tmpdir(), 'paper-ai-'))
+/** 对话存在数据库里：每个测试一个内存数据库 */
+const convs = () => new Library(new DatabaseSync(':memory:')).conversations()
 
 function sse(events: unknown[]): Response {
   const body = events.map((e) => `event: ${(e as { type: string }).type}\ndata: ${JSON.stringify(e)}\n\n`).join('')
@@ -221,7 +225,7 @@ describe('thinking depth per model', () => {
     const seen: RunRequest[] = []
     const events: AiEvent[] = []
     const svc = new AiService({
-      dir,
+      conversations: convs(),
       settings,
       emit: (e) => events.push(e),
       onStatus: () => {},
@@ -253,7 +257,7 @@ describe('translate engine', () => {
     const events: AiEvent[] = []
     let ran = 0
     const svc = new AiService({
-      dir,
+      conversations: convs(),
       settings,
       emit: (e) => events.push(e),
       onStatus: () => {},
@@ -282,7 +286,7 @@ describe('translate engine', () => {
     const asked: [string, boolean][] = []
     const events: AiEvent[] = []
     const svc = new AiService({
-      dir,
+      conversations: convs(),
       settings: new AiSettings(dir, fakeCrypt()),
       emit: (e) => events.push(e),
       onStatus: () => {},
@@ -343,7 +347,7 @@ describe('service', () => {
     const events: AiEvent[] = []
     const seen: RunRequest[] = []
     const svc = new AiService({
-      dir,
+      conversations: convs(),
       settings,
       emit: (e) => events.push(e),
       onStatus: () => {},
@@ -385,13 +389,38 @@ describe('service', () => {
     expect(svc.conversations('ph')).toMatchObject({ current: null, list: [{ title: titleFor('这是什么意思？', 'scaled dot-product attention divides by the square root') }] })
   })
 
-  it('reads the old single-conversation file as one conversation', () => {
+  it('reads the old conversation files into the database once, and keeps the files aside', () => {
     const { svc } = setup(async () => ({ text: '', model: 'm', usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 } }))
-    const dir = (svc as unknown as { d: { dir: string } }).d.dir
+    const conversations = (svc as unknown as { d: { conversations: ReturnType<typeof convs> } }).d.conversations
+    const dir = tmp()
     mkdirSync(join(dir, 'conversations'), { recursive: true })
+    // 最早的格式：一篇论文一个对话
     writeFileSync(join(dir, 'conversations', 'old.json'), JSON.stringify({ version: 1, turns: [{ role: 'user', text: 'q1', at: '2026-11-01T00:00:00Z' }, { role: 'assistant', text: 'a1', at: '2026-11-01T00:01:00Z' }] }))
+    // 0.1.4 的格式：好几个对话，记着开着哪个
+    const raw = [{ type: 'thinking', thinking: 't', signature: 's' }, { type: 'text', text: 'b1' }]
+    writeFileSync(join(dir, 'conversations', 'p2.json'), JSON.stringify({ version: 2, current: 'c2', conversations: [
+      { id: 'c1', title: '第一个', createdAt: '2026-11-02T00:00:00Z', updatedAt: '2026-11-02T00:01:00Z', turns: [{ role: 'user', text: 'x', at: '2026-11-02T00:00:00Z' }] },
+      { id: 'c2', title: '第二个', createdAt: '2026-11-03T00:00:00Z', updatedAt: '2026-11-03T00:01:00Z', turns: [{ role: 'user', text: 'y', quote: '原文', at: '2026-11-03T00:00:00Z' }, { role: 'assistant', text: 'b1', raw, rawProvider: 'anthropic', model: 'claude-opus-5-5', at: '2026-11-03T00:01:00Z' }] }
+    ] }))
+    writeFileSync(join(dir, 'conversations', 'bad.json'), '{not json')
+    expect(importConversationFiles(dir, conversations)).toBe(2)
     expect(svc.conversations('old')).toMatchObject({ list: [{ title: 'q1', updatedAt: '2026-11-01T00:01:00Z', questions: 1 }] })
     expect(svc.conversation('old').map((t) => t.text)).toEqual(['q1', 'a1'])
+    expect(svc.conversations('p2')).toEqual({ current: 'c2', list: [
+      { id: 'c2', title: '第二个', updatedAt: '2026-11-03T00:01:00Z', questions: 1 },
+      { id: 'c1', title: '第一个', updatedAt: '2026-11-02T00:00:00Z', questions: 1 }
+    ] })
+    expect(svc.conversation('p2')).toEqual([{ role: 'user', text: 'y', quote: '原文', at: '2026-11-03T00:00:00Z' }, { role: 'assistant', text: 'b1', model: 'claude-opus-5-5', at: '2026-11-03T00:01:00Z' }])
+    // 思考块还在，下次问同一个模型时原样发回去
+    expect(conversations.turns('c2')[1]!.raw).toEqual(raw)
+    // 读过的文件挪到一边，坏的留在原地；再读一次什么都不变
+    expect(existsSync(join(dir, 'conversations', 'p2.json'))).toBe(false)
+    expect(existsSync(join(dir, 'conversations-imported', 'p2.json'))).toBe(true)
+    expect(existsSync(join(dir, 'conversations', 'bad.json'))).toBe(true)
+    writeFileSync(join(dir, 'conversations', 'p2.json'), readFileSync(join(dir, 'conversations-imported', 'p2.json')))
+    importConversationFiles(dir, conversations)
+    expect(svc.conversations('p2').list).toHaveLength(2)
+    expect(svc.conversation('p2')).toHaveLength(2)
   })
 
   it('keeps the conversation and leaves failed turns out of later requests', async () => {
@@ -463,7 +492,7 @@ describe('service', () => {
   it('without a key every AI call fails gently', async () => {
     const dir = tmp()
     const events: AiEvent[] = []
-    const svc = new AiService({ dir, settings: new AiSettings(dir, fakeCrypt()), emit: (e) => events.push(e), onStatus: () => {}, fetch: async () => new Response('') })
+    const svc = new AiService({ conversations: convs(), settings: new AiSettings(dir, fakeCrypt()), emit: (e) => events.push(e), onStatus: () => {}, fetch: async () => new Response('') })
     svc.ask('p1', 'x')
     await new Promise((r) => setTimeout(r, 10))
     expect(events[0]).toMatchObject({ type: 'error', code: 'no_key' })
@@ -486,7 +515,7 @@ describe('model lists', () => {
     const dir = tmp()
     const settings = new AiSettings(dir, fakeCrypt())
     let calls = 0
-    const svc = new AiService({ dir, settings, emit: () => {}, onStatus: () => {}, fetch: async () => new Response(''), provider: () => ({ run: async () => { throw new Error('no') }, models: async () => (calls++, [{ id: 'claude-haiku-5-5' }, { id: 'claude-opus-5-5' }]) }) })
+    const svc = new AiService({ conversations: convs(), settings, emit: () => {}, onStatus: () => {}, fetch: async () => new Response(''), provider: () => ({ run: async () => { throw new Error('no') }, models: async () => (calls++, [{ id: 'claude-haiku-5-5' }, { id: 'claude-opus-5-5' }]) }) })
     settings.saveService({ vendor: 'openai', baseUrl: '' })
     expect(await svc.models('openai')).toMatchObject({ ok: false, message: expect.stringContaining('Key') })
     svc.saveService({ vendor: 'anthropic', baseUrl: '' }, 'k')

@@ -91,7 +91,7 @@ export class SyncService {
         throw e
       }
     }
-    this.stores = [d.library.syncStore(), createNoteSyncStore(d.db, d.library.deviceId, d.notes.syncFiles((e) => console.error('trash note:', e)), tx, () => crypto.randomUUID())]
+    this.stores = [d.library.syncStore(), d.library.conversationSyncStore(), createNoteSyncStore(d.db, d.library.deviceId, d.notes.syncFiles((e) => console.error('trash note:', e)), tx, () => crypto.randomUUID())]
     this.status = { config: null, encrypted: false, state: 'off', canEncrypt: d.crypt.available() }
     this.load()
   }

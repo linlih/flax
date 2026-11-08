@@ -16,7 +16,9 @@ interface Spec {
 
 const str = (v: unknown, def = ''): string => (typeof v === 'string' ? v : def)
 
-const SPECS: Record<Exclude<SyncKind, 'note'>, Spec> = {
+type LibKind = Exclude<SyncKind, 'note' | 'conversation'>
+
+const SPECS: Record<LibKind, Spec> = {
   paper: {
     table: 'papers',
     local: ['readingPosition'],
@@ -88,9 +90,9 @@ export const LIBRARY_SYNC_SCHEMA = `
 type Row = { id: string; data: string; deleted: number; updated_at: string; rec: string | null }
 
 export function createLibrarySyncStore(db: SqlDb, deviceId: string, tx: <T>(fn: () => T) => T, now: () => string = () => new Date().toISOString()): SyncStore {
-  const kinds = Object.keys(SPECS) as Exclude<SyncKind, 'note'>[]
+  const kinds = Object.keys(SPECS) as LibKind[]
 
-  const strip = (kind: Exclude<SyncKind, 'note'>, data: Record<string, unknown>) => {
+  const strip = (kind: LibKind, data: Record<string, unknown>) => {
     const d = { ...data }
     for (const k of [...BOOKKEEPING, ...SPECS[kind].local]) delete d[k]
     return d
@@ -148,8 +150,8 @@ export function createLibrarySyncStore(db: SqlDb, deviceId: string, tx: <T>(fn: 
         collect(hlc)
         let n = 0
         for (const remote of recs) {
-          if (remote.k === 'note' || !(remote.k in SPECS) || typeof remote.id !== 'string' || !remote.d || typeof remote.d !== 'object') continue
-          const kind = remote.k
+          if (!(remote.k in SPECS) || typeof remote.id !== 'string' || !remote.d || typeof remote.d !== 'object') continue
+          const kind = remote.k as LibKind
           const spec = SPECS[kind]
           hlc.observe(maxStamp(remote))
           const sh = db.prepare('SELECT rec FROM sync_shadow WHERE kind = ? AND id = ?').get(kind, remote.id) as { rec: string } | undefined

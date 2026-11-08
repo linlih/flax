@@ -1,11 +1,12 @@
 // 读 PDF 的文字和自带信息，给识别用。只读前两页，大文件也很快。
-import type { PdfFacts, TextLine } from '@flax/core'
+import { NotAPdfError, type PdfFacts, type TextLine } from '@flax/core'
 
 type PdfJs = typeof import('pdfjs-dist/legacy/build/pdf.mjs')
 let pdfjs: Promise<PdfJs> | null = null
 const load = () => (pdfjs ??= import('pdfjs-dist/legacy/build/pdf.mjs'))
 
-export class NotAPdfError extends Error {}
+// 不是 PDF 时抛的错误在 core 里定义，导入流程（core 的 Importer）才认得
+export { NotAPdfError }
 
 export async function readPdfFacts(data: Uint8Array, fileName: string): Promise<PdfFacts> {
   const { getDocument } = await load()

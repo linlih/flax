@@ -1,5 +1,5 @@
 import { expect, test } from 'vitest'
-import { citeMarker, costOf, extractJson, joinPages, pageOfOffset, parseKeyPoints, splitCitations, stripCitations } from './ai'
+import { citeMarker, costOf, extractJson, joinPages, pageOfOffset, parseKeyPoints, splitCitations, stripCitations } from './cost'
 
 test('citations split out of the answer and number repeats once', () => {
   const s = `方法很简单${citeMarker(3, 'We keep  both.')}，效果更好${citeMarker(5, 'Results show')}，见上${citeMarker(3, 'We keep both.')}。`

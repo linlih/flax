@@ -10,7 +10,7 @@ import { Importer } from './importer'
 import { createNet } from './net'
 import { createHandler, SCHEME, SCHEME_PRIVILEGES } from './protocol'
 import { createAppearance } from './appearance'
-import { AiService } from './ai/service'
+import { AiService, importConversationFiles } from './ai/service'
 import { AiSettings } from './ai/settings'
 import { AppleTranslator } from './ai/apple'
 import { copyData, migrateLegacyDataDir, saveDataDir, savedDataDir, targetKind } from './dataLocation'
@@ -245,6 +245,7 @@ function setup(): void {
       cancelId: 1
     })
     if (ok.response !== 0) return false
+    // ai/conversations：0.1.4 以前的备份里对话还是文件，恢复后启动时读进数据库
     const items = ['library.sqlite', 'library.sqlite-wal', 'library.sqlite-shm', 'files', 'notes', 'prefs.json', join('ai', 'conversations'), join('ai', 'settings.json')]
     db.close()
     await mkdir(join(aside, 'ai'), { recursive: true })
@@ -254,7 +255,7 @@ function setup(): void {
     app.exit(0)
     return true
   })
-  // 备份：数据库用 VACUUM INTO 拷一份一致的快照，再复制 PDF、笔记、AI 对话和偏好；Key 是本机加密的，不备份
+  // 备份：数据库用 VACUUM INTO 拷一份一致的快照（AI 对话也在里面），再复制 PDF、笔记和偏好；Key 是本机加密的，不备份
   handle('app:backup', async () => {
     if (!win) return null
     const r = await dialog.showOpenDialog(win, { title: '选择备份放在哪里', buttonLabel: '备份到这里', properties: ['openDirectory', 'createDirectory'] })
@@ -265,7 +266,7 @@ function setup(): void {
     if (existsSync(target)) throw new Error('那里已经有一个同名的备份了，过一分钟再试。')
     await mkdir(target, { recursive: true })
     db.exec(`VACUUM INTO '${join(target, 'library.sqlite').replace(/'/g, "''")}'`)
-    for (const name of ['files', 'notes', 'prefs.json', join('ai', 'conversations'), join('ai', 'settings.json')]) {
+    for (const name of ['files', 'notes', 'prefs.json', join('ai', 'settings.json')]) {
       const from = join(dataDir, name)
       if (existsSync(from)) await cp(from, join(target, name), { recursive: true })
     }
@@ -460,9 +461,12 @@ function setup(): void {
   // macOS 自带翻译的小助手：打包后放在 Resources/bin，开发时用 native/out 里编好的
   const apple = new AppleTranslator(app.isPackaged ? join(process.resourcesPath, 'bin', 'flax-translate') : join(app.getAppPath(), 'native', 'out', 'flax-translate'))
   app.on('will-quit', () => apple.stop())
+  // 以前存成文件的对话读进数据库（只有第一次启动新版本时有事做）
+  const conversations = library.conversations()
+  importConversationFiles(aiDir, conversations)
   const ai = new AiService({
     apple,
-    dir: aiDir,
+    conversations,
     settings: new AiSettings(aiDir, {
       available: () => safeStorage.isEncryptionAvailable(),
       encrypt: (t) => safeStorage.encryptString(t),
