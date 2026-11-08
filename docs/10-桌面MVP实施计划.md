@@ -84,6 +84,9 @@
 
 ### M5（翻译和术语，已完成，待用真实 Key 验收）
 - **翻译**：在论文里选中一段（或右键已有的高亮），右键选"翻译"，旁边弹出译文卡片，流式显示，可以复制。用 AI 对话框里选的那个模型。只发这段文字，加上术语表里在这段出现的词和它们的译法，不记进对话，也不会发论文的其他部分。英文译成中文，中文译成英文；PDF 复制出来的断行和连字符先接上。选的是一个词或短语时，第一行是译法，第二行一句话说明它在论文里的意思（相当于查词卡）。没连 AI 时卡片里提示"去设置"。
+- **翻译服务**（2026-11-07）：设置里的"翻译"可以选 AI 模型，或者腾讯翻译君、百度翻译、有道智云、DeepL、微软翻译的官方 API（用户自己申请 Key，除有道外每月都有免费额度：腾讯 500 万字符、百度个人认证后 100 万、DeepL 免费版 50 万、微软免费层 200 万，以官网为准）。不用 Google 网页版之类的非官方免费接口：会被当成机器人拦下，违反服务条款，随时可能失效，Google 在国内也连不上。Key 和 AI 的 Key 一样存在系统钥匙串里。填好 Key 就自动换成这家，并试译一个词检查。机器翻译不认术语表，卡片顶上照样显示定好的译法；有道查单词时第二行是释义。
+- **macOS 系统翻译**（2026-11-08）：默认的翻译服务，免费、不用注册、在本机翻，文字不离开电脑。用 macOS 26 的 Translation 框架，通过随 App 带的小助手 `native/translate/main.swift` 调用（`scripts/build-native.sh` 在 dev/build 前编成通用二进制，打包放到 `Resources/bin/flax-translate`；要 Xcode 26，没有就跳过，CI 也要 Xcode 26）。英语、中文（简体）两种翻译语言要用户在 系统设置 › 通用 › 语言与地区 › 翻译语言 里下载一次，没窗口的小助手下载不了，所以设置里带着去，切回 Flax 时自动再查。用户没选过时：系统翻译能用就用它，否则有 AI 用 AI，都没有就指向系统翻译引导下载。系统翻译不认术语表。
+- **双击翻译**：选择工具下双击一个词，翻译能用时直接弹出译文卡片；选区留着，右键照样能批注。翻译没设好时双击只是选中。
 - **术语表**：短的选区翻译完可以点"加入术语表"（原文和译法都能改了再存）；已经在表里的词，卡片顶上显示定好的译法，按钮变成"改译法"。之后翻译时同一个词都按这个译法，全文一致。匹配按整词（`head` 不匹配 `headline`），复数、连字符、跨行都算。
 - **术语页**：侧边栏"术语"。表格列出原文、译法、备注和来自哪篇论文（点一下打开）；直接点格子就能改，回车保存、Esc 放弃；可以筛选、手动添加；删除可以撤销。存在 SQLite 的 `terms` 表（schema 版本 3），和论文、批注一样带 `id / updatedAt / deviceId`，软删除。
 - **不做**：整页"原文 / 对照 / 译文"模式（2026-11-07 用户决定：右键翻译够用，阅读器保持简单）。
@@ -96,12 +99,12 @@
 - **不做**：迁移 Zotero 里的批注和笔记（2026-11-07 用户决定：BibTeX 带过来的信息、标签和 PDF 够用）。
 - **还没做**：用一个真实 Zotero 库验收（需要用户的数据）；Markdown 导出；按文件名规则导出 PDF；迁移报告页（现在只有一条汇总提示）。
 
-### M7（打磨和打包，已完成，待签名发布）
+### M7（打磨和打包）
 - **找不到 PDF**：资料文件夹里的 PDF 被移走或删掉时，阅读器说清楚是哪种情况，批注和笔记都还在，按钮"重新选择 PDF…"选回文件后阅读器重新加载；选回同一个文件，批注照原样显示。选的不是 PDF、或者属于库里另一篇，会提示。没有打开文档时不显示底部工具栏。
 - **设置页**：外观（跟随系统 / 浅色 / 深色，和菜单栏 显示 › 外观 同一个设置）；数据（资料文件夹位置、在访达中显示、备份…）；关于（版本、许可、检查更新、键盘快捷键）。备份选一个文件夹，生成"Flax 备份 日期 时间"：数据库用 `VACUUM INTO` 拷一份一致的快照，再复制 PDF、笔记、AI 对话、偏好；API Key 是本机加密的，不备份。
 - **浮层不出界**：翻译卡片、批注卡片靠近页面左右边缘时往里收。
 - **深色模式**：文献库、详情、阅读器、笔记、术语、设置、快捷键表都看过一遍。
-- **版本号**：0.1.0。
+- **版本号**：0.1.1。
 - **出错时让人知道**：笔记没能写进文件（没有权限、磁盘满、文件夹不见了）时，底部显示"没能保存：原因 · 重试"，内容留在编辑器里，下次输入或点重试会再存，存上了恢复"已保存"。其他操作在主进程出错又没被单独处理的，统一弹提示"没能完成：原因"（取消类的不提示）。BibTeX 文件里一条文献都没有时，说清楚可能选错了文件。
 - **从备份恢复**：设置 › 数据 › 恢复…，选一个备份文件夹。先确认；现在的资料整体挪到资料文件夹旁边的"恢复前 日期时间"文件夹（不删），再把备份拷进来，应用自动重启。API Key 保留现在的。
 - **大文献库**：论文超过 200 篇时表格只画看得见的行（上下各多画 20 行），方向键选到画面外的行会先滚过去。筛选的检索文字每篇只算一次并缓存。
@@ -114,11 +117,11 @@
   | 1 万篇里搜索 | ≤ 100ms | 每敲一个字约 1ms，输入到画面更新 30ms（`filterPapers.test.ts` 里有断言） |
   | 划词翻译开始显示 | ≤ 1 秒 | 取决于模型，要用真实 Key 测 |
 - **打包**：electron-builder 26.18.0（固定版本）。`npm run dist -w @paper/desktop` 出未签名的通用包 `dist/Flax-<版本>-universal.dmg` 和 `.zip`（Apple 芯片和 Intel 都能装）；会下载两种架构的 Electron，第一次打 dmg 时还会下载 7-Zip 和 dmgbuild 两个构建工具。`@napi-rs/canvas`（pdf.js 在 Node 里画图用的可选依赖）只装了 arm64 版，用 `x64ArchFiles` 放行；Intel 上它加载不了，pdf.js 只打警告，主进程只读 PDF 文字，不受影响。在本机用 Rosetta 按 Intel 跑过：文献库、打开 PDF、导入 PDF、AI 翻译都正常（Rosetta 第一次翻译代码时打开 PDF 要十几秒，真 Intel 机器上是原生运行）。运行时只带 `@anthropic-ai/sdk` 和 `pdfjs-dist`（主进程读 PDF、阅读器的字体和 CMap），其余都由 Vite 打进 `out/`，所以挪到了 devDependencies。打包后的 App 测过：文献库、打开 PDF、导入 PDF、AI 翻译都正常。打包时发现并修了一个问题：主进程启动时加载开发用的 png 图标失败会挡住窗口，现在只在开发时设置，打包后用 `.icns`。
-- **签名和公证**（发布时做，需要 Apple Developer ID）：钥匙串里装好 "Developer ID Application" 证书，设置 `APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` 三个环境变量，运行 `npm run dist:signed -w @paper/desktop`，会签名、开 hardened runtime（权限见 `build/entitlements.mac.plist`）并提交公证。`appId` 现在是 `app.flax.desktop`，正式发布前换成自己域名下的 ID。
-- **自动更新**：electron-updater 6.8.11，从 GitHub Releases（`linlih/flax`，见 package.json 的 `build.publish`）找新版本。打开应用 10 秒后检查一次，之后每 6 小时一次；有新版本就在后台下载，下好了弹一条"新版本 X 已经下载好 · 重启更新"，不点也会在退出时装上。菜单 Flax › 检查更新… 和 设置 › 关于 可以手动检查，只有手动检查才告诉用户"已经是最新"或失败原因（没发布过版本、连不上网络、没签名）。开发时不检查。macOS 上只有签名的版本能自动更新。测过：打包后的 App 手动检查，仓库还不存在时显示"还没有发布过可以更新的版本"。打包时发现 `import('electron-updater')` 拿到的具名导出是空的（CommonJS 的 getter），改成从 default 上取。
-- **发布一个版本**：改 `apps/desktop/package.json` 的 `version`，设置 `GH_TOKEN`（有 repo 权限的 GitHub token）和签名用的环境变量，运行 `npx electron-builder --mac --publish always`（在 `apps/desktop` 下，先 `npx electron-vite build`），会把 dmg、zip 和 `latest-mac.yml` 传到一个草稿 Release，在 GitHub 上点发布后用户就能收到更新。
+- **签名**（2026-11-08 改，跟 Folio 一样）：不用苹果的 Developer ID，也不公证。`apps/desktop/scripts/macos-signing.sh` 生成一张 Flax 自己的自签名代码证书（`~/.flax-signing/`，名字 "Flax Code Signing"），放进登录钥匙串；打包时 `build/sign.cjs`（electron-builder 的 afterPack）用它签合并后的通用包（electron-builder 自己的签名关掉了：`mac.identity: null`；不开 hardened runtime，它只是公证要用）。每个版本同一张证书签，macOS 认得是同一个应用：Squirrel.Mac 要求新版本和旧版本签名一致，自动更新才装得上，钥匙串里的 API Key 也不会每次更新都重新问。钥匙串里没有这张证书时退回临时签名，打包不会失败，但装好的应用不能自动更新到这个版本。证书要备份：换一张就是另一个应用。代价：第一次打开时 macOS 会拦一下，到"系统设置 › 隐私与安全性"点"仍要打开"（README 里写了）；通过自动更新装的新版本不会再拦。
+- **自动更新**：electron-updater 6.8.11，从 GitHub Releases（`linlih/flax`，见 package.json 的 `build.publish`）读 `latest-mac.yml`。打开应用 10 秒后检查一次，之后每 6 小时一次；有新版本就在后台下载，下好了弹一条"新版本 X 已经下载好 · 重启更新"，不点也会在退出时装上。菜单 Flax › 检查更新… 和 设置 › 关于 可以手动检查，只有手动检查才告诉用户"已经是最新"或失败原因。开发时不检查。打包时发现 `import('electron-updater')` 拿到的具名导出是空的（CommonJS 的 getter），改成从 default 上取。
+- **发布一个版本**：在仓库根目录 `npm run release -- 0.1.2 -m "发布说明" --push`（`apps/desktop/scripts/release.sh`）：改 `apps/desktop/package.json` 的版本号、提交、打带说明的标签、推到 GitHub。`.github/workflows/build.yml` 收到 `v*` 标签后在 macos-26 上（系统翻译小助手要 Xcode 26）跑类型检查和测试，用仓库 secrets 里的 `MAC_CERTIFICATE`、`MAC_CERTIFICATE_PASSWORD` 签名，打包，按标签说明建 Release，传 dmg、zip、blockmap 和 `latest-mac.yml`。在 Actions 页手动 "Run workflow" 只出构建产物不发布。打包时发现 package.json 里写了两个 `extraResources`，后一个把小助手那条盖掉了，合成一个。
 - **许可**：AGPL-3.0，全文在仓库根目录 `LICENSE`，打包时一起放进 App 的 Resources。
-- **还没做**：签名、公证，发布第一个 Release；用真实长论文和真实 Key 复测性能。
+- **还没做**：用真实长论文和真实 Key 复测性能。
 
 
 - **CRDT（Automerge 还是 Yjs）**：阶段 1 只需要"数据结构为同步做好准备"。M1 起所有记录都带 `id`（UUID）、`updatedAt`、`deviceId`，写操作集中在一个仓储层，以后接 CRDT 只改这一层。真正的选型放到阶段 2 开始前。

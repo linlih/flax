@@ -45,20 +45,47 @@ export function pageAt(views: PageViewLike[], x: number, y: number): PageViewLik
   })
 }
 
-/** 文字层的全部文字，和每个文字节点在里面的起点 */
-function layerText(layer: Element): string {
-  return layer.textContent ?? ''
+/** 文字层的全部文字。PDF.js 在每行末尾放一个 <br>，这里算成换行，不然上一行的末尾和下一行的开头会粘在一起 */
+function layerPieces(layer: Element): { node: Node; at: number }[] {
+  const out: { node: Node; at: number }[] = []
+  const walk = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  let at = 0
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (n.nodeType === Node.TEXT_NODE) {
+      out.push({ node: n, at })
+      at += (n as Text).data.length
+    } else if ((n as Element).tagName === 'BR') {
+      out.push({ node: n, at })
+      at += 1
+    }
+  }
+  out.push({ node: layer, at })
+  return out
 }
 
+function layerText(layer: Element): string {
+  let text = ''
+  const walk = document.createTreeWalker(layer, NodeFilter.SHOW_TEXT | NodeFilter.SHOW_ELEMENT)
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) {
+    if (n.nodeType === Node.TEXT_NODE) text += (n as Text).data
+    else if ((n as Element).tagName === 'BR') text += '\n'
+  }
+  return text
+}
+
+/** 选区端点 (node, offset) 在文字层文字里的位置 */
 function offsetIn(layer: Element, node: Node, offset: number): number {
+  const pieces = layerPieces(layer)
+  if (node.nodeType === Node.TEXT_NODE) return (pieces.find((p) => p.node === node)?.at ?? 0) + offset
+  // 端点落在元素上：取它后面第一段文字的起点
   const r = document.createRange()
-  r.setStart(layer, 0)
   try {
-    r.setEnd(node, offset)
+    r.setStart(node, offset)
   } catch {
     return 0
   }
-  return r.toString().length
+  for (const p of pieces) if (p.node !== layer && r.comparePoint(p.node, 0) >= 0) return p.at
+  return pieces[pieces.length - 1]!.at
 }
 
 /** 把当前选中的文字按页拆开，算出每页的矩形（PDF 坐标）和原文 */

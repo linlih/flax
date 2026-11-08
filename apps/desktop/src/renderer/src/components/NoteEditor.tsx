@@ -12,7 +12,6 @@ import { EditorView, keymap, placeholder, type ViewUpdate } from '@codemirror/vi
 import { tags as t } from '@lezer/highlight'
 import type { NoteSummary } from '../../../shared/api'
 import { api } from '../lib/library'
-import { editedLabel } from '../lib/notes'
 import { linkAt } from '../lib/noteLinks'
 import { Icon } from './Icon'
 import { slashCommands } from './slashMenu'
@@ -266,14 +265,12 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
         </div>
       </div>
       <div ref={host} className="note-cm" />
-      <div className="note-foot">
-        {saveError ? (
+      {/* 自动保存不用说；只有没存上时才出来 */}
+      {saveError && (
+        <div className="note-foot">
           <span className="ai-error" role="alert">没能保存：{saveError}<button type="button" className="link" onClick={() => retry.current()}>重试</button></span>
-        ) : (
-          <span>{loaded ? `已保存 · ${editedLabel(loaded.updatedAt)}` : noteId ? '' : '开始输入后自动保存'}</span>
-        )}
-        <span title="⌘B 加粗 · ⌘I 斜体 · ⌘E 代码 · ⌘K 链接 · ⌘L 待办 · ⌘ 点击链接打开">输入 / 插入格式 · 点击摘录跳回论文</span>
-      </div>
+        </div>
+      )}
       {backlinks.length > 0 && (
         <section className="note-backlinks" aria-labelledby="h-back">
           <h3 id="h-back" className="lbl">链接到这里的笔记 · {backlinks.length}</h3>

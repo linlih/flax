@@ -19,7 +19,6 @@ import { parseHash, renderPreview, resolveTarget } from './linkPreview'
 import { AiPanel } from './AiPanel'
 import { TranslateCard } from './TranslateCard'
 import { ReaderToolbar, type Tool } from './ReaderToolbar'
-import { COLORS } from './colors'
 import { useAiStatus } from '../lib/ai'
 
 
@@ -363,8 +362,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
           setActive(null)
           const bar = { at: toSpot(last.right, last.bottom), parts, text: sel.toString() }
           // 高亮、下划线工具：选中就直接标上；选择工具只是选中，要做什么在右键菜单里
-          if (tool === 'highlight' || tool === 'underline') void create(tool, lastColor, false, bar)
-          else setSelBar(bar)
+          if (tool === 'highlight' || tool === 'underline') return void create(tool, lastColor, false, bar)
+          setSelBar(bar)
           return
         }
       }
@@ -372,6 +371,21 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       const hit = annoAt(e.clientX, e.clientY)
       if (hit) setActive({ id: hit.id, at: spotFor(hit) ?? toSpot(e.clientX, e.clientY) })
       else setActive(null)
+    })
+  }
+
+  /** 双击一个词：翻译设好了就直接翻。选区留着，右键照样能批注 */
+  const onDoubleClick = () => {
+    if (tool !== 'select' || hand || !aiStatus?.translate.ready) return
+    requestAnimationFrame(() => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || !sel.rangeCount || !scrollRef.current?.contains(sel.anchorNode)) return
+      const word = sel.toString().trim()
+      if (!word || word.length > 60 || /\s/.test(word)) return
+      const rects = sel.getRangeAt(0).getClientRects()
+      const first = rects[0]
+      const last = rects[rects.length - 1]
+      if (first && last) translate(word, toSpot((first.left + last.right) / 2, last.bottom))
     })
   }
 
@@ -418,7 +432,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     setSelBar(null)
     setCtx(null)
     if (focus) toggleFocus()
-    switchTab('ai')
+    openAi()
   }
 
   const chooseTool = (t: Tool) => {
@@ -434,8 +448,43 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   }
 
   /** 拖动页面：抓手工具或按住空格时用左键，任何工具下都可以按住中键拖。链接和浮层照常点 */
+  /**
+   * 从一个字母上按下开始拖，选区就从这个字母算起。浏览器按字母中线算：按在右半边就从下一个字母开始，
+   * 而 "t"、"l" 这种窄字母只有几个像素宽，常常按到右半边，摘出来就少了开头一个字母。
+   * 拖的过程中一直把起点固定在按下的那个字母前，选区跟着鼠标走，松手时不会再变。
+   */
+  const pinSelectionStart = (e: React.PointerEvent) => {
+    if (e.button !== 0 || e.shiftKey || hand || !(e.target as HTMLElement).closest('.textLayer')) return
+    const pos = document.caretPositionFromPoint?.(e.clientX, e.clientY)
+    const node = pos?.offsetNode
+    if (!node || node.nodeType !== Node.TEXT_NODE || pos.offset < 1) return
+    const ch = document.createRange()
+    ch.setStart(node, pos.offset - 1)
+    ch.setEnd(node, pos.offset)
+    const box = ch.getBoundingClientRect()
+    // 只管按在前一个字母右半边的情况；按在字母之间的空白不动
+    if (!/\S/.test(ch.toString()) || e.clientX < box.left || e.clientX > box.right || e.clientY < box.top || e.clientY > box.bottom) return
+    const at = pos.offset
+    const fix = () => {
+      const sel = window.getSelection()
+      if (!sel || sel.isCollapsed || sel.anchorNode !== node || sel.anchorOffset !== at || !sel.focusNode) return
+      // 往左拖时起点在右边，那个字母本来就在选区里
+      if (sel.anchorNode.compareDocumentPosition(sel.focusNode) & Node.DOCUMENT_POSITION_PRECEDING) return
+      if (sel.focusNode === node && sel.focusOffset < at) return
+      sel.setBaseAndExtent(node, at - 1, sel.focusNode, sel.focusOffset)
+    }
+    const up = () => {
+      fix()
+      document.removeEventListener('selectionchange', fix)
+      window.removeEventListener('pointerup', up, true)
+    }
+    document.addEventListener('selectionchange', fix)
+    window.addEventListener('pointerup', up, true)
+  }
+
   const onPointerDown = (e: React.PointerEvent) => {
     dragged.current = false
+    if (tool !== 'hand') pinSelectionStart(e)
     const left = e.button === 0 && hand && !(e.target as HTMLElement).closest('.reader-float, a')
     if (!left && e.button !== 1) return
     const c = scrollRef.current
@@ -567,7 +616,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
         return
       }
       // 按住空格临时变抓手；没拖就松开，照常翻一屏（⇧ 往回）
-      if (e.code === 'Space' && !typing && !(e.target as HTMLElement).closest?.('button, select, [contenteditable]') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+      if (e.code === 'Space' && !typing && spaceCanPan(e.target) && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault()
         if (!e.repeat && !spaceDown.current) {
           spaceDown.current = true
@@ -589,6 +638,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     }
     const ku = (e: KeyboardEvent) => {
       if (e.code !== 'Space' || !spaceDown.current) return
+      // 焦点在工具栏按钮上时，空格松开默认会"按"一下那个按钮
+      e.preventDefault()
       spaceDown.current = false
       setSpaceHand(false)
       const c = scrollRef.current
@@ -610,12 +661,25 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     }
   })
 
-  // —— 右栏：批注 / 笔记 ——
-  type Tab = 'annos' | 'note' | 'ai'
-  const [tab, setTab] = useState<Tab>(() => { const t = pref.get('tab'); return t === 'note' || t === 'ai' ? t : 'annos' })
+  // —— 右边两栏：批注和笔记一栏，AI 一栏。各自开关，都开着时并排 ——
+  // 菜单栏 显示 › 批注和笔记 / AI 转到这里
+  useEffect(() => {
+    const on = (e: Event) => {
+      const c = (e as CustomEvent<string>).detail
+      if (c === 'toggleNotes') togglePref('panel', !showPanel, setShowPanel)
+      if (c === 'toggleAi') togglePref('ai', !showAi, setShowAi)
+    }
+    window.addEventListener('reader-cmd', on)
+    return () => window.removeEventListener('reader-cmd', on)
+  })
+  type Tab = 'annos' | 'note'
+  const [tab, setTab] = useState<Tab>(() => { const t = pref.get('tab'); return t === 'note' || t === 'both' ? 'note' : 'annos' })
+  // 以前 AI 是右栏里的一个标签页，用过的人直接给他开着 AI 栏
+  const [showAi, setShowAi] = useState(() => pref.get('ai') === '1' || (pref.get('ai') === null && (pref.get('tab') === 'ai' || pref.get('tab') === 'both')))
   /** 选中拿来问 AI 的文字 */
   const [aiQuote, setAiQuote] = useState<{ text: string; n: number } | null>(null)
   const [panelW, setPanelW] = useState(() => Math.min(640, Math.max(260, Number(pref.get('panelW')) || 320)))
+  const [aiW, setAiW] = useState(() => Math.min(640, Math.max(280, Number(pref.get('aiW')) || 360)))
   const paperNotes = useMemo(() => notes.filter((n) => n.paperId === paper.id), [notes, paper.id])
   const [noteId, setNoteId] = useState<string | null>(null)
   /** 正在写一篇还没存盘的新笔记 */
@@ -630,6 +694,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     pref.set('tab', t)
     setFocusNote(t === 'note')
     if (!showPanel) togglePref('panel', true, setShowPanel)
+  }
+  const openAi = () => {
+    if (!showAi) togglePref('ai', true, setShowAi)
   }
   const newPaperNote = () => {
     setDrafting(true)
@@ -660,23 +727,24 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     }
     toast({ text: '已摘到笔记' })
   }
-  const startResize = (e: React.PointerEvent) => {
+  /** 拖栏的左边缘改宽度；两栏各记各的 */
+  const startResize = (e: React.PointerEvent, startW: number, set: (w: number) => void, key: 'panelW' | 'aiW', min: number) => {
     e.preventDefault()
     const startX = e.clientX
-    const startW = panelW
     let w = startW
     const move = (ev: PointerEvent) => {
-      w = Math.min(640, Math.max(260, startW + (startX - ev.clientX)))
-      setPanelW(w)
+      w = Math.min(640, Math.max(min, startW + (startX - ev.clientX)))
+      set(w)
     }
     const up = () => {
       window.removeEventListener('pointermove', move)
       window.removeEventListener('pointerup', up)
-      pref.set('panelW', String(Math.round(w)))
+      pref.set(key, String(Math.round(w)))
     }
     window.addEventListener('pointermove', move)
     window.addEventListener('pointerup', up)
   }
+
 
   // 从笔记里点回来：文档和批注都准备好后跳过去
   const jumped = useRef(0)
@@ -689,7 +757,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     setTimeout(() => jumpTo(a), 250)
   })
 
-  const togglePref = (k: 'thumbs' | 'panel', v: boolean, set: (v: boolean) => void) => {
+  const togglePref = (k: 'thumbs' | 'panel' | 'ai', v: boolean, set: (v: boolean) => void) => {
     set(v)
     pref.set(k, v ? '1' : '0')
   }
@@ -698,6 +766,36 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const pagesWithNotes = useMemo(() => new Set(annos.map((a) => a.page + 1)), [annos])
   const pageCount = doc?.numPages ?? file.pageCount ?? 0
   const scaleLabel = scale.preset === 'auto' ? '自动' : scale.preset === 'page-width' ? '适合宽度' : scale.preset === 'page-fit' ? '整页' : `${Math.round(scale.value * 100)}%`
+
+  const noteView = (
+    <div className="panel-note" role="tabpanel">
+      {(paperNotes.length > 1 || (drafting && paperNotes.length > 0)) && (
+        <label className="select panel-note-pick">
+          <span className="sr">选择笔记</span>
+          <select value={currentNote?.id ?? ''} onChange={(e) => { setDrafting(false); setNoteId(e.target.value); setSlot((n) => n + 1) }}>
+            {!currentNote && <option value="">新笔记</option>}
+            {paperNotes.map((n) => <option key={n.id} value={n.id}>{n.title}</option>)}
+          </select>
+          <Icon name="down" size={14} />
+        </label>
+      )}
+      <NoteEditor
+        key={`${paper.id}:${slot}`}
+        noteId={currentNote?.id ?? null}
+        draft={{ paperId: paper.id, title: paper.title }}
+        onCreated={(id) => { setDrafting(false); setNoteId(id) }}
+        notes={notes}
+        compact
+        autoFocus={focusNote}
+        handle={editor}
+        onOpenNote={onOpenNoteTitle}
+        onOpenAnnotation={onOpenAnnotation}
+        onDeleted={() => { setNoteId(null); setDrafting(false); setSlot((n) => n + 1) }}
+        onNew={newPaperNote}
+      />
+    </div>
+  )
+  const aiView = <AiPanel paperId={paper.id} status={aiStatus} quote={aiQuote} onCite={citeJump} onOpenSettings={onOpenSettings} onToNote={(md) => void appendToNote(md)} onHide={() => togglePref('ai', false, setShowAi)} />
 
   return (
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
@@ -739,7 +837,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
           ><Icon name="paper" /></button>
           <button type="button" className="icon-btn tool" aria-label="论文详情" title="论文详情：标题、作者、标签和文件" onClick={onInfo}><Icon name="info" /></button>
           <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : '全屏阅读：只留论文（⌃⌘F）'} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showPanel} aria-label="右栏" title={showPanel ? '隐藏右栏' : '显示右栏：批注、笔记、AI'} onClick={() => togglePref('panel', !showPanel, setShowPanel)}><Icon name="panel" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showPanel} aria-label="批注和笔记" title={showPanel ? '隐藏批注和笔记（⌥⌘N）' : '显示批注和笔记（⌥⌘N）'} onClick={() => togglePref('panel', !showPanel, setShowPanel)}><Icon name="panel" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showAi} aria-label="AI" title={showAi ? '隐藏 AI（⌥⌘A）' : '显示 AI（⌥⌘A）：可以和笔记并排'} onClick={() => togglePref('ai', !showAi, setShowAi)}><Icon name="sparkle" /></button>}
         </div>
       </header>
 
@@ -787,7 +886,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
           )}
           {!doc && !error && <div className="reader-loading" aria-live="polite"><Spinner />正在打开</div>}
           {doc && <ReaderToolbar tool={hand ? 'hand' : tool} color={activeAnno?.color ?? lastColor} colorFor={activeAnno ? '这条批注' : null} onTool={chooseTool} onColor={(c) => { pickColor(c); if (activeAnno) void update(activeAnno.id, { color: c }) }} />}
-          <div ref={scrollRef} className={`reader-scroll${hand ? ' hand' : ''}${panning ? ' panning' : ''}${tool === 'highlight' || tool === 'underline' ? ' marking' : ''}`} tabIndex={0} aria-label="论文页面" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onContextMenu={onContextMenu} onMouseOver={onLinkOver} onMouseOut={onLinkOut} onScroll={() => { if (ctx) setCtx(null); if (peek) setPeek(null) }}>
+          <div ref={scrollRef} className={`reader-scroll${hand ? ' hand' : ''}${panning ? ' panning' : ''}${tool === 'highlight' || tool === 'underline' ? ' marking' : ''}`} tabIndex={0} aria-label="论文页面" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} onMouseOver={onLinkOver} onMouseOut={onLinkOut} onScroll={() => { if (ctx) setCtx(null); if (peek) setPeek(null) }}>
             <div ref={viewerRef} className="pdfViewer" />
 
 
@@ -838,15 +937,12 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
         {showPanel && !focus && (
           <aside className="reader-panel" style={{ flexBasis: panelW } as CSSProperties} aria-label="批注和笔记">
-            <div className="panel-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={startResize} />
+            <div className="panel-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => startResize(e, panelW, setPanelW, 'panelW', 260)} />
             <div className="panel-tabs" role="tablist">
               <button type="button" role="tab" aria-selected={tab === 'annos'} onClick={() => switchTab('annos')}>批注 · {annos.length}</button>
               <button type="button" role="tab" aria-selected={tab === 'note'} onClick={() => switchTab('note')}>笔记{paperNotes.length ? ` · ${paperNotes.length}` : ''}</button>
-              <button type="button" role="tab" aria-selected={tab === 'ai'} onClick={() => switchTab('ai')}>AI</button>
             </div>
-            {tab === 'ai' ? (
-              <AiPanel paperId={paper.id} status={aiStatus} quote={aiQuote} onCite={citeJump} onOpenSettings={onOpenSettings} onToNote={(md) => void appendToNote(md)} />
-            ) : tab === 'annos' ? (
+            {tab === 'annos' ? (
               <div className="anno-list" role="tabpanel">
                 {annos.length === 0 && <p className="hint anno-empty">用底部工具栏的高亮或下划线，选中文字就标上。</p>}
                 {annos.length > 0 && <p className="hint anno-tip">把批注拖进笔记，变成能跳回原文的引用。</p>}
@@ -873,38 +969,32 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
                 ))}
               </div>
             ) : (
-              <div className="panel-note" role="tabpanel">
-                {(paperNotes.length > 1 || (drafting && paperNotes.length > 0)) && (
-                  <label className="select panel-note-pick">
-                    <span className="sr">选择笔记</span>
-                    <select value={currentNote?.id ?? ''} onChange={(e) => { setDrafting(false); setNoteId(e.target.value); setSlot((n) => n + 1) }}>
-                      {!currentNote && <option value="">新笔记</option>}
-                      {paperNotes.map((n) => <option key={n.id} value={n.id}>{n.title}</option>)}
-                    </select>
-                    <Icon name="down" size={14} />
-                  </label>
-                )}
-                <NoteEditor
-                  key={`${paper.id}:${slot}`}
-                  noteId={currentNote?.id ?? null}
-                  draft={{ paperId: paper.id, title: paper.title }}
-                  onCreated={(id) => { setDrafting(false); setNoteId(id) }}
-                  notes={notes}
-                  compact
-                  autoFocus={focusNote}
-                  handle={editor}
-                  onOpenNote={onOpenNoteTitle}
-                  onOpenAnnotation={onOpenAnnotation}
-                  onDeleted={() => { setNoteId(null); setDrafting(false); setSlot((n) => n + 1) }}
-                  onNew={newPaperNote}
-                />
-              </div>
+              noteView
             )}
+          </aside>
+        )}
+
+        {showAi && !focus && (
+          <aside className="reader-panel" style={{ flexBasis: aiW } as CSSProperties} aria-label="AI">
+            <div className="panel-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => startResize(e, aiW, setAiW, 'aiW', 280)} />
+            {aiView}
           </aside>
         )}
       </div>
     </div>
   )
+}
+
+/**
+ * 按空格能不能切到小手。点过工具栏、顶栏或页面里的按钮后焦点留在按钮上，这时空格也该拖页面，
+ * 而不是去"按"那个按钮；侧栏、弹出的卡片和菜单里的按钮、下拉框、可编辑的地方照常。
+ */
+function spaceCanPan(target: EventTarget | null): boolean {
+  const el = target as HTMLElement | null
+  if (!el?.closest) return true
+  if (el.closest('select, [contenteditable], .reader-float, [role="menu"], [role="listbox"], [role="dialog"]')) return false
+  if (!el.closest('button, a')) return true
+  return !!el.closest('.reader-toolbar, .reader-bar, .reader-scroll')
 }
 
 function AnnotationCard({ a, at, focus, onComment, onRemove, onClose, onToNote }: {
@@ -930,7 +1020,7 @@ function AnnotationCard({ a, at, focus, onComment, onRemove, onClose, onToNote }
         <span className="sr">批注内容</span>
         <textarea
           ref={ref}
-          rows={3}
+          rows={2}
           placeholder="写点什么…（⌘↩ 保存）"
           value={text}
           onChange={(e) => setText(e.target.value)}
@@ -942,8 +1032,8 @@ function AnnotationCard({ a, at, focus, onComment, onRemove, onClose, onToNote }
         />
       </label>
       <div className="anno-card-row">
+        <button type="button" className="link" onClick={onToNote}>摘到笔记</button>
         <span className="grow" />
-        <button type="button" className="icon-btn tool" aria-label="摘到笔记" title="摘到笔记" onClick={onToNote}><Icon name="notes" size={16} /></button>
         <button type="button" className="icon-btn tool" aria-label="删除批注" title="删除批注" onClick={onRemove}><Icon name="trash" size={16} /></button>
       </div>
     </div>

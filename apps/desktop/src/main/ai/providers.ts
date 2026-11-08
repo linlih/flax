@@ -4,7 +4,8 @@ import Anthropic from '@anthropic-ai/sdk'
 import type { BetaMessageStreamParams } from '@anthropic-ai/sdk/resources/beta/messages/messages'
 import { costOf, stripCitations } from '@paper/core'
 import { endpointOf } from '../../shared/aiVendors'
-import type { AiConfig, AiErrorCode, AiModel, AiUsage } from '../../shared/api'
+import { EFFORT_LEVELS } from '../../shared/effort'
+import type { AiConfig, AiEffort, AiErrorCode, AiModel, AiUsage } from '../../shared/api'
 
 export interface Turn {
   role: 'user' | 'assistant'
@@ -15,14 +16,19 @@ export interface Turn {
   rawProvider?: AiConfig['provider']
 }
 
+/** 具体的思考深度（选“自动”时不填） */
+export type Effort = Exclude<AiEffort, 'auto'>
+
 export interface RunRequest {
   turns: Turn[]
   signal: AbortSignal
   onText: (delta: string) => void
   /** 换掉默认的系统提示（翻译时用） */
   system?: string
-  /** 简单的活（翻译）用 low，省时间 */
-  effort?: 'low' | 'medium'
+  /** 用户在对话里选的思考深度；不填用模型自己的默认 */
+  effort?: Effort
+  /** 简单的活（翻译）：Claude 用 low 省时间。OpenAI 兼容服务不一定认 reasoning_effort，不为它发 */
+  quick?: boolean
 }
 
 export interface RunResult {
@@ -62,6 +68,8 @@ const SYSTEM = [
   '回答直接、具体，不客套，不复述问题。可以用 Markdown 的列表和粗体，不用标题。'
 ].join('\n')
 
+const EFFORT_UNSUPPORTED = '这个模型不支持调整思考深度。把输入框下面的"思考"改回"自动"再试。'
+
 // —— Anthropic ——
 const MAX_TOKENS = 32000
 /** 这两个模型在官方接口上可以开服务端回退：被安全策略拒答时自动换模型重试 */
@@ -83,7 +91,7 @@ export function anthropicProvider(config: AiConfig, key: string | null, fetch?: 
       max_tokens: MAX_TOKENS,
       system: req.system ?? SYSTEM,
       messages,
-      output_config: { effort: req.effort ?? 'medium' },
+      ...(req.effort || req.quick ? { output_config: { effort: req.effort ?? 'low' } } : {}),
       ...(fallback ? { betas: ['server-side-fallback-2026-07-01'], fallbacks: 'default' as const } : {})
     }
   }
@@ -116,7 +124,7 @@ export function anthropicProvider(config: AiConfig, key: string | null, fetch?: 
     async models(signal) {
       try {
         const out: AiModel[] = []
-        for await (const m of client.models.list({ limit: 100 }, { signal })) out.push({ id: m.id, name: m.display_name })
+        for await (const m of client.models.list({ limit: 100 }, { signal })) out.push({ id: m.id, name: m.display_name, efforts: effortsOf(m.capabilities?.effort) })
         return out
       } catch (e) {
         throw mapAnthropicError(e)
@@ -125,12 +133,21 @@ export function anthropicProvider(config: AiConfig, key: string | null, fetch?: 
   }
 }
 
+/** 模型列表里写的思考深度；没写（比如走代理）就不知道 */
+function effortsOf(cap: unknown): AiModel['efforts'] {
+  const c = cap as Record<string, unknown> | null | undefined
+  if (!c) return undefined
+  if (!c.supported) return []
+  return EFFORT_LEVELS.filter((l) => (c[l] as { supported?: boolean } | null | undefined)?.supported)
+}
+
 function mapAnthropicError(e: unknown): AiError {
   if (e instanceof AiError) return e
   if (e instanceof Anthropic.APIUserAbortError) return new AiError('cancelled', '已停止')
   if (e instanceof Anthropic.AuthenticationError) return new AiError('auth', 'Key 无效或已过期，请在设置里重新填写。')
   if (e instanceof Anthropic.PermissionDeniedError) return new AiError('auth', '这个 Key 没有权限使用该模型。')
   if (e instanceof Anthropic.RateLimitError) return new AiError('rate_limit', '请求太频繁或额度用完了，稍后再试。')
+  if (e instanceof Anthropic.BadRequestError && /effort/i.test(e.message)) return new AiError('other', EFFORT_UNSUPPORTED)
   if (e instanceof Anthropic.NotFoundError) return new AiError('other', '找不到这个模型，请检查设置里的模型名。')
   if (e instanceof Anthropic.APIConnectionError) return new AiError('network', '连不上服务，请检查网络或代理设置。')
   if (e instanceof Anthropic.APIError) return new AiError('other', `服务出错（${e.status ?? '?'}）：${e.message}`)
@@ -159,6 +176,7 @@ export function openaiProvider(config: AiConfig, key: string | null, fetch: Fetc
       const detail = (await res.text().catch(() => '')).slice(0, 300)
       if (res.status === 401 || res.status === 403) throw new AiError('auth', 'Key 无效或没有权限，请在设置里重新填写。')
       if (res.status === 429) throw new AiError('rate_limit', '请求太频繁或额度用完了，稍后再试。')
+      if (res.status === 400 && /reasoning/i.test(detail)) throw new AiError('other', EFFORT_UNSUPPORTED)
       throw new AiError('other', `服务出错（${res.status}）${detail ? '：' + detail : ''}`)
     }
     return res
@@ -167,7 +185,9 @@ export function openaiProvider(config: AiConfig, key: string | null, fetch: Fetc
   return {
     async run(req) {
       const messages = [{ role: 'system', content: req.system ?? SYSTEM }, ...req.turns.map((t) => ({ role: t.role, content: t.role === 'assistant' ? stripCitations(t.text) : t.text }))]
-      const res = await post({ model: config.model, messages, stream: true, stream_options: { include_usage: true } }, req.signal)
+      // OpenAI 兼容接口的 reasoning_effort 只有 low / medium / high
+      const reasoning = req.effort ? { reasoning_effort: req.effort === 'max' || req.effort === 'xhigh' ? 'high' : req.effort } : {}
+      const res = await post({ model: config.model, messages, stream: true, stream_options: { include_usage: true }, ...reasoning }, req.signal)
       let text = ''
       let usage = { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheWriteTokens: 0 }
       let model = config.model
@@ -199,11 +219,16 @@ export function openaiProvider(config: AiConfig, key: string | null, fetch: Fetc
     },
     async models(signal) {
       const res = await post(null, signal, `${base}/models`)
-      const j = (await res.json().catch(() => ({}))) as { data?: { id?: unknown; name?: unknown }[] }
+      const j = (await res.json().catch(() => ({}))) as { data?: { id?: unknown; name?: unknown; supported_parameters?: unknown }[] }
       const list = Array.isArray(j.data) ? j.data : []
       return list
-        .filter((m): m is { id: string; name?: unknown } => typeof m.id === 'string' && !NOT_CHAT.test(m.id))
-        .map((m) => ({ id: m.id, name: typeof m.name === 'string' && m.name !== m.id ? m.name : undefined }))
+        .filter((m): m is { id: string; name?: unknown; supported_parameters?: unknown } => typeof m.id === 'string' && !NOT_CHAT.test(m.id))
+        .map((m) => {
+          // OpenRouter 这类服务会列出模型认哪些参数；大多数服务不列，就不知道
+          const params = Array.isArray(m.supported_parameters) ? m.supported_parameters : null
+          const efforts: AiModel['efforts'] = params ? (params.includes('reasoning_effort') || params.includes('reasoning') ? ['low', 'medium', 'high'] : []) : undefined
+          return { id: m.id, name: typeof m.name === 'string' && m.name !== m.id ? m.name : undefined, ...(efforts ? { efforts } : {}) }
+        })
         .sort((a, b) => a.id.localeCompare(b.id))
     }
   }

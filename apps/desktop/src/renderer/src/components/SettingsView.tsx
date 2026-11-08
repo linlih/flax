@@ -1,4 +1,4 @@
-// 设置：AI 服务、外观、数据（资料文件夹、备份）、关于。
+// 设置：AI 服务、翻译、外观、数据（资料文件夹、备份）、关于。
 // AI 服务可以加好几家，每家填自己的 Key；用哪个模型在对话里选，这里不管。
 import { useEffect, useState } from 'react'
 import { AI_VENDORS, vendorOf } from '../../../shared/aiVendors'
@@ -6,6 +6,7 @@ import type { AiService, AiStatus, Appearance, UpdateState } from '../../../shar
 import { host, serviceName, useAiStatus } from '../lib/ai'
 import { api } from '../lib/library'
 import { Icon, Spinner } from './Icon'
+import { TranslateSettings } from './TranslateSettings'
 
 const GROUPS = ['国际', '国内', '其他'] as const
 type Check = { state: 'checking' } | { state: 'ok'; count: number } | { state: 'error'; message: string } | { state: 'nokey' }
@@ -68,6 +69,7 @@ export function SettingsView({ onShortcuts }: { onShortcuts: () => void }) {
         {!status.canEncrypt && <span className="ai-error"> 系统钥匙串不可用，暂时不能保存 Key。</span>}
       </p>
     </section>
+    <TranslateSettings status={status} />
     <AppearanceSection />
     <DataSection />
     <AboutSection onShortcuts={onShortcuts} />

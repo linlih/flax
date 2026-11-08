@@ -12,6 +12,7 @@ import { createHandler, SCHEME, SCHEME_PRIVILEGES } from './protocol'
 import { createAppearance } from './appearance'
 import { AiService } from './ai/service'
 import { AiSettings } from './ai/settings'
+import { AppleTranslator } from './ai/apple'
 import { NoteStore } from './notes'
 import { Updater, realUpdater } from './updater'
 import { FileStore } from './store'
@@ -303,7 +304,11 @@ function setup(): void {
 
   // —— AI：Key 用系统钥匙串加密；请求走 Electron 的网络栈（跟随系统代理）——
   const aiDir = join(dataDir, 'ai')
+  // macOS 自带翻译的小助手：打包后放在 Resources/bin，开发时用 native/out 里编好的
+  const apple = new AppleTranslator(app.isPackaged ? join(process.resourcesPath, 'bin', 'flax-translate') : join(app.getAppPath(), 'native', 'out', 'flax-translate'))
+  app.on('will-quit', () => apple.stop())
   const ai = new AiService({
+    apple,
     dir: aiDir,
     settings: new AiSettings(aiDir, {
       available: () => safeStorage.isEncryptionAvailable(),
@@ -314,22 +319,30 @@ function setup(): void {
     onStatus: (st) => send('ai:status', st),
     fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : input, init)
   })
-  const num = (v: unknown, name: string): number => {
-    if (typeof v !== 'number' || !Number.isFinite(v)) throw new Error(`${name} must be a number`)
-    return v
-  }
+  void ai.checkApple()
   handle('ai:status', () => ai.status())
   handle('ai:saveService', (service, key) => ai.saveService(service, key === null ? null : typeof key === 'string' ? key : undefined))
   handle('ai:removeService', (id) => ai.removeService(str(id, 'id')))
   handle('ai:models', (id, refresh) => ai.models(str(id, 'id'), refresh === true))
   handle('ai:select', (sel) => ai.select(sel))
-  handle('ai:conversation', (paperId) => ai.conversation(str(paperId, 'paperId')))
+  handle('ai:setEffort', (e) => ai.setEffort(e))
+  handle('ai:conversation', (paperId, id) => ai.conversation(str(paperId, 'paperId'), typeof id === 'string' ? id : undefined))
+  handle('ai:conversations', (paperId) => ai.conversations(str(paperId, 'paperId')))
+  handle('ai:newConversation', (paperId) => ai.newConversation(str(paperId, 'paperId')))
+  handle('ai:openConversation', (paperId, id) => ai.openConversation(str(paperId, 'paperId'), str(id, 'id')))
+  handle('ai:renameConversation', (paperId, id, title) => ai.renameConversation(str(paperId, 'paperId'), str(id, 'id'), str(title, 'title')))
+  handle('ai:deleteConversation', (paperId, id) => ai.deleteConversation(str(paperId, 'paperId'), str(id, 'id')))
   handle('ai:ask', (paperId, question, quote) => ai.ask(str(paperId, 'paperId'), str(question, 'question'), typeof quote === 'string' ? quote : undefined))
-  handle('ai:resetConversation', (paperId) => ai.resetConversation(str(paperId, 'paperId')))
   handle('ai:translate', (text) => {
     const t = str(text, 'text')
     return ai.translate(t, library.termsIn(t).map(({ term, translation }) => ({ term, translation })))
   })
+  handle('ai:setTranslateEngine', (e) => ai.setTranslateEngine(e))
+  handle('ai:saveTranslateAccount', (a, secret) => ai.saveTranslateAccount(a, secret === null ? null : typeof secret === 'string' ? secret : undefined))
+  handle('ai:testTranslate', (e) => ai.testTranslate(e))
+  handle('ai:checkAppleTranslate', () => ai.checkApple())
+  // 系统设置 › 通用 › 语言与地区（翻译语言在这一页的最下面）
+  handle('ai:openTranslateLanguages', () => shell.openExternal('x-apple.systempreferences:com.apple.Localization-Settings.extension'))
   handle('ai:cancel', (requestId) => ai.cancel(str(requestId, 'requestId')))
 
   handle('library:showInFinder', (id) => {
@@ -439,6 +452,9 @@ function setMenu(): void {
             click: () => appearance.set(value)
           }))
         },
+        { type: 'separator' as const },
+        { label: '批注和笔记', accelerator: 'Alt+CmdOrCtrl+N', click: cmd('toggleNotes') },
+        { label: 'AI', accelerator: 'Alt+CmdOrCtrl+A', click: cmd('toggleAi') },
         { type: 'separator' as const },
         { role: 'togglefullscreen' as const, label: '进入全屏幕' },
         ...(app.isPackaged ? [] : [{ type: 'separator' as const }, { role: 'toggleDevTools' as const, label: '开发者工具' }])

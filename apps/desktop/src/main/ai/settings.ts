@@ -4,7 +4,9 @@ import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { AI_VENDORS, guessVendor, vendorOf } from '../../shared/aiVendors'
-import type { AiConfig, AiSelection, AiService, AiUsage, AiUsageTotal } from '../../shared/api'
+import { AI_EFFORTS, type AiConfig, type AiEffort, type AiSelection, type AiService, type AiUsage, type AiUsageTotal, type MtAccountInfo, type MtEngine, type TranslateEngine } from '../../shared/api'
+import { mtEngineOf } from '../../shared/mtEngines'
+import type { MtAccount } from './mt'
 
 export interface Crypt {
   available(): boolean
@@ -13,8 +15,17 @@ export interface Crypt {
 }
 
 type StoredService = Omit<AiService, 'hasKey'>
+type StoredMt = Omit<MtAccountInfo, 'hasSecret'>
+interface TranslateState {
+  engine: TranslateEngine
+  /** 用户自己选过；没选过时由服务按情况挑（系统翻译能用就用它） */
+  chosen: boolean
+  accounts: StoredMt[]
+}
 
-const ZERO: AiUsageTotal = { inputTokens: 0, outputTokens: 0, costUsd: 0, calls: 0 }
+const validEngine = (e: unknown): e is TranslateEngine => e === 'ai' || e === 'apple' || (typeof e === 'string' && !!mtEngineOf(e))
+const clean = (v: unknown, max: number) => (typeof v === 'string' ? v.trim().slice(0, max) : '')
+
 const ID = /^[a-z0-9-]{1,40}$/
 
 /** 检查并整理一个服务的设置 */
@@ -34,7 +45,7 @@ export function validService(v: unknown): Omit<StoredService, 'id'> & { id?: str
 export class AiSettings {
   private file: string
   private keyDir: string
-  private state: { services: StoredService[]; selection: AiSelection | null; usage: AiUsageTotal }
+  private state: { services: StoredService[]; selection: AiSelection | null; effort: AiEffort; usage: AiUsageTotal; translate: TranslateState }
 
   constructor(private dir: string, private crypt: Crypt) {
     this.file = join(dir, 'settings.json')
@@ -60,7 +71,13 @@ export class AiSettings {
     }
     const sel = saved['selection'] as AiSelection | null | undefined
     let selection = sel && typeof sel.service === 'string' && typeof sel.model === 'string' && sel.model ? { service: sel.service, model: sel.model } : null
-    this.state = { services, selection, usage }
+    const effort = AI_EFFORTS.includes(saved['effort'] as AiEffort) ? (saved['effort'] as AiEffort) : 'auto'
+    const t = (saved['translate'] ?? {}) as Partial<Record<keyof TranslateState, unknown>>
+    const accounts: StoredMt[] = []
+    for (const a of Array.isArray(t.accounts) ? (t.accounts as Record<string, unknown>[]) : []) {
+      if (a && mtEngineOf(String(a['engine'])) && !accounts.some((x) => x.engine === a['engine'])) accounts.push({ engine: a['engine'] as MtEngine, id: clean(a['id'], 200), region: clean(a['region'], 40) })
+    }
+    this.state = { services, selection, effort, usage, translate: { engine: validEngine(t.engine) ? t.engine : 'ai', chosen: t.chosen === true, accounts } }
 
     // 旧设置：只有一个 config（以及最早的 key.bin）
     const old = saved['config'] as Record<string, unknown> | undefined
@@ -107,6 +124,16 @@ export class AiSettings {
 
   usage(): AiUsageTotal {
     return this.state.usage
+  }
+
+  effort(): AiEffort {
+    return this.state.effort
+  }
+
+  setEffort(e: unknown): void {
+    if (!AI_EFFORTS.includes(e as AiEffort)) throw new Error('思考深度不对')
+    this.state.effort = e as AiEffort
+    this.write()
   }
 
   canEncrypt(): boolean {
@@ -203,6 +230,63 @@ export class AiSettings {
       costUsd: t.costUsd + (u.costUsd ?? 0),
       calls: t.calls + 1
     }
+    this.write()
+  }
+
+  // —— 翻译 ——
+  /** 用户选的那家；没选过是 null */
+  translateEngine(): TranslateEngine | null {
+    return this.state.translate.chosen ? this.state.translate.engine : null
+  }
+
+  mtAccounts(): MtAccountInfo[] {
+    return this.state.translate.accounts.map((a) => ({ ...a, hasSecret: this.hasKey(`mt-${a.engine}`) }))
+  }
+
+  /** 发请求用的账号；没填全就是 null */
+  mtAccount(engine: MtEngine): MtAccount | null {
+    const a = this.state.translate.accounts.find((x) => x.engine === engine)
+    const info = mtEngineOf(engine)
+    const secret = this.key(`mt-${engine}`)
+    if (!a || !info || !secret || (info.idLabel && !a.id)) return null
+    return { id: a.id, secret, region: a.region }
+  }
+
+  setTranslateEngine(e: unknown): void {
+    if (!validEngine(e)) throw new Error('不认识的翻译服务')
+    this.state.translate.engine = e
+    this.state.translate.chosen = true
+    this.write()
+  }
+
+  /** 填某家翻译的账号；secret：字符串换新的，null 删掉这家，undefined 不动 */
+  saveMtAccount(input: unknown, secret?: string | null): void {
+    const o = (input && typeof input === 'object' ? input : {}) as Record<string, unknown>
+    const info = mtEngineOf(String(o['engine']))
+    if (!info) throw new Error('不认识的翻译服务')
+    const engine = info.id
+    const t = this.state.translate
+    if (secret === null) {
+      rmSync(this.keyPath(`mt-${engine}`), { force: true })
+      t.accounts = t.accounts.filter((a) => a.engine !== engine)
+      if (t.engine === engine) t.chosen = false
+      return this.write()
+    }
+    const id = clean(o['id'], 200)
+    const region = clean(o['region'], 40)
+    if (info.idLabel && !id) throw new Error(`请填写 ${info.idLabel}`)
+    if (region && !/^[a-z0-9-]+$/i.test(region)) throw new Error('区域只能是字母、数字和横线，比如 eastasia')
+    if (typeof secret === 'string' && secret.trim()) {
+      if (!this.canEncrypt()) throw new Error('系统钥匙串不可用，不能安全地保存密钥')
+      mkdirSync(this.keyDir, { recursive: true })
+      writeFileSync(this.keyPath(`mt-${engine}`), this.crypt.encrypt(secret.trim()), { mode: 0o600 })
+    } else if (!this.hasKey(`mt-${engine}`)) {
+      throw new Error(`请填写 ${info.secretLabel}`)
+    }
+    const next = { engine, id: info.idLabel ? id : '', region: info.regionLabel ? region : '' }
+    const i = t.accounts.findIndex((a) => a.engine === engine)
+    if (i >= 0) t.accounts[i] = next
+    else t.accounts.push(next)
     this.write()
   }
 

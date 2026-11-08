@@ -146,7 +146,7 @@ export type UpdateState = (
   | { kind: 'error'; message: string }
 ) & { manual?: boolean }
 
-export type MenuCommand = 'settings' | 'importPdf' | 'importBib' | 'newNote' | 'exportBib' | 'exportRis' | 'shortcuts'
+export type MenuCommand = 'settings' | 'importPdf' | 'importBib' | 'newNote' | 'exportBib' | 'exportRis' | 'shortcuts' | 'toggleNotes' | 'toggleAi'
 
 // —— AI ——
 export type AiProviderKind = 'anthropic' | 'openai'
@@ -177,7 +177,13 @@ export interface AiService {
 export interface AiModel {
   id: string
   name?: string
+  /** 这个模型能选的思考深度（服务说了才有）；空数组表示不能调，没有这项表示不知道 */
+  efforts?: Exclude<AiEffort, 'auto'>[]
 }
+
+/** 问 AI 时模型想多深。auto：不指定，用模型自己的默认 */
+export type AiEffort = 'auto' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+export const AI_EFFORTS: AiEffort[] = ['auto', 'low', 'medium', 'high', 'xhigh', 'max']
 
 /** 对话里选的模型 */
 export interface AiSelection {
@@ -189,11 +195,40 @@ export interface AiStatus {
   services: AiService[]
   /** 当前选的模型；还没选是 null */
   selection: AiSelection | null
+  /** 问 AI 时的思考深度（翻译固定用 low） */
+  effort: AiEffort
   /** 有选好的模型、它的服务也连得上（有 Key 或不要 Key） */
   ready: boolean
   /** 系统钥匙串能不能用；不能用时不保存 Key */
   canEncrypt: boolean
   usage: AiUsageTotal
+  translate: TranslateStatus
+}
+
+/** 机器翻译服务（各家官方 API，用户自己的 Key） */
+export type MtEngine = 'tencent' | 'baidu' | 'youdao' | 'deepl' | 'microsoft'
+/** 翻译用哪家：apple 是 macOS 自带的翻译（免费、不用注册），ai 是对话里选的模型 */
+export type TranslateEngine = 'apple' | 'ai' | MtEngine
+/** macOS 自带翻译的状态。installed：能用；supported：要先在系统设置里下载英语和中文；unsupported / unavailable：用不了 */
+export type AppleTranslateStatus = 'installed' | 'supported' | 'unsupported' | 'unavailable'
+
+export interface MtAccountInfo {
+  engine: MtEngine
+  /** APP ID / SecretId（不是秘密，可以显示） */
+  id: string
+  region: string
+  hasSecret: boolean
+}
+
+export interface TranslateStatus {
+  /** 现在用的那家 */
+  engine: TranslateEngine
+  /** 用户没选过：系统翻译能用就用它，不然用 AI */
+  auto: boolean
+  apple: AppleTranslateStatus
+  /** 现在翻译能不能用（选的那家填好了 Key） */
+  ready: boolean
+  accounts: MtAccountInfo[]
 }
 
 export interface AiUsageTotal {
@@ -211,6 +246,21 @@ export interface AiUsage {
   cacheReadTokens: number
   cacheWriteTokens: number
   costUsd: number | null
+}
+
+export interface AiConversationSummary {
+  id: string
+  /** 默认是第一个问题，可以改 */
+  title: string
+  updatedAt: string
+  /** 问了几个问题 */
+  questions: number
+}
+
+export interface AiConversationList {
+  /** 正在用的对话；null 表示新对话、还没问 */
+  current: string | null
+  list: AiConversationSummary[]
 }
 
 export interface AiChatTurn {
@@ -232,7 +282,7 @@ export type AiEvent =
   | { requestId: string; type: 'done'; text: string; usage: AiUsage }
   | { requestId: string; type: 'error'; message: string; code?: AiErrorCode }
 
-export type AiErrorCode = 'no_key' | 'auth' | 'rate_limit' | 'network' | 'refusal' | 'too_long' | 'cancelled' | 'other'
+export type AiErrorCode = 'no_key' | 'quota' | 'auth' | 'rate_limit' | 'network' | 'refusal' | 'too_long' | 'cancelled' | 'other'
 
 export interface AiApi {
   status(): Promise<AiStatus>
@@ -243,14 +293,32 @@ export interface AiApi {
   models(serviceId: string, refresh?: boolean): Promise<{ ok: true; models: AiModel[] } | { ok: false; message: string }>
   /** 对话里换模型 */
   select(selection: AiSelection): Promise<AiStatus>
-  /** 这篇论文的问答记录 */
-  conversation(paperId: string): Promise<AiChatTurn[]>
+  /** 对话里换思考深度 */
+  setEffort(effort: AiEffort): Promise<AiStatus>
+  /** 一个对话的内容；不给 id 是当前那个 */
+  conversation(paperId: string, id?: string): Promise<AiChatTurn[]>
+  /** 这篇论文的全部对话 */
+  conversations(paperId: string): Promise<AiConversationList>
+  /** 开新对话（旧的留在历史里） */
+  newConversation(paperId: string): Promise<void>
+  /** 切到历史里的一个对话，返回它的内容 */
+  openConversation(paperId: string, id: string): Promise<AiChatTurn[]>
+  renameConversation(paperId: string, id: string, title: string): Promise<void>
+  deleteConversation(paperId: string, id: string): Promise<void>
   /** 提一个问题；quote 是用户选中拿来问的那段文字。会话记录由主进程保存 */
   ask(paperId: string, question: string, quote?: string): Promise<string>
-  /** 清空这篇的问答，重新开始 */
-  resetConversation(paperId: string): Promise<void>
   /** 翻译选中的文字（只发这段和其中出现的术语译法），返回 requestId，结果走 onEvent */
   translate(text: string): Promise<string>
+  /** 翻译换一家 */
+  setTranslateEngine(engine: TranslateEngine): Promise<AiStatus>
+  /** 填某家翻译的账号；secret 为 null 表示删掉这家，undefined 表示不改 */
+  saveTranslateAccount(account: { engine: MtEngine; id?: string; region?: string }, secret?: string | null): Promise<AiStatus>
+  /** 重新看一下系统翻译能不能用（用户去系统设置下载完语言回来时） */
+  checkAppleTranslate(): Promise<AiStatus>
+  /** 打开系统设置里下载翻译语言的地方 */
+  openTranslateLanguages(): Promise<void>
+  /** 用这家翻一个词，看看 Key 对不对 */
+  testTranslate(engine: MtEngine): Promise<{ ok: true; text: string } | { ok: false; message: string }>
   cancel(requestId: string): Promise<void>
   onEvent(cb: (e: AiEvent) => void): () => void
   onStatus(cb: (s: AiStatus) => void): () => void

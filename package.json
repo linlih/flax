@@ -11,7 +11,9 @@
     "dev": "npm run dev -w @paper/desktop",
     "build": "npm run build -w @paper/desktop",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/core && tsc -p packages/core/tsconfig.test.json && npm run typecheck -w @paper/desktop"
+    "typecheck": "tsc -p packages/core && tsc -p packages/core/tsconfig.test.json && npm run typecheck -w @paper/desktop",
+    "dist": "npm run dist -w @paper/desktop",
+    "release": "bash apps/desktop/scripts/release.sh"
   },
   "devDependencies": {
     "typescript": "^7.0.2",

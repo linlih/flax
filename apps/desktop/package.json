@@ -1,15 +1,15 @@
 {
   "name": "@paper/desktop",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "license": "AGPL-3.0-only",
   "main": "out/main/index.js",
   "scripts": {
-    "dev": "electron-vite dev --watch",
-    "build": "electron-vite build",
+    "dev": "sh scripts/build-native.sh && electron-vite dev --watch",
+    "build": "sh scripts/build-native.sh && electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "dist": "electron-vite build && CSC_IDENTITY_AUTO_DISCOVERY=false electron-builder --mac --publish never",
-    "dist:signed": "electron-vite build && electron-builder --mac --publish never -c.mac.notarize=true"
+    "dist": "npm run build && electron-builder --mac --publish never",
+    "release": "bash scripts/release.sh"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
@@ -55,6 +55,7 @@
       "resources/icon.png",
       "package.json"
     ],
+    "afterPack": "build/sign.cjs",
     "asarUnpack": [
       "**/*.node"
     ],
@@ -75,11 +76,7 @@
           ]
         }
       ],
-      "hardenedRuntime": true,
-      "gatekeeperAssess": false,
-      "entitlements": "build/entitlements.mac.plist",
-      "entitlementsInherit": "build/entitlements.mac.plist",
-      "notarize": false,
+      "identity": null,
       "extendInfo": {
         "NSHumanReadableCopyright": "AGPL-3.0",
         "CFBundleDevelopmentRegion": "zh_CN",
@@ -104,6 +101,10 @@
       {
         "from": "../../LICENSE",
         "to": "LICENSE"
+      },
+      {
+        "from": "native/out/flax-translate",
+        "to": "bin/flax-translate"
       }
     ]
   }

@@ -56,10 +56,11 @@ export function App() {
   const title = folder?.name ?? TITLES[view] ?? ''
   const selected = selId ? lib.papers.find((p) => p.id === selId) : undefined
   const reading = readingId ? lib.papers.find((p) => p.id === readingId && p.files.length > 0) : undefined
-  /** 有 PDF 就进阅读器，没有就只选中、在详情里看怎么拿到 PDF */
+  /** 有 PDF 就进阅读器，没有就只选中、在详情里看怎么拿到 PDF。
+   *  进阅读器不打开详情：读完回来文献库还是原样（详情本来开着就跟着换到这篇） */
   const openPaper = (id: string) => {
     const p = lib.papers.find((x) => x.id === id)
-    setSelId(id)
+    if (!p?.files.length || selId) setSelId(id)
     if (p?.files.length) setReadingId(id)
   }
 
@@ -107,6 +108,8 @@ export function App() {
   const onMenu = useRef<(c: MenuCommand) => void>(() => {})
   onMenu.current = (c) => {
     if (c === 'shortcuts') return setKeys(true)
+    // 阅读器右边的两栏：只在读论文时有用
+    if (c === 'toggleNotes' || c === 'toggleAi') return void (readingId && window.dispatchEvent(new CustomEvent('reader-cmd', { detail: c })))
     if (c === 'importPdf') return void api.library.pickAndImport()
     if (c === 'importBib') return void api.library.importBibTeX()
     if (c === 'exportBib' || c === 'exportRis') {

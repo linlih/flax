@@ -10,11 +10,13 @@
 
 ## AI 和隐私
 
-Flax 不会自己读你的论文，也不会把论文发出去。只有你选中、并且点了"翻译"或"问 AI"的那段文字，才会发给你在设置里配好的模型服务（Anthropic、OpenAI 兼容服务，或者本机的 Ollama）。API Key 用系统钥匙串加密存在本机，不进备份。
+Flax 不会自己读你的论文，也不会把论文发出去。翻译默认用 macOS 自带的翻译，在本机完成。只有你选中、并且点了"问 AI"（或者在设置里把翻译换成 AI、某家翻译服务）的那段文字，才会发给你配好的服务（Anthropic、OpenAI 兼容服务、本机的 Ollama，或腾讯、百度、有道、DeepL、微软的翻译 API）。API Key 用系统钥匙串加密存在本机，不进备份。
 
 ## 安装
 
 到 [Releases](https://github.com/linlih/flax/releases) 下载 `Flax-<版本>-universal.dmg`。装好后会自动检查更新。
+
+安装包用 Flax 自己的证书签名，没有经过苹果公证：第一次打开时 macOS 会拦一下，到"系统设置 › 隐私与安全性"里点"仍要打开"就行，之后的更新不会再问。
 
 ## 开发
 
@@ -25,10 +27,11 @@ npm install
 npm run dev        # 开发模式启动
 npm test           # 单元测试
 npm run typecheck  # 类型检查
-npm run dist -w @paper/desktop   # 打未签名的 macOS 安装包，输出在 apps/desktop/dist
+npm run dist       # 打 macOS 安装包，输出在 apps/desktop/dist
+npm run release -- 0.1.2 -m "发布说明" --push   # 发布新版本，GitHub Actions 打包上传
 ```
 
-签名、公证和发布新版本的步骤见 [docs/10-桌面MVP实施计划.md](docs/10-桌面MVP实施计划.md) 的 M7 一节。完整设计文档在 [docs/](docs/README.md)。
+签名和发布的细节见 [docs/10-桌面MVP实施计划.md](docs/10-桌面MVP实施计划.md) 的 M7 一节。完整设计文档在 [docs/](docs/README.md)。
 
 ## 许可
 

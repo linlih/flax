@@ -30,6 +30,9 @@ const OVERSCAN = 20
 const STYLES: [CiteStyle, string][] = [['apa', 'APA'], ['gbt7714', 'GB/T 7714'], ['bibtex', 'BibTeX']]
 
 /** 论文表格：点一下选中、右边看详情，双击或回车开始读；可以筛选、拖到文件夹 */
+/** 两次点击算双击的间隔；单击要等这么久才打开详情 */
+const DOUBLE_CLICK_MS = 250
+
 export function LibraryTable({ label, papers, tags, importing, downloading, selected: sel, onSelect: setSel, onRead, onRemove, onToast }: Props) {
   const [q, setQ] = useState('')
   /** 右键菜单：哪一篇、在哪里弹出 */
@@ -61,6 +64,34 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
     void api.library.exportCitations([p.id], format).then((ok) => ok && onToast('已导出'))
   }
   const [tag, setTag] = useState('')
+
+  // 单击先只把行标亮，等一下确认不是双击再打开详情；双击直接去读，中间不闪一下详情栏
+  const [lit, setLit] = useState<string | null>(null)
+  const clickTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  /** 这次聚焦是鼠标按下带来的（键盘聚焦才立刻选中） */
+  const byPointer = useRef(false)
+  const cancelClick = () => {
+    if (clickTimer.current) clearTimeout(clickTimer.current)
+    clickTimer.current = null
+  }
+  useEffect(() => setLit(null), [sel])
+  useEffect(() => cancelClick, [])
+  const clickRow = (id: string, count: number) => {
+    if (count > 1 || id === sel) return
+    setLit(id)
+    cancelClick()
+    clickTimer.current = setTimeout(() => {
+      clickTimer.current = null
+      setSel(id)
+    }, DOUBLE_CLICK_MS)
+  }
+  const shownSel = lit ?? sel
+  /** 去读这篇：回来时这一行还标亮着，知道刚才读到哪 */
+  const read = (id: string) => {
+    cancelClick()
+    setLit(id)
+    onRead(id)
+  }
 
   const rows = useMemo(() => filterPapers(papers, q, tag), [papers, q, tag])
   const group = useRef<HTMLDivElement>(null)
@@ -115,7 +146,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
         reveal(rows.indexOf(next), next.id)
       }
     }
-    if (e.key === 'Enter' && sel) onRead(sel)
+    if (e.key === 'Enter' && focusedId) read(focusedId)
     if (e.key === 'Escape' && sel) setSel(null)
     if ((e.key === 'Backspace' || e.key === 'Delete') && e.metaKey && sel) onRemove(sel)
   }
@@ -162,13 +193,18 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                   role="row"
                   aria-rowindex={(virtual ? win.start : 0) + k + 2}
                   tabIndex={0}
-                  className={'tr td' + (sel === p.id ? ' sel' : '')}
-                  aria-selected={sel === p.id}
-                  onClick={() => setSel(p.id)}
-                  onDoubleClick={() => onRead(p.id)}
-                  onFocus={() => setSel(p.id)}
+                  className={'tr td' + (shownSel === p.id ? ' sel' : '')}
+                  aria-selected={shownSel === p.id}
+                  onPointerDown={() => (byPointer.current = true)}
+                  onClick={(e) => clickRow(p.id, e.detail)}
+                  onDoubleClick={() => read(p.id)}
+                  onFocus={() => {
+                    if (byPointer.current) byPointer.current = false
+                    else setSel(p.id)
+                  }}
                   onContextMenu={(e) => {
                     e.preventDefault()
+                    cancelClick()
                     setSel(p.id)
                     setMenu({ p, x: Math.min(e.clientX, window.innerWidth - 216), y: Math.min(e.clientY, window.innerHeight - 330) })
                   }}
@@ -185,7 +221,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                       <small className={p.needsMatch && !busy ? 'warn-text' : undefined}>{sub}</small>
                     </span>
                     {p.files.length > 0 && (
-                      <button type="button" className="btn btn-s row-read" tabIndex={-1} title="开始读（双击或回车也可以）" onClick={(e) => { e.stopPropagation(); onRead(p.id) }} onDoubleClick={(e) => e.stopPropagation()}>
+                      <button type="button" className="btn btn-s row-read" tabIndex={-1} title="开始读（双击或回车也可以）" onClick={(e) => { e.stopPropagation(); read(p.id) }} onDoubleClick={(e) => e.stopPropagation()}>
                         <Icon name="reading" size={14} />读
                       </button>
                     )}
@@ -207,7 +243,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
       </div>
       {menu && (
         <div className="menu row-menu" role="menu" aria-label={menu.p.title} style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}>
-          {menu.p.files.length > 0 && <button type="button" role="menuitem" onClick={() => { setMenu(null); onRead(menu.p.id) }}>开始读</button>}
+          {menu.p.files.length > 0 && <button type="button" role="menuitem" onClick={() => { setMenu(null); read(menu.p.id) }}>开始读</button>}
           {menu.p.files.length > 0 && <button type="button" role="menuitem" onClick={() => { setMenu(null); void api.library.showInFinder(menu.p.id) }}>在访达中显示 PDF</button>}
           {menu.p.files.length > 0 && <div className="menu-sep" role="separator" />}
           <p className="menu-sub-h">复制引用</p>

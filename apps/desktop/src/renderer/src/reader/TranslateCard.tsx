@@ -32,7 +32,7 @@ export function TranslateCard({ text, at, paperId, terms, onClose, onOpenSetting
     void stream(() => api.ai.translate(text), {
       onDelta: (_, all) => alive && setOut(all),
       onDone: (e) => alive && (setOut(e.text), setState('done')),
-      onError: (e) => alive && setState({ error: e.code === 'cancelled' ? '已停止' : e.message, noKey: e.code === 'no_key' })
+      onError: (e) => alive && setState({ error: e.code === 'cancelled' ? '已停止' : e.message, noKey: e.code === 'no_key' || e.code === 'auth' || e.code === 'quota' })
     })
       .then((rid) => (id.current = rid))
       .catch((e: unknown) => alive && setState({ error: e instanceof Error ? e.message : String(e), noKey: false }))

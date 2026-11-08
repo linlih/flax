@@ -32,7 +32,40 @@ export function loadDocument(hash: string): { promise: Promise<PDFDocumentProxy>
     // 先显示第一页：按需分段读，不等整个文件
     disableAutoFetch: true,
     rangeChunkSize: 256 * 1024,
-    enableHWA: true
+    enableHWA: true,
+    // 字体的名字要带到这边来，下面按名字认衬线体
+    fontExtraProperties: true
   })
-  return { promise: task.promise, destroy: () => void task.destroy() }
+  return { promise: task.promise.then(fixTextLayerFonts), destroy: () => void task.destroy() }
+}
+
+/** 名字像衬线体的字体（Times 的各种仿制、LaTeX 的 Computer Modern 等） */
+const SERIF = /times|roman|nimbusrom|^cm(r|bx|ti|sl|csc|u)\d|^lmroman|^sfrm|^sfbx|^sfti|minion|garamond|georgia|palatino|pagella|termes|stix|cambria|charter|utopia|bookman|century|baskerville|caslon|didot|bodoni|cochin|serif(?!.*sans)|song|ming|fangsong|kai|batang|mincho/i
+
+/**
+ * 文字层（看不见、用来选文字的那层）用浏览器字体按 PDF 给的行宽拉伸。PDF.js 只认得一小部分衬线体，
+ * 像 LaTeX 论文常用的 NimbusRomNo9L、CMR10 会被当成无衬线体，文字层的字和画出来的字就错开好几个像素，
+ * 从一个词的开头拖，选中的会从第二个字母开始。这里按字体名把它们改回衬线体。
+ */
+function fixTextLayerFonts(doc: PDFDocumentProxy): PDFDocumentProxy {
+  const getPage = doc.getPage.bind(doc)
+  doc.getPage = async (n: number) => {
+    const page = await getPage(n)
+    const stream = page.streamTextContent.bind(page)
+    page.streamTextContent = (params) =>
+      stream(params).pipeThrough(
+        new TransformStream({
+          transform(chunk: { styles?: Record<string, { fontFamily: string }> }, ctl) {
+            for (const [id, style] of Object.entries(chunk.styles ?? {})) {
+              if (style.fontFamily !== 'sans-serif' || !page.commonObjs.has(id)) continue
+              const name = String((page.commonObjs.get(id) as { name?: string }).name ?? '').replace(/^[A-Z]{6}\+/, '')
+              if (SERIF.test(name)) style.fontFamily = 'serif'
+            }
+            ctl.enqueue(chunk)
+          }
+        })
+      ) as ReturnType<typeof stream>
+    return page
+  }
+  return doc
 }
