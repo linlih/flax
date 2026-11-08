@@ -5,6 +5,7 @@ import type { Candidate } from '../../../shared/api'
 import { Icon, Spinner } from './Icon'
 import { api } from '../lib/library'
 import { authorLine, MATCH_HINT, sizeLabel, SOURCE_LABEL } from '../lib/format'
+import { FILES_APP, TRASH } from '../lib/platform'
 
 interface Props {
   paper: Paper
@@ -116,7 +117,7 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
                   {i === 0 && (
                     <div className="insp-file-actions">
                       <button type="button" className="btn btn-s" onClick={() => void api.library.openFile(p.id)}>用其他程序打开</button>
-                      <button type="button" className="btn btn-s" onClick={() => void api.library.showInFinder(p.id)}>在访达中显示</button>
+                      <button type="button" className="btn btn-s" onClick={() => void api.library.showInFinder(p.id)}>在{FILES_APP}中显示</button>
                     </div>
                   )}
                 </div>
@@ -130,7 +131,7 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
         )}
 
         <div className="detail-foot">
-          <button type="button" className="btn btn-s danger-text" onClick={() => onRemove(p.id)}><Icon name="trash" size={14} />移到废纸篓</button>
+          <button type="button" className="btn btn-s danger-text" onClick={() => onRemove(p.id)}><Icon name="trash" size={14} />移到{TRASH}</button>
         </div>
       </div>
     </aside>

@@ -6,6 +6,7 @@ import { PAPER_DRAG_TYPE } from './Sidebar'
 import { addedLabel, authorLine, MATCH_HINT } from '../lib/format'
 import { api } from '../lib/library'
 import { filterPapers } from '../lib/filterPapers'
+import { FILES_APP, mod, TRASH } from '../lib/platform'
 
 interface Props {
   label: string
@@ -148,7 +149,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
     }
     if (e.key === 'Enter' && focusedId) read(focusedId)
     if (e.key === 'Escape' && sel) setSel(null)
-    if ((e.key === 'Backspace' || e.key === 'Delete') && e.metaKey && sel) onRemove(sel)
+    if ((e.key === 'Backspace' || e.key === 'Delete') && mod(e) && sel) onRemove(sel)
   }
 
   return (
@@ -252,7 +253,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
           <button type="button" role="menuitem" onClick={() => exportOne(menu.p, 'bibtex')}>导出 BibTeX…</button>
           <button type="button" role="menuitem" onClick={() => exportOne(menu.p, 'ris')}>导出 RIS…</button>
           <div className="menu-sep" role="separator" />
-          <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(null); onRemove(menu.p.id) }}>移到废纸篓</button>
+          <button type="button" role="menuitem" className="danger" onClick={() => { setMenu(null); onRemove(menu.p.id) }}>移到{TRASH}</button>
         </div>
       )}
     </section>

@@ -5,6 +5,7 @@ import { AI_VENDORS, vendorOf } from '../../../shared/aiVendors'
 import type { AiService, AiStatus, Appearance, UpdateState } from '../../../shared/api'
 import { host, serviceName, useAiStatus } from '../lib/ai'
 import { api } from '../lib/library'
+import { FILES_APP, kbd, KEYCHAIN } from '../lib/platform'
 import { Icon, Spinner } from './Icon'
 import { TranslateSettings } from './TranslateSettings'
 
@@ -65,8 +66,8 @@ export function SettingsView({ onShortcuts }: { onShortcuts: () => void }) {
         )}
       </div>
       <p className="hint settings-note">
-        Key 只保存在这台电脑上，用系统钥匙串加密。
-        {!status.canEncrypt && <span className="ai-error"> 系统钥匙串不可用，暂时不能保存 Key。</span>}
+        Key 只保存在这台电脑上，用{KEYCHAIN}加密。
+        {!status.canEncrypt && <span className="ai-error"> {KEYCHAIN}不可用，暂时不能保存 Key。</span>}
       </p>
     </section>
     <TranslateSettings status={status} />
@@ -124,7 +125,7 @@ function DataSection() {
       <div className="card">
         <div className="settings-row">
           <span className="rt"><b>资料文件夹</b><small className="path" title={dir}>{dir}</small></span>
-          <button type="button" className="btn btn-s" onClick={() => void api.showData()}>在访达中显示</button>
+          <button type="button" className="btn btn-s" onClick={() => void api.showData()}>在{FILES_APP}中显示</button>
         </div>
         <div className="settings-row">
           <span className="rt">
@@ -178,7 +179,7 @@ function AboutSection({ onShortcuts }: { onShortcuts: () => void }) {
           )}
         </div>
         <div className="settings-row">
-          <span className="rt"><b>键盘快捷键</b><small>⌘/ 随时打开</small></span>
+          <span className="rt"><b>键盘快捷键</b><small>{kbd('⌘/')} 随时打开</small></span>
           <button type="button" className="btn btn-s" onClick={onShortcuts}>查看</button>
         </div>
       </div>
@@ -269,7 +270,7 @@ function ServiceForm({ status, service, onDone, cancelable = true }: { status: A
           <input className="input" type="password" autoComplete="off" placeholder={`${vendor.name} 的 API Key`} value={key} onChange={(e) => setKey(e.target.value)} spellCheck={false} disabled={!status.canEncrypt} autoFocus={!!service} />
         ) : (
           <div className="key-row">
-            <span><Icon name="done" size={14} />已保存在系统钥匙串</span>
+            <span><Icon name="done" size={14} />已保存在{KEYCHAIN}</span>
             <button type="button" className="link" onClick={() => setChangeKey(true)}>更换</button>
           </div>
         )}

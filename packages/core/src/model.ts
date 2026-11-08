@@ -94,12 +94,15 @@ export interface TextQuote {
   suffix: string
 }
 
-/** 批注，对应 docs/04-数据模型.md。M2 只做文本类：高亮、下划线；附言写在 comment 里 */
+/**
+ * 批注，对应 docs/04-数据模型.md。文本类：高亮、下划线、note；附言写在 comment 里。
+ * note 是"只写评论"：选中文字加评论时不涂颜色，页面上只有一条淡淡的虚线和页边的评论标记；选个颜色就变成高亮
+ */
 export interface Annotation extends Versioned {
   paperId: UUID
   /** 绑定到具体文件，预印本和正式版的批注不会混 */
   fileHash: string
-  type: 'highlight' | 'underline'
+  type: 'highlight' | 'underline' | 'note'
   origin: 'select' | 'gesture' | 'ai'
   color: HighlightColor
   /** 从 0 开始 */

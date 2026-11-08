@@ -128,6 +128,13 @@ describe('annotations', () => {
     target: { rects: [[10, top - 12, 90, top] as [number, number, number, number]], quote: { exact: 'x', prefix: '', suffix: '' } }
   })
 
+  it('keeps a comment-only note and turns it into a highlight when given a color', () => {
+    const p = lib.addPaper(meta())
+    const n = lib.addAnnotation({ ...hl(p.id, 0, 300), type: 'note' })
+    expect(lib.updateAnnotation(n.id, { comment: '为什么用两种' })).toMatchObject({ type: 'note', comment: '为什么用两种' })
+    expect(lib.updateAnnotation(n.id, { color: 'blue', type: 'highlight' })).toMatchObject({ type: 'highlight', color: 'blue', comment: '为什么用两种' })
+  })
+
   it('adds, orders, edits, removes and restores annotations', () => {
     const p = lib.addPaper(meta())
     const b = lib.addAnnotation(hl(p.id, 1, 500))

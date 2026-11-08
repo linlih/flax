@@ -5,6 +5,7 @@ import { startCompletion, type Completion, type CompletionContext, type Completi
 import { syntaxTree } from '@codemirror/language'
 import type { EditorView } from '@codemirror/view'
 import { insertLink } from './livePreview'
+import { kbd } from '../lib/platform'
 
 type Apply = (view: EditorView, from: number, to: number) => void
 
@@ -103,7 +104,7 @@ export function slashCommands(ctx: CompletionContext): CompletionResult | null {
     options: found.map(
       (c): Completion => ({
         label: c.label,
-        detail: c.detail,
+        detail: c.detail && kbd(c.detail),
         section: { name: c.section, rank: SECTION_RANK[c.section] },
         apply: (view, _c, from, to) => c.run(view, from, to)
       })

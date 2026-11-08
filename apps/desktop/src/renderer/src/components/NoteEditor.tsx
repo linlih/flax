@@ -16,6 +16,7 @@ import { linkAt } from '../lib/noteLinks'
 import { Icon } from './Icon'
 import { slashCommands } from './slashMenu'
 import { excerptAt, exitEmptyQuote, insertLink, livePreview, pasteLink, toggleTask, toggleWrap } from './livePreview'
+import { FILES_APP, TRASH } from '../lib/platform'
 
 /** 外面可以往正在编辑的笔记里插内容（摘到笔记用） */
 export interface EditorHandle {
@@ -239,7 +240,7 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
 
   const backlinks = useMemo(() => (me && !compact ? notes.filter((n) => n.id !== me.id && n.links.some((l) => l.toLowerCase() === me.title.toLowerCase())) : []), [notes, me, compact])
 
-  if (missing) return <div className="note-missing hint">这篇笔记已经不在了（可能被移到了废纸篓）。</div>
+  if (missing) return <div className="note-missing hint">这篇笔记已经不在了（可能被移到了{TRASH}）。</div>
 
   return (
     <div className={'note-ed' + (compact ? ' compact' : '')}>
@@ -259,8 +260,8 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
         <div className="note-tools">
           {noteId && <>
           {onNew && <button type="button" className="icon-btn" aria-label="新笔记" title="新笔记" onClick={onNew}><Icon name="plus" size={16} /></button>}
-          <button type="button" className="icon-btn" aria-label="在访达中显示文件" title="在访达中显示（笔记就是普通的 .md 文件）" onClick={() => void api.notes.showInFinder(noteId)}><Icon name="open" size={16} /></button>
-          <button type="button" className="icon-btn" aria-label="删除笔记" title="移到废纸篓" onClick={() => { void api.notes.remove(noteId).then(() => onDeleted?.()) }}><Icon name="trash" size={16} /></button>
+          <button type="button" className="icon-btn" aria-label={`在${FILES_APP}中显示文件`} title={`在${FILES_APP}中显示（笔记就是普通的 .md 文件）`} onClick={() => void api.notes.showInFinder(noteId)}><Icon name="open" size={16} /></button>
+          <button type="button" className="icon-btn" aria-label="删除笔记" title={`移到${TRASH}`} onClick={() => { void api.notes.remove(noteId).then(() => onDeleted?.()) }}><Icon name="trash" size={16} /></button>
           </>}
         </div>
       </div>

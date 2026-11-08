@@ -14,6 +14,7 @@ import { TermsView } from './components/TermsView'
 import { useNotes } from './lib/notes'
 import { warmUp } from './reader/pdf'
 import { api, papersIn, useLibrary, type View } from './lib/library'
+import { TRASH } from './lib/platform'
 
 const TITLES: Record<string, string> = {
   all: '全部论文', terms: '术语', notes: '笔记', settings: '设置'
@@ -101,7 +102,7 @@ export function App() {
   const remove = (id: string) => {
     const p = lib.papers.find((x) => x.id === id)
     void api.library.remove(id)
-    toast({ text: `已移到废纸篓：${p?.title ?? ''}`, action: { label: '撤销', run: () => void api.library.restore(id) } })
+    toast({ text: `已移到${TRASH}：${p?.title ?? ''}`, action: { label: '撤销', run: () => void api.library.restore(id) } })
   }
 
   // 菜单栏

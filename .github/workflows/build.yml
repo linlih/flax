@@ -1,6 +1,6 @@
-# 打 Mac 安装包。在 Actions 页点 "Run workflow" 得到一份构建产物（保留 14 天）；
-# 推一个 v0.1.1 这样的标签（apps/desktop/scripts/release.sh）就发布一个版本：
-# dmg、zip 和 latest-mac.yml 传到 Releases，装好的 Flax 从这里检查更新。
+# 打 Mac 和 Windows 安装包。在 Actions 页点 "Run workflow" 得到一份构建产物（保留 14 天）；
+# 推一个 v0.1.1 这样的标签（apps/desktop/scripts/release.sh）就发布一个版本：两边都打好后，
+# dmg、zip、latest-mac.yml 和 exe、latest.yml 一起传到 Releases，装好的 Flax 从这里检查更新。
 name: Build app
 
 on:
@@ -17,8 +17,6 @@ jobs:
     name: macOS
     # 系统翻译小助手要 Xcode 26（macOS 26 的 Translation 框架）
     runs-on: macos-26
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -61,13 +59,52 @@ jobs:
             apps/desktop/dist/*.zip
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest-mac.yml
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      # 没有代码签名证书：第一次运行时 SmartScreen 会提示，点"更多信息 › 仍要运行"
+      - run: npm run dist:win -w @paper/desktop
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flax-windows
+          retention-days: 14
+          if-no-files-found: error
+          path: |
+            apps/desktop/dist/*.exe
+            apps/desktop/dist/*.blockmap
+            apps/desktop/dist/latest.yml
+
+  # 两边都打好才发布，免得只有一半
+  release:
+    name: Release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [mac, windows]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
       # 标签的说明就是发布说明，也是应用里更新提示显示的内容
       - name: Release
-        if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           git fetch --force --tags
           gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Flax $GITHUB_REF_NAME" --notes-from-tag --verify-tag
-          cd apps/desktop/dist
-          gh release upload "$GITHUB_REF_NAME" *.dmg *.zip *.blockmap latest-mac.yml --clobber
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber

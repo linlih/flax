@@ -2,6 +2,8 @@ import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import type { Folder } from '@paper/core'
 import { Icon, type IconName } from './Icon'
 import type { View } from '../lib/library'
+import { isMac, kbd } from '../lib/platform'
+import { api } from '../lib/library'
 
 const LIBRARY: { id: View; label: string; icon: IconName }[] = [
   { id: 'all', label: '全部论文', icon: 'all' }
@@ -47,10 +49,24 @@ export function Sidebar(p: Props) {
 
   return (
     <nav className="app-sidebar drag" aria-label="侧边栏">
-      <button type="button" className="search no-drag" aria-label="快速搜索（⌘K）" title="M3 起可用">
+      {!isMac && (
+        <button
+          type="button"
+          className="icon-btn tool app-menu no-drag"
+          aria-label="菜单"
+          title="菜单"
+          onClick={(e) => {
+            const r = e.currentTarget.getBoundingClientRect()
+            void api.popupMenu(r.left, r.bottom + 4)
+          }}
+        >
+          <Icon name="menu" size={18} />
+        </button>
+      )}
+      <button type="button" className="search no-drag" aria-label={kbd('快速搜索（⌘K）')} title="M3 起可用">
         <Icon name="search" size={16} />
         <span>快速搜索</span>
-        <span className="kbd">⌘K</span>
+        <span className="kbd">{kbd('⌘K')}</span>
       </button>
       <div className="side-scroll no-drag">
         <div className="side-list">{LIBRARY.map(item)}</div>

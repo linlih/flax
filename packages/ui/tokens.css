@@ -46,9 +46,9 @@
   --hl-dark-yellow: #6E5C16; --hl-dark-green: #2A6139; --hl-dark-blue: #24507F; --hl-dark-pink: #73304A; --hl-dark-purple: #4E3C86;
   --ul-yellow: #E0A800; --ul-green: #2F9E44; --ul-blue: #1C7ED6; --ul-pink: #D6336C; --ul-purple: #7048E8;
 
-  --font-ui: Inter, "Noto Sans SC", -apple-system, "PingFang SC", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
-  --font-paper: "Source Serif 4", "Noto Serif SC", Georgia, serif;
+  --font-ui: Inter, "Noto Sans SC", -apple-system, "PingFang SC", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, "Cascadia Mono", Consolas, monospace;
+  --font-paper: "Source Serif 4", "Noto Serif SC", Georgia, "Songti SC", "SimSun", serif;
 }
 
 @media (prefers-color-scheme: dark) {

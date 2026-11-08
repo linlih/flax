@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { cp, mkdir, rename } from 'node:fs/promises'
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, protocol, safeStorage, shell } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
 import { Library, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition } from '@paper/core'
 import type { ImportNotice, LibrarySnapshot, MenuCommand } from '../shared/api'
 import { Importer } from './importer'
@@ -34,6 +34,15 @@ let updater: Updater | null = null
 mkdirSync(dataDir, { recursive: true })
 const appearance = createAppearance(dataDir, () => setMenu())
 
+const isMac = process.platform === 'darwin'
+
+/** Windows 右上角窗口按钮的底色和图标色，跟着浅色 / 深色走（和 tokens.css 的 --bg、--text 一致） */
+function overlay(): { color: string; symbolColor: string; height: number } {
+  return nativeTheme.shouldUseDarkColors
+    ? { color: '#121212', symbolColor: '#E6E6E6', height: 36 }
+    : { color: '#FFFFFF', symbolColor: '#1F1F1F', height: 36 }
+}
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1440,
@@ -43,9 +52,10 @@ function createWindow(): void {
     show: false,
     title: '文献库',
     icon: iconPath,
-    titleBarStyle: 'hiddenInset',
-    trafficLightPosition: { x: 16, y: 18 },
-    backgroundColor: '#00000000',
+    ...(isMac
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 }, backgroundColor: '#00000000' }
+      // Windows / Linux：去掉系统标题栏，右上角留系统自己的最小化、最大化、关闭按钮
+      : { titleBarStyle: 'hidden' as const, titleBarOverlay: overlay(), backgroundColor: overlay().color }),
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -115,6 +125,10 @@ function setup(): void {
   handle('app:checkUpdate', () => updater?.check(true) ?? { kind: 'dev', manual: true })
   handle('app:installUpdate', () => updater?.install())
   handle('app:showData', () => void shell.openPath(dataDir))
+  // Windows 没有菜单栏：侧栏左上角的按钮弹出同一份菜单
+  handle('app:popupMenu', (x, y) => {
+    if (win) Menu.getApplicationMenu()?.popup({ window: win, x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) })
+  })
   // 从备份恢复：现在的资料先整体挪到资料文件夹旁边的"恢复前"文件夹（不删任何东西），再把备份拷进来，然后重启
   handle('app:restore', async () => {
     if (!win) return false
@@ -395,37 +409,41 @@ function setMenu(): void {
     if (!win) createWindow()
     win?.webContents.send('app:menu', c)
   }
+  const settings: MenuItemConstructorOptions = { label: '设置…', accelerator: 'CmdOrCtrl+,', click: cmd('settings') }
+  const checkUpdate: MenuItemConstructorOptions = { label: '检查更新…', click: () => { if (!win) createWindow(); updater?.check(true) } }
+  const fileItems: MenuItemConstructorOptions[] = [
+    { label: '导入 PDF…', accelerator: 'CmdOrCtrl+O', click: cmd('importPdf') },
+    { label: '从 Zotero 或 BibTeX 导入…', click: cmd('importBib') },
+    { label: '新建笔记', accelerator: 'CmdOrCtrl+N', click: cmd('newNote') },
+    { type: 'separator' },
+    { label: '导出全部为 BibTeX…', click: cmd('exportBib') },
+    { label: '导出全部为 RIS…', click: cmd('exportRis') }
+  ]
+  // macOS 有应用菜单（关于、设置、服务、隐藏）；Windows 没有，设置和退出放进"文件"
+  const head: MenuItemConstructorOptions[] = isMac
+    ? [
+        {
+          label: app.name,
+          submenu: [
+            { role: 'about', label: `关于 ${app.name}` },
+            checkUpdate,
+            { type: 'separator' },
+            settings,
+            { type: 'separator' },
+            { role: 'services', label: '服务' },
+            { type: 'separator' },
+            { role: 'hide', label: `隐藏 ${app.name}` },
+            { role: 'hideOthers', label: '隐藏其他' },
+            { role: 'unhide', label: '全部显示' },
+            { type: 'separator' },
+            { role: 'quit', label: `退出 ${app.name}` }
+          ]
+        },
+        { label: '文件', submenu: [...fileItems, { type: 'separator' }, { role: 'close', label: '关闭窗口' }] }
+      ]
+    : [{ label: '文件', submenu: [...fileItems, { type: 'separator' }, settings, { type: 'separator' }, { role: 'quit', label: '退出' }] }]
   Menu.setApplicationMenu(Menu.buildFromTemplate([
-    {
-      label: app.name,
-      submenu: [
-        { role: 'about', label: `关于 ${app.name}` },
-        { label: '检查更新…', click: () => { if (!win) createWindow(); updater?.check(true) } },
-        { type: 'separator' },
-        { label: '设置…', accelerator: 'CmdOrCtrl+,', click: cmd('settings') },
-        { type: 'separator' },
-        { role: 'services', label: '服务' },
-        { type: 'separator' },
-        { role: 'hide', label: `隐藏 ${app.name}` },
-        { role: 'hideOthers', label: '隐藏其他' },
-        { role: 'unhide', label: '全部显示' },
-        { type: 'separator' },
-        { role: 'quit', label: `退出 ${app.name}` }
-      ]
-    },
-    {
-      label: '文件',
-      submenu: [
-        { label: '导入 PDF…', accelerator: 'CmdOrCtrl+O', click: cmd('importPdf') },
-        { label: '从 Zotero 或 BibTeX 导入…', click: cmd('importBib') },
-        { label: '新建笔记', accelerator: 'CmdOrCtrl+N', click: cmd('newNote') },
-        { type: 'separator' },
-        { label: '导出全部为 BibTeX…', click: cmd('exportBib') },
-        { label: '导出全部为 RIS…', click: cmd('exportRis') },
-        { type: 'separator' },
-        { role: 'close', label: '关闭窗口' }
-      ]
-    },
+    ...head,
     {
       label: '编辑',
       submenu: [
@@ -435,7 +453,7 @@ function setMenu(): void {
         { role: 'cut', label: '剪切' },
         { role: 'copy', label: '拷贝' },
         { role: 'paste', label: '粘贴' },
-        { role: 'pasteAndMatchStyle', label: '粘贴并匹配样式' },
+        ...(isMac ? [{ role: 'pasteAndMatchStyle' as const, label: '粘贴并匹配样式' }] : []),
         { role: 'delete', label: '删除' },
         { role: 'selectAll', label: '全选' }
       ]
@@ -463,14 +481,18 @@ function setMenu(): void {
     {
       label: '窗口',
       role: 'windowMenu',
-      submenu: [
-        { role: 'minimize', label: '最小化' },
-        { role: 'zoom', label: '缩放' },
-        { type: 'separator' },
-        { role: 'front', label: '前置全部窗口' }
-      ]
+      submenu: isMac
+        ? [{ role: 'minimize', label: '最小化' }, { role: 'zoom', label: '缩放' }, { type: 'separator' }, { role: 'front', label: '前置全部窗口' }]
+        : [{ role: 'minimize', label: '最小化' }, { role: 'close', label: '关闭窗口' }]
     },
-    { label: '帮助', role: 'help', submenu: [{ label: '键盘快捷键', accelerator: 'CmdOrCtrl+/', click: cmd('shortcuts') }] }
+    {
+      label: '帮助',
+      role: 'help',
+      submenu: [
+        { label: '键盘快捷键', accelerator: 'CmdOrCtrl+/', click: cmd('shortcuts') },
+        ...(isMac ? [] : [{ type: 'separator' as const }, checkUpdate, { role: 'about' as const, label: `关于 ${app.name}` }])
+      ]
+    }
   ]))
 }
 
@@ -484,6 +506,8 @@ app.whenReady().then(() => {
   setMenu()
   setup()
   createWindow()
+  // Windows 的窗口按钮不会自己跟着深浅色变
+  if (!isMac) nativeTheme.on('updated', () => win?.setTitleBarOverlay(overlay()))
   // 打开一会儿后悄悄检查更新，之后每 6 小时一次
   void realUpdater().catch((e: unknown) => (console.error('updater:', e), null)).then((u) => {
     updater = new Updater(u, (st) => win?.webContents.send('app:update', st))

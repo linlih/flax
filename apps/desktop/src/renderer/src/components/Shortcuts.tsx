@@ -1,5 +1,6 @@
 // 帮助 › 键盘快捷键（⌘/）：一张表列出所有快捷键，Esc 或点外面关掉。
 import { useEffect } from 'react'
+import { FOCUS_KEY, kbd, TRASH } from '../lib/platform'
 
 const GROUPS: { title: string; keys: [string, string][] }[] = [
   {
@@ -9,7 +10,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
       ['⌘V', '粘贴 DOI 或 arXiv 链接来添加'],
       ['↑ ↓', '选上一篇 / 下一篇'],
       ['↩', '开始读'],
-      ['⌘⌫', '移到废纸篓'],
+      ['⌘⌫', `移到${TRASH}`],
       ['⌘N', '新建笔记'],
       ['⌘,', '设置']
     ]
@@ -26,7 +27,7 @@ const GROUPS: { title: string; keys: [string, string][] }[] = [
       ['⌘F', '在论文里查找'],
       ['⌘+ / ⌘− / ⌘0', '放大 / 缩小 / 还原'],
       ['⌘滚轮 / 捏合', '缩放'],
-      ['⌃⌘F', '专注模式'],
+      [FOCUS_KEY, '专注模式'],
       ['⌥⌘S', '显示或隐藏缩略图'],
       ['⌥⌘N', '显示或隐藏批注和笔记'],
       ['⌥⌘A', '显示或隐藏 AI（可以和笔记并排）'],
@@ -70,7 +71,7 @@ export function Shortcuts({ onClose }: { onClose: () => void }) {
               <h3 className="lbl">{g.title}</h3>
               <dl>
                 {g.keys.map(([k, what]) => (
-                  <div key={k} className="keys-row"><dt>{what}</dt><dd><kbd>{k}</kbd></dd></div>
+                  <div key={k} className="keys-row"><dt>{what}</dt><dd><kbd>{kbd(k)}</kbd></dd></div>
                 ))}
               </dl>
             </section>

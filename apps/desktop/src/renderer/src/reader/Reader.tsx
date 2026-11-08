@@ -17,9 +17,12 @@ import { drawPage } from './overlay'
 import { Thumbnails } from './Thumbnails'
 import { parseHash, renderPreview, resolveTarget } from './linkPreview'
 import { AiPanel } from './AiPanel'
+import { AnnoList } from './AnnoList'
+import { COLORS } from './colors'
 import { TranslateCard } from './TranslateCard'
 import { ReaderToolbar, type Tool } from './ReaderToolbar'
 import { useAiStatus } from '../lib/ai'
+import { FOCUS_KEY, isMac, kbd, mod } from '../lib/platform'
 
 
 /** 当前外观是不是深色；外观由整个应用统一切换（见 main/appearance.ts），这里只跟着变 */
@@ -97,7 +100,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [annos, setAnnos] = useState<Annotation[]>([])
   const annosRef = useRef(annos)
   annosRef.current = annos
-  const [active, setActive] = useState<{ id: string; at: Spot; focus?: boolean } | null>(null)
+  /** 选中的批注。from 'list'：在侧栏列表里点的，就在列表里展开编辑，不弹页面上的卡片 */
+  const [active, setActive] = useState<{ id: string; at: Spot; focus?: boolean; from?: 'list' } | null>(null)
   const activeRef = useRef<string | null>(null)
   activeRef.current = active?.id ?? null
   const [selBar, setSelBar] = useState<{ at: Spot; parts: SelectionPart[]; text: string } | null>(null)
@@ -349,7 +353,21 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const onPointerUp = (e: React.PointerEvent) => {
     if ((e.target as HTMLElement).closest('.reader-float, .reader-toolbar') || e.button !== 0) return
     setCtx(null)
-    if (dragged.current || hand) return
+    // 页边的评论标记：打开这条批注
+    const mark = (e.target as HTMLElement).closest<HTMLElement>('.hl-mark')
+    const marked = mark && annosRef.current.find((a) => a.id === mark.dataset['anno'])
+    if (marked && !dragged.current) {
+      setSelBar(null)
+      setActive(activeRef.current === marked.id ? null : { id: marked.id, at: spotFor(marked) ?? toSpot(e.clientX, e.clientY) })
+      return
+    }
+    if (dragged.current) return
+    // 抓手：点一下（没拖）照样能打开高亮的批注，点空白处收起
+    if (hand) {
+      const hit = annoAt(e.clientX, e.clientY)
+      setActive(hit ? { id: hit.id, at: spotFor(hit) ?? toSpot(e.clientX, e.clientY) } : null)
+      return
+    }
     // 等浏览器把选区定下来
     requestAnimationFrame(() => {
       const sel = window.getSelection()
@@ -374,19 +392,28 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     })
   }
 
-  /** 双击一个词：翻译设好了就直接翻。选区留着，右键照样能批注 */
-  const onDoubleClick = () => {
-    if (tool !== 'select' || hand || !aiStatus?.translate.ready) return
-    requestAnimationFrame(() => {
-      const sel = window.getSelection()
-      if (!sel || sel.isCollapsed || !sel.rangeCount || !scrollRef.current?.contains(sel.anchorNode)) return
-      const word = sel.toString().trim()
-      if (!word || word.length > 60 || /\s/.test(word)) return
-      const rects = sel.getRangeAt(0).getClientRects()
-      const first = rects[0]
-      const last = rects[rects.length - 1]
-      if (first && last) translate(word, toSpot((first.left + last.right) / 2, last.bottom))
-    })
+  /**
+   * 双击一个词：翻译设好了就直接翻。选区留着，右键照样能批注。
+   * 抓手工具（或按住空格）下按下去不会选字，但双击不会拖动页面，所以自己选中鼠标下的词再翻
+   */
+  const onDoubleClick = (e: React.MouseEvent) => {
+    if (!aiStatus?.translate.ready) return
+    if (hand) {
+      if (!dragged.current && selectWordAt(e.clientX, e.clientY, scrollRef.current)) translateSelection()
+      return
+    }
+    if (tool !== 'select') return
+    requestAnimationFrame(translateSelection)
+  }
+  const translateSelection = () => {
+    const sel = window.getSelection()
+    if (!sel || sel.isCollapsed || !sel.rangeCount || !scrollRef.current?.contains(sel.anchorNode)) return
+    const word = sel.toString().trim()
+    if (!word || word.length > 60 || /\s/.test(word)) return
+    const rects = sel.getRangeAt(0).getClientRects()
+    const first = rects[0]
+    const last = rects[rects.length - 1]
+    if (first && last) translate(word, toSpot((first.left + last.right) / 2, last.bottom))
   }
 
   const create = async (type: Annotation['type'], color: HighlightColor, withComment = false, bar = selBar): Promise<Annotation[]> => {
@@ -484,9 +511,13 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   const onPointerDown = (e: React.PointerEvent) => {
     dragged.current = false
+    // 点页边的评论标记不开始选字
+    if (e.button === 0 && !hand && (e.target as HTMLElement).closest('.hl-mark')) return void e.preventDefault()
     if (tool !== 'hand') pinSelectionStart(e)
     const left = e.button === 0 && hand && !(e.target as HTMLElement).closest('.reader-float, a')
     if (!left && e.button !== 1) return
+    // 抓手下双击选中的词，再按下去时清掉
+    if (left) window.getSelection()?.removeAllRanges()
     const c = scrollRef.current
     if (!c) return
     e.preventDefault()
@@ -542,6 +573,22 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     await api.library.updateAnnotation(id, patch)
     await reload()
   }
+  /** 换颜色：只写了评论的（note）选了颜色就变成高亮 */
+  const recolor = (a: Annotation, color: HighlightColor) => void update(a.id, a.type === 'note' ? { color, type: 'highlight' } : { color })
+
+  // 只写评论的批注，评论框关掉时还是空的：当没加过，悄悄删掉（不然页面上留一条看不出意思的虚线）
+  const prevActive = useRef<string | null>(null)
+  useEffect(() => {
+    const was = prevActive.current
+    prevActive.current = active?.id ?? null
+    if (!was || was === active?.id) return
+    if (annosRef.current.find((x) => x.id === was)?.type !== 'note') return
+    // 刚写的评论可能还在保存：重新读一次（保存的请求先发，主进程按顺序处理）
+    void api.library.annotations(paper.id).then((list) => {
+      const a = list.find((x) => x.id === was)
+      if (a && !a.comment?.trim()) void api.library.removeAnnotation(a.id).then(reload)
+    })
+  }, [active?.id, reload, paper.id])
 
   const remove = async (a: Annotation) => {
     await api.library.removeAnnotation(a.id)
@@ -593,16 +640,16 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       const typing = (e.target as HTMLElement).closest?.('input, textarea')
       // 在笔记编辑器里打字时，快捷键归编辑器（⌘F 查找、⌘[ 减少缩进…）
       if ((e.target as HTMLElement).closest?.('.cm-editor')) return
-      if (e.metaKey && e.key.toLowerCase() === 'f') {
+      if (e.code === 'KeyF' && (isMac ? e.metaKey && e.ctrlKey : e.ctrlKey && e.shiftKey)) return e.preventDefault(), toggleFocus()
+      if (mod(e) && e.key.toLowerCase() === 'f') {
         e.preventDefault()
         return openFind()
       }
-      if (e.metaKey && (e.key === '=' || e.key === '+')) return e.preventDefault(), zoom(1)
-      if (e.metaKey && e.key === '-') return e.preventDefault(), zoom(-1)
-      if (e.metaKey && e.key === '0') return e.preventDefault(), zoom(0)
-      if (e.metaKey && e.key === '[') return e.preventDefault(), onBack()
-      if (e.metaKey && e.ctrlKey && e.key.toLowerCase() === 'f') return e.preventDefault(), toggleFocus()
-      if (e.metaKey && e.altKey && e.code === 'KeyS') return e.preventDefault(), togglePref('thumbs', !showThumbs, setShowThumbs)
+      if (mod(e) && (e.key === '=' || e.key === '+')) return e.preventDefault(), zoom(1)
+      if (mod(e) && e.key === '-') return e.preventDefault(), zoom(-1)
+      if (mod(e) && e.key === '0') return e.preventDefault(), zoom(0)
+      if (mod(e) && e.key === '[') return e.preventDefault(), onBack()
+      if (mod(e) && e.altKey && e.code === 'KeyS') return e.preventDefault(), togglePref('thumbs', !showThumbs, setShowThumbs)
       if (e.key === 'Escape') {
         if (ctx) return setCtx(null)
         if (selBar) {
@@ -800,8 +847,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   return (
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
       <header className="reader-bar drag">
-        <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={`返回${backLabel}（⌘[）`} onClick={onBack}><Icon name="back" /></button>
-        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={showThumbs} aria-label="显示缩略图" title={showThumbs ? '隐藏缩略图（⌥⌘S）' : '显示缩略图（⌥⌘S）'} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
+        <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
+        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={showThumbs} aria-label="显示缩略图" title={showThumbs ? kbd('隐藏缩略图（⌥⌘S）') : kbd('显示缩略图（⌥⌘S）')} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
         <div className="reader-title">
           <span className="reader-name" title={paper.title}>{paper.title}</span>
           {pageCount > 0 && (
@@ -823,11 +870,11 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
         </div>
         <div className="reader-tools no-drag">
           <div className="zoom" role="group" aria-label="缩放">
-            <button type="button" className="icon-btn tool" aria-label="缩小" title="缩小（⌘-，或按住 Ctrl 滚动滚轮）" onClick={() => zoom(-1)}><Icon name="minus" size={16} /></button>
-            <button type="button" className="zoom-l num" title="自动大小（⌘0）" onClick={() => zoom(0)}>{scaleLabel}</button>
-            <button type="button" className="icon-btn tool" aria-label="放大" title="放大（⌘+，或按住 Ctrl 滚动滚轮）" onClick={() => zoom(1)}><Icon name="plus" size={16} /></button>
+            <button type="button" className="icon-btn tool" aria-label="缩小" title={kbd('缩小（⌘-，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(-1)}><Icon name="minus" size={16} /></button>
+            <button type="button" className="zoom-l num" title={kbd('自动大小（⌘0）')} onClick={() => zoom(0)}>{scaleLabel}</button>
+            <button type="button" className="icon-btn tool" aria-label="放大" title={kbd('放大（⌘+，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(1)}><Icon name="plus" size={16} /></button>
           </div>
-          <button type="button" className="icon-btn tool" aria-pressed={find.open} aria-label="在文中查找" title="在文中查找（⌘F）" onClick={() => (find.open ? closeFind() : openFind())}><Icon name="search" /></button>
+          <button type="button" className="icon-btn tool" aria-pressed={find.open} aria-label="在文中查找" title={kbd('在文中查找（⌘F）')} onClick={() => (find.open ? closeFind() : openFind())}><Icon name="search" /></button>
           <button
             type="button"
             className="icon-btn tool"
@@ -836,9 +883,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
             onClick={() => void api.setAppearance(dark ? 'light' : 'dark')}
           ><Icon name="paper" /></button>
           <button type="button" className="icon-btn tool" aria-label="论文详情" title="论文详情：标题、作者、标签和文件" onClick={onInfo}><Icon name="info" /></button>
-          <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : '全屏阅读：只留论文（⌃⌘F）'} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showPanel} aria-label="批注和笔记" title={showPanel ? '隐藏批注和笔记（⌥⌘N）' : '显示批注和笔记（⌥⌘N）'} onClick={() => togglePref('panel', !showPanel, setShowPanel)}><Icon name="panel" /></button>}
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showAi} aria-label="AI" title={showAi ? '隐藏 AI（⌥⌘A）' : '显示 AI（⌥⌘A）：可以和笔记并排'} onClick={() => togglePref('ai', !showAi, setShowAi)}><Icon name="sparkle" /></button>}
+          <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : kbd(kbd(`全屏阅读：只留论文（${FOCUS_KEY}）`))} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showPanel} aria-label="批注和笔记" title={showPanel ? kbd('隐藏批注和笔记（⌥⌘N）') : kbd('显示批注和笔记（⌥⌘N）')} onClick={() => togglePref('panel', !showPanel, setShowPanel)}><Icon name="panel" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showAi} aria-label="AI" title={showAi ? kbd('隐藏 AI（⌥⌘A）') : kbd('显示 AI（⌥⌘A）：可以和笔记并排')} onClick={() => togglePref('ai', !showAi, setShowAi)}><Icon name="sparkle" /></button>}
         </div>
       </header>
 
@@ -866,8 +913,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
               <span className="find-count num" aria-live="polite">
                 {!find.query ? '' : find.state === FindState.PENDING ? '查找中…' : find.total ? `${find.current} / ${find.total}` : find.state === FindState.NOT_FOUND ? '没有找到' : ''}
               </span>
-              <button type="button" className="icon-btn tool" aria-label="上一个" title="上一个（⇧↩）" disabled={!find.total} onClick={() => runFind(find.query, true, true)}><Icon name="up" size={16} /></button>
-              <button type="button" className="icon-btn tool" aria-label="下一个" title="下一个（↩）" disabled={!find.total} onClick={() => runFind(find.query, true)}><Icon name="down" size={16} /></button>
+              <button type="button" className="icon-btn tool" aria-label="上一个" title={kbd('上一个（⇧↩）')} disabled={!find.total} onClick={() => runFind(find.query, true, true)}><Icon name="up" size={16} /></button>
+              <button type="button" className="icon-btn tool" aria-label="下一个" title={kbd('下一个（↩）')} disabled={!find.total} onClick={() => runFind(find.query, true)}><Icon name="down" size={16} /></button>
               <button type="button" className="icon-btn tool" aria-label="关闭查找" onClick={closeFind}><Icon name="close" size={16} /></button>
             </div>
           )}
@@ -885,7 +932,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
             </div>
           )}
           {!doc && !error && <div className="reader-loading" aria-live="polite"><Spinner />正在打开</div>}
-          {doc && <ReaderToolbar tool={hand ? 'hand' : tool} color={activeAnno?.color ?? lastColor} colorFor={activeAnno ? '这条批注' : null} onTool={chooseTool} onColor={(c) => { pickColor(c); if (activeAnno) void update(activeAnno.id, { color: c }) }} />}
+          {doc && <ReaderToolbar tool={hand ? 'hand' : tool} color={activeAnno?.color ?? lastColor} colorFor={activeAnno ? '这条批注' : null} onTool={chooseTool} onColor={(c) => { pickColor(c); if (activeAnno) recolor(activeAnno, c) }} />}
           <div ref={scrollRef} className={`reader-scroll${hand ? ' hand' : ''}${panning ? ' panning' : ''}${tool === 'highlight' || tool === 'underline' ? ' marking' : ''}`} tabIndex={0} aria-label="论文页面" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} onMouseOver={onLinkOver} onMouseOut={onLinkOut} onScroll={() => { if (ctx) setCtx(null); if (peek) setPeek(null) }}>
             <div ref={viewerRef} className="pdfViewer" />
 
@@ -894,7 +941,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
               <div className="reader-float menu ctx-menu" style={{ left: ctx.at.x, top: ctx.at.y } as CSSProperties} role="menu" onMouseDown={(e) => e.preventDefault()}>
                 {ctx.bar && (
                   <>
-                    <button type="button" role="menuitem" onClick={() => { setCtx(null); void create('highlight', lastColor, true, ctx.bar) }}>添加批注</button>
+                    <button type="button" role="menuitem" onClick={() => { setCtx(null); void create('note', lastColor, true, ctx.bar) }}>添加批注</button>
                     <button type="button" role="menuitem" onClick={() => { setCtx(null); void create('highlight', lastColor, false, ctx.bar).then((made) => made[0] && toNote(made[0])) }}>摘到笔记</button>
                   </>
                 )}
@@ -920,13 +967,14 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
               </div>
             )}
 
-            {activeAnno && active && (
+            {activeAnno && active && active.from !== 'list' && (
               <AnnotationCard
                 key={activeAnno.id}
                 a={activeAnno}
                 at={inView(active.at, 150)}
                 focus={active.focus ?? false}
                 onComment={(text) => void update(activeAnno.id, { comment: text })}
+                onColor={(c) => recolor(activeAnno, c)}
                 onRemove={() => void remove(activeAnno)}
                 onToNote={() => void toNote(activeAnno)}
                 onClose={() => setActive(null)}
@@ -943,31 +991,21 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
               <button type="button" role="tab" aria-selected={tab === 'note'} onClick={() => switchTab('note')}>笔记{paperNotes.length ? ` · ${paperNotes.length}` : ''}</button>
             </div>
             {tab === 'annos' ? (
-              <div className="anno-list" role="tabpanel">
-                {annos.length === 0 && <p className="hint anno-empty">用底部工具栏的高亮或下划线，选中文字就标上。</p>}
-                {annos.length > 0 && <p className="hint anno-tip">把批注拖进笔记，变成能跳回原文的引用。</p>}
-                {annos.map((a, i) => (
-                  <div key={a.id}>
-                    {(i === 0 || annos[i - 1]!.page !== a.page) && <div className="anno-page">第 {a.page + 1} 页</div>}
-                    <button
-                      type="button"
-                      className={'card anno-item' + (active?.id === a.id ? ' on' : '')}
-                      onClick={() => jumpTo(a)}
-                      draggable
-                      onDragStart={(e) => {
-                        e.dataTransfer.setData('text/plain', quoteBlock(a.target.quote.exact, a.page + 1, a.id, a.comment) + '\n')
-                        e.dataTransfer.effectAllowed = 'copy'
-                      }}
-                    >
-                      <span className={`anno-bar sw-${a.color}`} aria-hidden="true" />
-                      <span className="anno-text">
-                        <span className={'anno-quote' + (a.type === 'underline' ? ' ul' : '')}>{a.target.quote.exact}</span>
-                        {a.comment && <span className="anno-comment">{a.comment}</span>}
-                      </span>
-                    </button>
-                  </div>
-                ))}
-              </div>
+              <AnnoList
+                annos={annos}
+                activeId={active?.id ?? null}
+                expandedId={active?.from === 'list' ? active.id : null}
+                onSelect={(a) => {
+                  jumpTo(a, false)
+                  requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 }, from: 'list' }))
+                }}
+                onCollapse={() => setActive(null)}
+                onComment={(a, text) => void update(a.id, { comment: text })}
+                onColor={recolor}
+                onRemove={(a) => void remove(a)}
+                onToNote={(a) => void toNote(a)}
+                onCopy={(a) => { void navigator.clipboard.writeText(a.target.quote.exact); toast({ text: '已复制' }) }}
+              />
             ) : (
               noteView
             )}
@@ -985,6 +1023,31 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   )
 }
 
+/** 选中这个位置上的一个词（论文的文字层里）；没有词返回 false */
+function selectWordAt(x: number, y: number, root: HTMLElement | null): boolean {
+  // 抓手下文字层不接收鼠标，找位置时临时打开
+  root?.classList.add('hit-text')
+  const pos = document.caretPositionFromPoint(x, y)
+  root?.classList.remove('hit-text')
+  const node = pos?.offsetNode
+  if (!root || !pos || !node || node.nodeType !== Node.TEXT_NODE || !node.parentElement?.closest('.textLayer') || !root.contains(node)) return false
+  const text = node.textContent ?? ''
+  const seg = new Intl.Segmenter(undefined, { granularity: 'word' })
+  // 落在一个词的后半时 offset 可能正好在词尾，往前看一个字
+  for (const at of [pos.offset, pos.offset - 1]) {
+    const hit = [...seg.segment(text)].find((s) => s.isWordLike && at >= s.index && at < s.index + s.segment.length)
+    if (!hit) continue
+    const range = document.createRange()
+    range.setStart(node, hit.index)
+    range.setEnd(node, hit.index + hit.segment.length)
+    const sel = window.getSelection()
+    sel?.removeAllRanges()
+    sel?.addRange(range)
+    return true
+  }
+  return false
+}
+
 /**
  * 按空格能不能切到小手。点过工具栏、顶栏或页面里的按钮后焦点留在按钮上，这时空格也该拖页面，
  * 而不是去"按"那个按钮；侧栏、弹出的卡片和菜单里的按钮、下拉框、可编辑的地方照常。
@@ -997,11 +1060,12 @@ function spaceCanPan(target: EventTarget | null): boolean {
   return !!el.closest('.reader-toolbar, .reader-bar, .reader-scroll')
 }
 
-function AnnotationCard({ a, at, focus, onComment, onRemove, onClose, onToNote }: {
+function AnnotationCard({ a, at, focus, onComment, onColor, onRemove, onClose, onToNote }: {
   a: Annotation
   at: Spot
   focus: boolean
   onComment: (text: string) => void
+  onColor: (c: HighlightColor) => void
   onRemove: () => void
   onClose: () => void
   onToNote: () => void
@@ -1021,19 +1085,22 @@ function AnnotationCard({ a, at, focus, onComment, onRemove, onClose, onToNote }
         <textarea
           ref={ref}
           rows={2}
-          placeholder="写点什么…（⌘↩ 保存）"
+          placeholder={kbd('写点什么…（⌘↩ 保存）')}
           value={text}
           onChange={(e) => setText(e.target.value)}
           onBlur={save}
           onKeyDown={(e) => {
-            if (e.key === 'Enter' && e.metaKey) { save(); onClose() }
+            if (e.key === 'Enter' && mod(e)) { save(); onClose() }
             if (e.key === 'Escape') { e.stopPropagation(); save(); onClose() }
           }}
         />
       </label>
       <div className="anno-card-row">
-        <button type="button" className="link" onClick={onToNote}>摘到笔记</button>
+        {COLORS.map((c) => (
+          <button key={c.id} type="button" className={`swatch swatch-s sw-${c.id}`} aria-label={a.type === 'note' ? `涂成${c.label}` : c.label} title={a.type === 'note' ? `涂成${c.label}高亮` : c.label} aria-pressed={a.type !== 'note' && a.color === c.id} onClick={() => onColor(c.id)} />
+        ))}
         <span className="grow" />
+        <button type="button" className="link" onClick={onToNote}>摘到笔记</button>
         <button type="button" className="icon-btn tool" aria-label="删除批注" title="删除批注" onClick={onRemove}><Icon name="trash" size={16} /></button>
       </div>
     </div>

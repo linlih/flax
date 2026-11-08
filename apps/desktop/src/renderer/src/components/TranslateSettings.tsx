@@ -5,6 +5,7 @@ import type { AiStatus, MtEngine, TranslateEngine } from '../../../shared/api'
 import { MT_ENGINES, mtEngineOf } from '../../../shared/mtEngines'
 import { api } from '../lib/library'
 import { Icon, Spinner } from './Icon'
+import { KEYCHAIN } from '../lib/platform'
 
 const errText = (e: unknown) => (e instanceof Error ? e.message.replace(/^Error invoking remote method '[^']+': (Error: )?/, '') : String(e))
 type Test = { state: 'busy' } | { state: 'ok' } | { state: 'error'; message: string }
@@ -149,7 +150,7 @@ function MtForm({ engine, account, canEncrypt, onDone }: { engine: MtEngine; acc
           <input className="input" type="password" autoComplete="off" placeholder={`${info.name}的${/^[A-Za-z]/.test(info.secretLabel) ? ' ' : ''}${info.secretLabel}`} value={secret} onChange={(e) => setSecret(e.target.value)} spellCheck={false} disabled={!canEncrypt} autoFocus={!!account || !info.idLabel} />
         ) : (
           <div className="key-row">
-            <span><Icon name="done" size={14} />已保存在系统钥匙串</span>
+            <span><Icon name="done" size={14} />已保存在{KEYCHAIN}</span>
             <button type="button" className="link" onClick={() => setEditing(true)}>更换</button>
           </div>
         )}

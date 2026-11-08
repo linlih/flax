@@ -10,6 +10,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { EffortPicker } from '../components/EffortPicker'
 import { stream, usableServices } from '../lib/ai'
 import { api } from '../lib/library'
+import { kbd } from '../lib/platform'
 
 interface Props {
   paperId: string
@@ -196,7 +197,7 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
             {busy ? (
               <button type="button" className="icon-btn ai-send" aria-label="停止" title="停止" onClick={() => live?.id && void api.ai.cancel(live.id)}><Icon name="stop" size={16} /></button>
             ) : (
-              <button type="button" className="icon-btn ai-send" aria-label="发送" title="发送（↩）" disabled={!input.trim() || !ready} onClick={() => void send()}><Icon name="send" size={16} /></button>
+              <button type="button" className="icon-btn ai-send" aria-label="发送" title={kbd('发送（↩）')} disabled={!input.trim() || !ready} onClick={() => void send()}><Icon name="send" size={16} /></button>
             )}
           </div>
         </div>
@@ -206,7 +207,7 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
 }
 
 function HideButton({ onHide }: { onHide: () => void }) {
-  return <button type="button" className="icon-btn tool" aria-label="隐藏 AI" title="隐藏 AI（⌥⌘A）" onClick={onHide}><Icon name="close" size={16} /></button>
+  return <button type="button" className="icon-btn tool" aria-label="隐藏 AI" title={kbd('隐藏 AI（⌥⌘A）')} onClick={onHide}><Icon name="close" size={16} /></button>
 }
 
 /** 面板顶上：当前对话的标题，点开是这篇论文的全部对话。双击标题可以改名 */

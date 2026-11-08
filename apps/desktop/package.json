@@ -9,7 +9,8 @@
     "build": "sh scripts/build-native.sh && electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
     "dist": "npm run build && electron-builder --mac --publish never",
-    "release": "bash scripts/release.sh"
+    "release": "bash scripts/release.sh",
+    "dist:win": "electron-vite build && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
@@ -84,10 +85,34 @@
           "zh_CN"
         ]
       },
-      "x64ArchFiles": "Contents/Resources/app.asar.unpacked/node_modules/@napi-rs/canvas-darwin-*/**"
+      "x64ArchFiles": "Contents/Resources/app.asar.unpacked/node_modules/@napi-rs/canvas-darwin-*/**",
+      "extraResources": [
+        {
+          "from": "native/out/flax-translate",
+          "to": "bin/flax-translate"
+        }
+      ]
     },
     "dmg": {
       "title": "Flax ${version}"
+    },
+    "win": {
+      "icon": "resources/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "artifactName": "Flax-${version}-setup.${ext}",
+      "shortcutName": "Flax",
+      "uninstallDisplayName": "Flax"
     },
     "electronVersion": "45.2.3",
     "publish": [
@@ -101,10 +126,6 @@
       {
         "from": "../../LICENSE",
         "to": "LICENSE"
-      },
-      {
-        "from": "native/out/flax-translate",
-        "to": "bin/flax-translate"
       }
     ]
   }

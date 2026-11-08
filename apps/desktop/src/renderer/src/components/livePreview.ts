@@ -7,6 +7,7 @@
 import { syntaxTree } from '@codemirror/language'
 import { EditorSelection, type EditorState, type Range, type StateCommand } from '@codemirror/state'
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
+import { kbd } from '../lib/platform'
 
 // —— 小部件 ——
 class BulletWidget extends WidgetType {
@@ -56,16 +57,16 @@ const M = {
   em: mark('cm-lp-em'),
   strike: mark('cm-lp-strike'),
   code: mark('cm-lp-code'),
-  link: mark('cm-lp-link', { title: '⌘ 点击打开' }),
+  link: mark('cm-lp-link', { title: kbd('⌘ 点击打开') }),
   anno: mark('cm-lp-link cm-annolink', { title: '点击跳回原文' }),
-  wiki: mark('cm-lp-link cm-wikilink', { title: '⌘ 点击打开' }),
+  wiki: mark('cm-lp-link cm-wikilink', { title: kbd('⌘ 点击打开') }),
   faint: mark('cm-lp-faint'),
   done: mark('cm-lp-done')
 }
 const L = {
   h: [1, 2, 3, 4, 5, 6].map((n) => line(`cm-lp-h cm-lp-h${n}`)),
   quote: line('cm-lp-quote'),
-  excerpt: Decoration.line({ class: 'cm-lp-quote cm-lp-excerpt', attributes: { title: '点击跳到论文里这一段（⌥ 点击可以修改）' } }),
+  excerpt: Decoration.line({ class: 'cm-lp-quote cm-lp-excerpt', attributes: { title: kbd('点击跳到论文里这一段（⌥ 点击可以修改）') } }),
   code: line('cm-lp-codeblock'),
   codeFirst: line('cm-lp-codeblock cm-lp-codeblock-first'),
   codeLast: line('cm-lp-codeblock cm-lp-codeblock-last')

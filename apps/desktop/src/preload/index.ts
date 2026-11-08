@@ -92,6 +92,7 @@ const api: PaperApi = {
   setAppearance: (value) => ipcRenderer.invoke('app:setAppearance', value),
   info: () => ipcRenderer.invoke('app:info'),
   showData: () => ipcRenderer.invoke('app:showData'),
+  popupMenu: (x: number, y: number) => ipcRenderer.invoke('app:popupMenu', x, y),
   backup: () => ipcRenderer.invoke('app:backup'),
   restore: () => ipcRenderer.invoke('app:restore'),
   library,

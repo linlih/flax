@@ -118,6 +118,8 @@ export interface PaperApi {
   /** 版本号和资料文件夹位置 */
   info(): Promise<{ version: string; dataDir: string }>
   showData(): Promise<void>
+  /** 在 (x, y) 弹出应用菜单（Windows 没有菜单栏时用） */
+  popupMenu(x: number, y: number): Promise<void>
   /** 选一个文件夹，把整个资料库备份进去；返回备份的位置，取消时是 null */
   backup(): Promise<string | null>
   /** 选一个备份恢复：现在的资料挪到一旁，然后应用重启；取消时返回 false */
