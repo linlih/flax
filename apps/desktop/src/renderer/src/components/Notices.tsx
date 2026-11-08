@@ -7,6 +7,8 @@ export interface Toast {
   key: number
   text: string
   action?: { label: string; run: () => void }
+  /** 同一组的新提示顶掉旧的（比如连着改几次阅读状态，只留最后一条） */
+  group?: string
 }
 
 type Keyed = ImportNotice & { key: number }

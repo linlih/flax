@@ -160,7 +160,7 @@ export class Library {
     return null
   }
 
-  addPaper(meta: PaperMeta, opts: { file?: FileRef; needsMatch?: boolean; matchIssue?: MatchIssue; readingStatus?: ReadingStatus } = {}): Paper {
+  addPaper(meta: PaperMeta, opts: { file?: FileRef; needsMatch?: boolean; matchIssue?: MatchIssue; readingStatus?: ReadingStatus; batch?: boolean } = {}): Paper {
     const now = this.now()
     const p: Paper = {
       id: this.uuid(),
@@ -181,6 +181,7 @@ export class Library {
     if (meta.venue !== undefined) p.venue = meta.venue
     if (meta.abstract !== undefined) p.abstract = meta.abstract
     if (opts.matchIssue && p.needsMatch) p.matchIssue = opts.matchIssue
+    if (opts.batch) p.batch = true
     this.tx(() => {
       this.db
         .prepare('INSERT INTO papers (id, data, title_norm, doi, arxiv, added_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)')

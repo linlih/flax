@@ -6,3 +6,4 @@ dist/
 .claude/
 .env*
 apps/desktop/native/out/
+apps/desktop/.electron-dist/

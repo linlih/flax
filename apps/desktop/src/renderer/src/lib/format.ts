@@ -1,15 +1,7 @@
 // 界面上显示的文字：状态、来源、时间、大小。
 import type { MatchIssue, MetadataSource, Paper, ReadingStatus } from '@paper/core'
 
-export const STATUS_LABEL: Record<ReadingStatus, string> = { inbox: '未读', to_read: '待读', reading: '在读', done: '已读完' }
-
-/** 状态点的颜色，都是 token */
-export const STATUS_DOT: Record<ReadingStatus, string> = {
-  inbox: 'var(--placeholder)',
-  to_read: 'var(--text-2)',
-  reading: 'var(--accent-top)',
-  done: 'var(--ok)'
-}
+export const STATUS_LABEL: Record<ReadingStatus, string> = { inbox: '未读', to_read: '待读', reading: '在读', done: '读过' }
 
 export const MATCH_HINT: Record<MatchIssue, string> = {
   no_id: '没有找到 DOI 或 arXiv 编号',

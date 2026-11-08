@@ -103,6 +103,7 @@ function AppearanceSection() {
 function DataSection() {
   const [dir, setDir] = useState('')
   const [restoreError, setRestoreError] = useState('')
+  const [moveError, setMoveError] = useState('')
   const [backup, setBackup] = useState<{ state: 'busy' } | { state: 'done'; path: string } | { state: 'error'; message: string } | null>(null)
   useEffect(() => {
     void api.info().then((i) => setDir(i.dataDir))
@@ -124,8 +125,13 @@ function DataSection() {
       </div>
       <div className="card">
         <div className="settings-row">
-          <span className="rt"><b>资料文件夹</b><small className="path" title={dir}>{dir}</small></span>
+          <span className="rt">
+            <b>资料文件夹</b>
+            <small className="path" title={dir}>{dir}</small>
+            {moveError && <small className="ai-error">{moveError}</small>}
+          </span>
           <button type="button" className="btn btn-s" onClick={() => void api.showData()}>在{FILES_APP}中显示</button>
+          <button type="button" className="btn btn-s" onClick={() => { setMoveError(''); void api.moveData().catch((e: unknown) => setMoveError(errText(e))) }}>更改…</button>
         </div>
         <div className="settings-row">
           <span className="rt">

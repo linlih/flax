@@ -24,6 +24,9 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # 测试和打包都不用 node_modules 里的 Electron 程序，省一次下载（打包用 .electron-dist 里的 zip）
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - run: npm run typecheck
       - run: npm test
       # Flax 自己的签名证书（apps/desktop/scripts/macos-signing.sh）。每个版本同一张证书，
@@ -48,7 +51,18 @@ jobs:
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$kp" "$kc" >/dev/null
           security list-keychains -d user -s "$kc" $(security list-keychains -d user | tr -d '"')
           security find-identity -p codesigning "$kc"
-      - run: npm run dist
+      # Electron 的 zip（scripts/fetch-electron.mjs 下载、核对校验和）和 electron-builder 自己的工具。
+      # GitHub 的下载时不时 504，缓存住以后大多数构建一个都不用下。
+      - uses: actions/cache@v4
+        with:
+          key: electron-mac-${{ hashFiles('node_modules/electron/package.json', 'node_modules/electron-builder/package.json') }}
+          restore-keys: electron-mac-
+          path: |
+            apps/desktop/.electron-dist
+            ~/Library/Caches/electron-builder
+      # 打包过程中 electron-builder 还会下自己的工具，偶尔失败就再来一次
+      - name: Package
+        run: for i in 1 2 3; do npm run dist && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: flax-mac
@@ -70,10 +84,22 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+        env:
+          # 测试和打包都不用 node_modules 里的 Electron 程序，省一次下载（打包用 .electron-dist 里的 zip）
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
       - run: npm run typecheck
       - run: npm test
       # 没有代码签名证书：第一次运行时 SmartScreen 会提示，点"更多信息 › 仍要运行"
-      - run: npm run dist:win -w @paper/desktop
+      - uses: actions/cache@v4
+        with:
+          key: electron-win-${{ hashFiles('node_modules/electron/package.json', 'node_modules/electron-builder/package.json') }}
+          restore-keys: electron-win-
+          path: |
+            apps/desktop/.electron-dist
+            ~\AppData\Local\electron-builder\Cache
+      - name: Package
+        shell: bash
+        run: for i in 1 2 3; do npm run dist:win -w @paper/desktop && exit 0; echo "::warning::打包失败（第 $i 次），30 秒后重试"; sleep 30; done; exit 1
       - uses: actions/upload-artifact@v4
         with:
           name: flax-windows

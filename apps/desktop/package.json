@@ -8,9 +8,9 @@
     "dev": "sh scripts/build-native.sh && electron-vite dev --watch",
     "build": "sh scripts/build-native.sh && electron-vite build",
     "typecheck": "tsc -p tsconfig.json",
-    "dist": "npm run build && electron-builder --mac --publish never",
+    "dist": "npm run build && node scripts/fetch-electron.mjs darwin-arm64 darwin-x64 && electron-builder --mac --publish never",
     "release": "bash scripts/release.sh",
-    "dist:win": "electron-vite build && electron-builder --win --x64 --publish never"
+    "dist:win": "electron-vite build && node scripts/fetch-electron.mjs win32-x64 && electron-builder --win --x64 --publish never"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
@@ -57,6 +57,7 @@
       "package.json"
     ],
     "afterPack": "build/sign.cjs",
+    "electronDist": ".electron-dist",
     "asarUnpack": [
       "**/*.node"
     ],

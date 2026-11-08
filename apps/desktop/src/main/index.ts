@@ -13,6 +13,7 @@ import { createAppearance } from './appearance'
 import { AiService } from './ai/service'
 import { AiSettings } from './ai/settings'
 import { AppleTranslator } from './ai/apple'
+import { copyData, saveDataDir, savedDataDir, targetKind } from './dataLocation'
 import { NoteStore } from './notes'
 import { Updater, realUpdater } from './updater'
 import { FileStore } from './store'
@@ -25,14 +26,46 @@ const iconPath = join(__dirname, '../../resources/icon.png')
 // 必须在 ready 之前登记，渲染进程才能用 fetch 读 paper://
 protocol.registerSchemesAsPrivileged([{ scheme: SCHEME, privileges: SCHEME_PRIVILEGES }])
 
-/** 数据目录：数据库和 PDF。测试时可以用环境变量换到别处。
- *  目录名仍是改名前的 Paper：直接改会让已有的库“消失”，等做数据迁移时再一起改 */
-const dataDir = process.env['PAPER_DATA_DIR'] ?? join(app.getPath('appData'), 'Paper')
+/** 默认的资料文件夹：数据库、PDF、笔记。测试时可以用环境变量换到别处。
+ *  目录名仍是改名前的 Paper：直接改会让已有的库“消失” */
+const defaultDataDir = process.env['PAPER_DATA_DIR'] ?? join(app.getPath('appData'), 'Paper')
+/** 记"资料文件夹换到了哪"的地方。测试时跟着 PAPER_DATA_DIR 走，不读真实的记录 */
+const configDir = process.env['PAPER_CONFIG_DIR'] ?? (process.env['PAPER_DATA_DIR'] ? join(process.env['PAPER_DATA_DIR'], '..', 'config') : join(app.getPath('appData'), 'Flax'))
+/** 现在用的资料文件夹：用户在设置里换过就用换过的 */
+let dataDir = savedDataDir(configDir) ?? defaultDataDir
 
 let win: BrowserWindow | null = null
 let updater: Updater | null = null
-mkdirSync(dataDir, { recursive: true })
-const appearance = createAppearance(dataDir, () => setMenu())
+let appearance!: ReturnType<typeof createAppearance>
+
+/** 换过的资料文件夹找不到（比如在没接上的移动硬盘上）：让用户接上再试、另选一个，或者退出。不悄悄换成空的资料库 */
+async function findDataDir(): Promise<boolean> {
+  while (!existsSync(dataDir)) {
+    // 还没有窗口，提示框要自己到最前面，不然会被别的应用挡住
+    app.focus({ steal: true })
+    const r = await dialog.showMessageBox({
+      type: 'warning',
+      message: '找不到资料文件夹',
+      detail: `${dataDir}\n\n如果它在移动硬盘或网络位置上，接上后点"再试一次"。也可以选另一个 ${app.name} 资料文件夹。`,
+      buttons: ['再试一次', '选择文件夹…', '退出'],
+      defaultId: 0,
+      cancelId: 2
+    })
+    if (r.response === 2) return false
+    if (r.response === 1) {
+      const pick = await dialog.showOpenDialog({ title: `选择 ${app.name} 资料文件夹`, buttonLabel: '用这个文件夹', properties: ['openDirectory'] })
+      const dir = pick.filePaths[0]
+      if (pick.canceled || !dir) continue
+      if (!existsSync(join(dir, 'library.sqlite'))) {
+        await dialog.showMessageBox({ type: 'info', message: '这个文件夹不是 Flax 资料文件夹', detail: '里面没有 library.sqlite。' })
+        continue
+      }
+      dataDir = dir
+      saveDataDir(configDir, dir, defaultDataDir)
+    }
+  }
+  return true
+}
 
 const isMac = process.platform === 'darwin'
 
@@ -128,6 +161,50 @@ function setup(): void {
   // Windows 没有菜单栏：侧栏左上角的按钮弹出同一份菜单
   handle('app:popupMenu', (x, y) => {
     if (win) Menu.getApplicationMenu()?.popup({ window: win, x: Math.round(Number(x) || 0), y: Math.round(Number(y) || 0) })
+  })
+  // 换资料文件夹：选一个空文件夹就把资料搬过去（拷完原来的移到废纸篓），选一个已有的 Flax 资料文件夹就改用它（原来的不动）。然后重启
+  handle('app:moveData', async () => {
+    if (!win) return false
+    const r = await dialog.showOpenDialog(win, { title: '选择新的资料文件夹', message: '选一个空文件夹把资料搬过去，或者选一个已有的 Flax 资料文件夹', buttonLabel: '用这个文件夹', properties: ['openDirectory', 'createDirectory'] })
+    const target = r.filePaths[0]
+    if (r.canceled || !target) return false
+    const kind = targetKind(dataDir, target)
+    if (kind === 'same') return false
+    if (kind === 'inside') throw new Error('不能放在现在的资料文件夹里面。')
+    if (kind === 'other') throw new Error('这个文件夹里已经有别的文件。请选一个空文件夹（可以在选择窗口里新建），或者一个已有的 Flax 资料文件夹。')
+    const move = kind === 'empty'
+    const ok = await dialog.showMessageBox(win, {
+      type: 'question',
+      message: move ? '把资料搬到这个文件夹？' : '改用这个文件夹里的资料库？',
+      detail: move
+        ? `论文、批注、笔记和设置会拷到：\n${target}\n\n拷好后原来的文件夹移到${process.platform === 'darwin' ? '废纸篓' : '回收站'}，${app.name} 会重新打开。`
+        : `那里已经有一个 ${app.name} 资料库，切换后打开的是它。现在的资料留在原处，不会改动：\n${dataDir}\n\n${app.name} 会重新打开。`,
+      buttons: [move ? '搬过去' : '改用它', '取消'],
+      defaultId: 0,
+      cancelId: 1
+    })
+    if (ok.response !== 0) return false
+    if (move) {
+      // 先把 WAL 里的内容写回数据库再关掉，拷过去的是完整的一份
+      db.exec('PRAGMA wal_checkpoint(TRUNCATE)')
+      db.close()
+      try {
+        await copyData(dataDir, target)
+      } catch (e) {
+        // 拷失败：原来的资料没动，重新打开还用原来的
+        await dialog.showMessageBox(win, { type: 'error', message: '搬资料失败', detail: `${e instanceof Error ? e.message : String(e)}\n\n原来的资料没有改动。${app.name} 会重新打开。` })
+        app.relaunch()
+        app.exit(0)
+        return false
+      }
+      saveDataDir(configDir, target, defaultDataDir)
+      await shell.trashItem(dataDir).catch((e: unknown) => console.error('trash old data dir:', e))
+    } else {
+      saveDataDir(configDir, target, defaultDataDir)
+    }
+    app.relaunch()
+    app.exit(0)
+    return true
   })
   // 从备份恢复：现在的资料先整体挪到资料文件夹旁边的"恢复前"文件夹（不删任何东西），再把备份拷进来，然后重启
   handle('app:restore', async () => {
@@ -246,13 +323,11 @@ function setup(): void {
     if (r.canceled || !r.filePaths[0]) return 'cancel'
     return importer.relink(str(id, 'id'), r.filePaths[0])
   })
-  // 进入阅读器：记打开时间；收件箱和待读里的论文变成"在读"
+  // 进入阅读器：记打开时间。打开看一眼不算"在读"，阅读器里真读了一会儿才改（见 Reader 的 startedReading）
   handle('library:markOpened', (id) => {
     const p = library.getPaper(str(id, 'id'))
     if (!p) return
-    const patch: PaperPatch = { lastOpenedAt: new Date().toISOString() }
-    if (p.readingStatus === 'inbox' || p.readingStatus === 'to_read') patch.readingStatus = 'reading'
-    library.updatePaper(p.id, patch)
+    library.updatePaper(p.id, { lastOpenedAt: new Date().toISOString() })
     changed()
   })
   // 阅读位置滚动时频繁保存，不通知界面刷新
@@ -496,7 +571,10 @@ function setMenu(): void {
   ]))
 }
 
-app.whenReady().then(() => {
+app.whenReady().then(async () => {
+  if (!(await findDataDir())) return app.quit()
+  mkdirSync(dataDir, { recursive: true })
+  appearance = createAppearance(dataDir, () => setMenu())
   // 打包后的图标来自 .icns；开发时用 png 换掉 Electron 的默认图标。图标出问题不能挡住窗口打开
   if (process.platform === 'darwin' && !app.isPackaged) {
     try {

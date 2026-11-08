@@ -134,7 +134,7 @@ export class Importer {
         if (file && !dup.paper.files.length) lib.addFile(dup.paper.id, file)
         continue
       }
-      const p = lib.addPaper(item.meta, { file, needsMatch: false })
+      const p = lib.addPaper(item.meta, { file, needsMatch: false, batch: true })
       if (item.tags.length) lib.updatePaper(p.id, { tags: item.tags })
       added++
     }

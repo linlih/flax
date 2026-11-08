@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react'
-import { splitName, suggestFileName, type Author, type Folder, type Paper, type PaperMeta } from '@paper/core'
+import { splitName, suggestFileName, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus } from '@paper/core'
 import type { PaperPatch } from '@paper/core'
 import type { Candidate } from '../../../shared/api'
 import { Icon, Spinner } from './Icon'
 import { api } from '../lib/library'
-import { authorLine, MATCH_HINT, sizeLabel, SOURCE_LABEL } from '../lib/format'
+import { addedLabel, authorLine, MATCH_HINT, sizeLabel, SOURCE_LABEL, STATUS_LABEL } from '../lib/format'
+import { progress, STATUSES } from '../lib/status'
 import { FILES_APP, TRASH } from '../lib/platform'
 
 interface Props {
@@ -16,12 +17,13 @@ interface Props {
   onClose: () => void
   onRead: () => void
   onRemove: (id: string) => void
+  onStatus: (st: ReadingStatus) => void
 }
 
 const ROLE_LABEL = { main: '主文件', preprint: '另一个版本', supplement: '补充材料' } as const
 
 /** 列表右边的详情栏：点一下论文就显示，改动随时保存 */
-export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onClose, onRead, onRemove }: Props) {
+export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onClose, onRead, onRemove, onStatus }: Props) {
   const update = (patch: PaperPatch) => void api.library.update(p.id, patch)
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const hasIds = Boolean(p.identifiers.arxiv || p.identifiers.doi)
@@ -46,6 +48,12 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
           ) : (
             <span className="hint">还没有 PDF：把 PDF 拖到窗口里，会自动配给这篇论文。</span>
           )}
+          <div className="seg insp-status" role="group" aria-label="阅读状态">
+            {STATUSES.map((st) => (
+              <button key={st} type="button" aria-pressed={p.readingStatus === st} onClick={() => onStatus(st)}>{STATUS_LABEL[st]}</button>
+            ))}
+          </div>
+          {p.readingStatus === 'reading' && <ProgressLine paper={p} />}
         </div>
 
         {(p.needsMatch || busy) && <MatchCard paper={p} busy={busy} onManual={() => titleRef.current?.focus()} />}
@@ -302,4 +310,11 @@ function withId(p: Paper, key: 'doi' | 'arxiv', v: string) {
   if (v) ids[key] = v
   else delete ids[key]
   return ids
+}
+
+/** 在读的论文：读到第几页、上次什么时候打开 */
+function ProgressLine({ paper: p }: { paper: Paper }) {
+  const pr = progress(p)
+  const parts = [pr && `读到第 ${pr.page} / ${pr.total} 页`, p.lastOpenedAt && `${addedLabel(p.lastOpenedAt)}打开过`].filter(Boolean)
+  return parts.length ? <span className="hint">{parts.join(' · ')}</span> : null
 }

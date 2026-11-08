@@ -6,7 +6,7 @@ import { loadDocument } from './pdf'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import { EventBus, FindState, LinkTarget, PDFFindController, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { quoteBlock, type Annotation, type HighlightColor, type Paper, type ReadingPosition, type Term } from '@paper/core'
+import { quoteBlock, type Annotation, type HighlightColor, type Paper, type ReadingPosition, type ReadingStatus, type Term } from '@paper/core'
 import type { NoteSummary } from '../../../shared/api'
 import { NoteEditor, type EditorHandle } from '../components/NoteEditor'
 import { Icon, Spinner } from '../components/Icon'
@@ -23,6 +23,7 @@ import { TranslateCard } from './TranslateCard'
 import { ReaderToolbar, type Tool } from './ReaderToolbar'
 import { useAiStatus } from '../lib/ai'
 import { FOCUS_KEY, isMac, kbd, mod } from '../lib/platform'
+import { nearEnd } from '../lib/status'
 
 
 /** 当前外观是不是深色；外观由整个应用统一切换（见 main/appearance.ts），这里只跟着变 */
@@ -54,7 +55,12 @@ interface Props {
   terms: Term[]
   /** 重新选了 PDF：整个阅读器重新加载 */
   onReloadFile: () => void
+  /** 手动改阅读状态（读到最后点"标为读过"），可以撤销 */
+  onStatus: (st: ReadingStatus) => void
 }
+
+/** 开着这么久，或者翻过第一页，才算"在读"：打开看一眼不算 */
+const READING_AFTER_MS = 30_000
 
 const MISSING = '找不到这篇论文的 PDF 文件，可能被从资料文件夹里移走或删掉了。'
 
@@ -81,7 +87,7 @@ const pref = {
   }
 }
 
-export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, onOpenNoteTitle, onOpenAnnotation, onOpenSettings, terms, onReloadFile }: Props) {
+export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, onOpenNoteTitle, onOpenAnnotation, onOpenSettings, terms, onReloadFile, onStatus }: Props) {
   const file = paper.files.find((f) => f.role === 'main') ?? paper.files[0]!
   const hash = file.hash
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -94,6 +100,15 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  // 未读、待读的论文真读起来了就变成在读（不弹提示，这是自动的）
+  const notStarted = paper.readingStatus === 'inbox' || paper.readingStatus === 'to_read'
+  useEffect(() => {
+    if (!notStarted) return
+    const start = () => void api.library.update(paper.id, { readingStatus: 'reading' })
+    if (page > 1) return start()
+    const t = setTimeout(start, READING_AFTER_MS)
+    return () => clearTimeout(t)
+  }, [notStarted, page > 1, paper.id])
   const [pageInput, setPageInput] = useState('1')
   const [scale, setScale] = useState<{ value: number; preset: string | null }>({ value: 1, preset: 'auto' })
 
@@ -868,6 +883,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
             </label>
           )}
         </div>
+        {doc && paper.readingStatus !== 'done' && nearEnd(page, doc.numPages) && (
+          <button type="button" className="btn btn-s mark-done no-drag" onClick={() => onStatus('done')}><Icon name="done" size={14} />标为读过</button>
+        )}
         <div className="reader-tools no-drag">
           <div className="zoom" role="group" aria-label="缩放">
             <button type="button" className="icon-btn tool" aria-label="缩小" title={kbd('缩小（⌘-，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(-1)}><Icon name="minus" size={16} /></button>

@@ -15,12 +15,14 @@ import { useNotes } from './lib/notes'
 import { warmUp } from './reader/pdf'
 import { api, papersIn, useLibrary, type View } from './lib/library'
 import { TRASH } from './lib/platform'
+import { STATUS_LABEL } from './lib/format'
+import type { ReadingStatus } from '@paper/core'
 
 const TITLES: Record<string, string> = {
-  all: '全部论文', terms: '术语', notes: '笔记', settings: '设置'
+  all: '全部论文', reading: '在读', toread: '待读', terms: '术语', notes: '笔记', settings: '设置'
 }
 const LIST_LABEL: Record<string, string> = {
-  all: '全部'
+  all: '全部', reading: '最近打开的在前', toread: '打算读的'
 }
 
 let toastKey = 0
@@ -42,13 +44,13 @@ export function App() {
   /** 重新选了 PDF 后让阅读器从头加载 */
   const [reloads, setReloads] = useState(0)
 
-  const toast = useCallback((t: Omit<Toast, 'key'>) => setToasts((l) => [...l, { ...t, key: ++toastKey }]), [])
+  const toast = useCallback((t: Omit<Toast, 'key'>) => setToasts((l) => [...l.filter((o) => !t.group || o.group !== t.group), { ...t, key: ++toastKey }]), [])
   const dismissToast = useCallback((key: number) => setToasts((l) => l.filter((t) => t.key !== key)), [])
   const importing = useMemo(() => new Set(lib.importing), [lib.importing])
   const downloading = useMemo(() => new Set(lib.downloading), [lib.downloading])
 
   const counts = useMemo(() => {
-    const c: Partial<Record<View, number>> = { all: lib.papers.length, notes: notes.length, terms: lib.terms.length }
+    const c: Partial<Record<View, number>> = { all: lib.papers.length, reading: papersIn('reading', lib.papers).length, toread: papersIn('toread', lib.papers).length, notes: notes.length, terms: lib.terms.length }
     for (const f of lib.folders) c[`folder:${f.id}`] = papersIn(`folder:${f.id}`, lib.papers).length
     return c
   }, [lib.papers, lib.folders, lib.terms.length, notes.length])
@@ -99,6 +101,14 @@ export function App() {
     setJump((j) => ({ id, n: (j?.n ?? 0) + 1 }))
   }
 
+  /** 手动改阅读状态（列表右键、详情栏、阅读器里的"标为读过"），可以撤销 */
+  const setStatus = (id: string, st: ReadingStatus) => {
+    const p = lib.papers.find((x) => x.id === id)
+    if (!p || p.readingStatus === st) return
+    const before = p.readingStatus
+    void api.library.update(id, { readingStatus: st })
+    toast({ group: 'status', text: `已标为${STATUS_LABEL[st]}`, action: { label: '撤销', run: () => void api.library.update(id, { readingStatus: before }) } })
+  }
   const remove = (id: string) => {
     const p = lib.papers.find((x) => x.id === id)
     void api.library.remove(id)
@@ -195,7 +205,7 @@ export function App() {
 
   return (
     <div
-      className="app"
+      className={reading ? 'app reading' : 'app'}
       onDragOver={(e) => { if (isFileDrag(e)) { e.preventDefault(); if (!empty) setDragging(true) } }}
       onDragLeave={(e) => { if (e.currentTarget === e.target || !e.relatedTarget) setDragging(false) }}
       onDrop={(e) => { if (isFileDrag(e)) { e.preventDefault(); setDragging(false); importFiles([...e.dataTransfer.files]) } }}
@@ -247,6 +257,9 @@ export function App() {
             onSelect={setSelId}
             onRead={openPaper}
             onRemove={remove}
+            onStatus={setStatus}
+            reading={view === 'reading'}
+            statusFilter={view === 'all' || view.startsWith('folder:')}
             onToast={(text) => toast({ text })}
           />
         )}
@@ -262,6 +275,7 @@ export function App() {
           onClose={() => setSelId(null)}
           onRead={() => setReadingId(selected.id)}
           onRemove={remove}
+          onStatus={(st) => setStatus(selected.id, st)}
         />
       )}
       {dragging && (
@@ -269,7 +283,7 @@ export function App() {
           <div className="drop-overlay-card"><Icon name="upload" size={28} /><span>松开导入 PDF</span></div>
         </div>
       )}
-      {reading && <Reader key={`${reading.id}:${reloads}`} onReloadFile={() => setReloads((n) => n + 1)} paper={reading} backLabel={title} onBack={() => setReadingId(null)} onInfo={() => { setSelId(reading.id); setReadingId(null); setView('all') }} toast={toast} notes={notes} jump={jump} onOpenNoteTitle={(t) => void openNoteTitle(t)} onOpenAnnotation={(id) => void openAnnotation(id)} onOpenSettings={() => { setReadingId(null); setView('settings') }} terms={lib.terms} />}
+      {reading && <Reader key={`${reading.id}:${reloads}`} onReloadFile={() => setReloads((n) => n + 1)} paper={reading} backLabel={title} onBack={() => setReadingId(null)} onInfo={() => { setSelId(reading.id); setReadingId(null); setView('all') }} toast={toast} notes={notes} jump={jump} onOpenNoteTitle={(t) => void openNoteTitle(t)} onOpenAnnotation={(id) => void openAnnotation(id)} onOpenSettings={() => { setReadingId(null); setView('settings') }} terms={lib.terms} onStatus={(st) => setStatus(reading.id, st)} />}
       {keys && <Shortcuts onClose={() => setKeys(false)} />}
       <Notices notices={lib.notices} toasts={toasts} dismiss={lib.dismiss} dismissToast={dismissToast} onShowPaper={(id) => { setReadingId(null); setView('all'); setSelId(id) }} />
     </div>

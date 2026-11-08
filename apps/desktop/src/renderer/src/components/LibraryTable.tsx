@@ -1,9 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import type { Paper } from '@paper/core'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import type { Paper, ReadingStatus } from '@paper/core'
 import { formatCitation, type CiteStyle } from '@paper/core'
 import { Icon, Spinner } from './Icon'
 import { PAPER_DRAG_TYPE } from './Sidebar'
-import { addedLabel, authorLine, MATCH_HINT } from '../lib/format'
+import { addedLabel, authorLine, MATCH_HINT, STATUS_LABEL } from '../lib/format'
+import { isNew, isStale, progress, sortReading, STATUS_ICON, STATUSES } from '../lib/status'
 import { api } from '../lib/library'
 import { filterPapers } from '../lib/filterPapers'
 import { FILES_APP, mod, TRASH } from '../lib/platform'
@@ -20,6 +21,11 @@ interface Props {
   /** 打开阅读（没有 PDF 时只选中） */
   onRead: (id: string) => void
   onRemove: (id: string) => void
+  onStatus: (id: string, st: ReadingStatus) => void
+  /** 在读视图：最近打开的在前，显示读到哪；久没碰的分到最后 */
+  reading?: boolean
+  /** 显示按阅读状态筛选（全部论文和文件夹里） */
+  statusFilter?: boolean
   onToast: (text: string) => void
 }
 
@@ -34,8 +40,9 @@ const STYLES: [CiteStyle, string][] = [['apa', 'APA'], ['gbt7714', 'GB/T 7714'],
 /** 两次点击算双击的间隔；单击要等这么久才打开详情 */
 const DOUBLE_CLICK_MS = 250
 
-export function LibraryTable({ label, papers, tags, importing, downloading, selected: sel, onSelect: setSel, onRead, onRemove, onToast }: Props) {
+export function LibraryTable({ label, papers, tags, importing, downloading, selected: sel, onSelect: setSel, onRead, onRemove, onStatus, reading = false, statusFilter = false, onToast }: Props) {
   const [q, setQ] = useState('')
+  const [status, setStatus] = useState<ReadingStatus | ''>('')
   /** 右键菜单：哪一篇、在哪里弹出 */
   const [menu, setMenu] = useState<{ p: Paper; x: number; y: number } | null>(null)
 
@@ -94,9 +101,14 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
     onRead(id)
   }
 
-  const rows = useMemo(() => filterPapers(papers, q, tag), [papers, q, tag])
+  const rows = useMemo(() => {
+    const r = filterPapers(papers, q, tag).filter((p) => !status || p.readingStatus === status)
+    return reading ? sortReading(r) : r
+  }, [papers, q, tag, status, reading])
+  /** 在读视图里第一篇"最近没碰"的，前面加一个分隔 */
+  const firstStale = reading ? rows.find((p) => isStale(p))?.id : undefined
   const group = useRef<HTMLDivElement>(null)
-  const virtual = rows.length > VIRTUAL_FROM
+  const virtual = !reading && rows.length > VIRTUAL_FROM
   const [win, setWin] = useState({ start: 0, end: 60 })
 
   // 只画滚动区域里看得见的行，上下各多画一些；1 万篇也不卡
@@ -135,7 +147,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
   }
 
   const onKey = (e: KeyboardEvent) => {
-    if ((e.target as HTMLElement).tagName === 'INPUT') return
+    if (['INPUT', 'SELECT', 'TEXTAREA'].includes((e.target as HTMLElement).tagName)) return
     // 以有焦点的那一行为准（刚点过的行，选中状态可能还没更新）
     const focusedId = (e.target as HTMLElement).id?.startsWith('row-') ? (e.target as HTMLElement).id.slice(4) : sel
     const i = rows.findIndex((r) => r.id === focusedId)
@@ -150,6 +162,12 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
     if (e.key === 'Enter' && focusedId) read(focusedId)
     if (e.key === 'Escape' && sel) setSel(null)
     if ((e.key === 'Backspace' || e.key === 'Delete') && mod(e) && sel) onRemove(sel)
+    // 1–4：把选中的这篇标成 未读 / 待读 / 在读 / 读过（和右键菜单里的顺序一样）
+    const st = STATUSES[Number(e.key) - 1]
+    if (st && focusedId && !mod(e) && !e.altKey && !e.shiftKey) {
+      e.preventDefault()
+      onStatus(focusedId, st)
+    }
   }
 
   return (
@@ -159,6 +177,16 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
           <h2 id="h-list" className="lbl" style={{ margin: 0 }}>{label}</h2>
           <span className="big num">{rows.length === papers.length ? `${papers.length} 篇` : `${rows.length} / ${papers.length} 篇`}</span>
         </div>
+        {statusFilter && (
+          <label className="select">
+            <span className="sr">按阅读状态筛选</span>
+            <select value={status} onChange={(e) => setStatus(e.target.value as ReadingStatus | '')}>
+              <option value="">全部状态</option>
+              {STATUSES.map((st) => <option key={st} value={st}>{STATUS_LABEL[st]}</option>)}
+            </select>
+            <Icon name="down" size={14} />
+          </label>
+        )}
         {tags.length > 0 && (
           <label className="select">
             <span className="sr">按标签筛选</span>
@@ -180,21 +208,23 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
           <div role="row" className="tr th">
             <span role="columnheader">论文</span>
             <span role="columnheader">来源</span>
-            <span role="columnheader" className="r">加入时间</span>
+            <span role="columnheader" className="r">{reading ? '上次打开' : '加入时间'}</span>
           </div>
           <div role="rowgroup" ref={group}>
             {virtual && win.start > 0 && <div aria-hidden="true" style={{ height: win.start * ROW }} />}
             {shown.map((p, k) => {
               const busy = importing.has(p.id)
-              const sub = busy ? '正在识别标题和作者…' : downloading.has(p.id) ? [authorLine(p), p.year, '正在下载 PDF…'].filter(Boolean).join(' · ') : p.needsMatch && p.matchIssue ? MATCH_HINT[p.matchIssue] : [authorLine(p), p.year].filter(Boolean).join(' · ') || '没有作者信息'
+              const pr = reading ? progress(p) : null
+              const sub = pr ? `读到第 ${pr.page} / ${pr.total} 页` : busy ? '正在识别标题和作者…' : downloading.has(p.id) ? [authorLine(p), p.year, '正在下载 PDF…'].filter(Boolean).join(' · ') : p.needsMatch && p.matchIssue ? MATCH_HINT[p.matchIssue] : [authorLine(p), p.year].filter(Boolean).join(' · ') || '没有作者信息'
               return (
+                <Fragment key={p.id}>
+                {p.id === firstStale && <div className="tr-sep" role="presentation">最近没碰 · 超过 30 天没打开</div>}
                 <div
-                  key={p.id}
                   id={`row-${p.id}`}
                   role="row"
                   aria-rowindex={(virtual ? win.start : 0) + k + 2}
                   tabIndex={0}
-                  className={'tr td' + (shownSel === p.id ? ' sel' : '')}
+                  className={'tr td' + (shownSel === p.id ? ' sel' : '') + (reading && isStale(p) ? ' stale' : '')}
                   aria-selected={shownSel === p.id}
                   onPointerDown={() => (byPointer.current = true)}
                   onClick={(e) => clickRow(p.id, e.detail)}
@@ -207,7 +237,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                     e.preventDefault()
                     cancelClick()
                     setSel(p.id)
-                    setMenu({ p, x: Math.min(e.clientX, window.innerWidth - 216), y: Math.min(e.clientY, window.innerHeight - 330) })
+                    setMenu({ p, x: Math.min(e.clientX, window.innerWidth - 216), y: Math.max(8, Math.min(e.clientY, window.innerHeight - 470)) })
                   }}
                   draggable
                   onDragStart={(e) => {
@@ -216,10 +246,15 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                   }}
                 >
                   <div role="cell" className="cell-paper">
-                    <span className={'thumb' + (p.files.length ? '' : ' nofile')} aria-hidden="true">{busy || downloading.has(p.id) ? <Spinner /> : <Icon name="file" size={14} />}</span>
+                    <span className={`thumb st-${p.readingStatus}` + (p.files.length ? '' : ' nofile')} title={STATUS_LABEL[p.readingStatus]}>
+                      {busy || downloading.has(p.id) ? <Spinner /> : <Icon name={p.readingStatus === 'inbox' ? 'file' : STATUS_ICON[p.readingStatus]} size={14} />}
+                      {isNew(p) && !busy && <span className="new-dot" />}
+                      <span className="sr">{STATUS_LABEL[p.readingStatus]}</span>
+                    </span>
                     <span className="rt">
-                      <b className="row-title" title={p.title}>{p.title}</b>
-                      <small className={p.needsMatch && !busy ? 'warn-text' : undefined}>{sub}</small>
+                      <b className={'row-title' + (p.readingStatus === 'done' ? ' read' : '')} title={p.title}>{p.title}</b>
+                      <small className={p.needsMatch && !busy && !pr ? 'warn-text' : undefined}>{sub}</small>
+                      {pr && <span className="row-progress" aria-hidden="true"><i style={{ width: `${Math.round((pr.page / pr.total) * 100)}%` }} /></span>}
                     </span>
                     {p.files.length > 0 && (
                       <button type="button" className="btn btn-s row-read" tabIndex={-1} title="开始读（双击或回车也可以）" onClick={(e) => { e.stopPropagation(); read(p.id) }} onDoubleClick={(e) => e.stopPropagation()}>
@@ -228,8 +263,9 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                     )}
                   </div>
                   <div role="cell" className="cell-muted" title={p.venue}>{p.venue ?? '—'}</div>
-                  <div role="cell" className="r cell-muted num">{addedLabel(p.addedAt)}</div>
+                  <div role="cell" className="r cell-muted num">{addedLabel(reading ? p.lastOpenedAt ?? p.addedAt : p.addedAt)}</div>
                 </div>
+                </Fragment>
               )
             })}
             {virtual && win.end < rows.length && <div aria-hidden="true" style={{ height: (rows.length - win.end) * ROW }} />}
@@ -245,8 +281,13 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
       {menu && (
         <div className="menu row-menu" role="menu" aria-label={menu.p.title} style={{ left: menu.x, top: menu.y }} onContextMenu={(e) => e.preventDefault()}>
           {menu.p.files.length > 0 && <button type="button" role="menuitem" onClick={() => { setMenu(null); read(menu.p.id) }}>开始读</button>}
-          {menu.p.files.length > 0 && <button type="button" role="menuitem" onClick={() => { setMenu(null); void api.library.showInFinder(menu.p.id) }}>在访达中显示 PDF</button>}
+          {menu.p.files.length > 0 && <button type="button" role="menuitem" onClick={() => { setMenu(null); void api.library.showInFinder(menu.p.id) }}>在{FILES_APP}中显示 PDF</button>}
           {menu.p.files.length > 0 && <div className="menu-sep" role="separator" />}
+          <p className="menu-sub-h">阅读状态</p>
+          {STATUSES.map((st) => (
+            <button key={st} type="button" role="menuitemradio" aria-checked={menu.p.readingStatus === st} onClick={() => { setMenu(null); onStatus(menu.p.id, st) }}>{STATUS_LABEL[st]}<kbd>{STATUSES.indexOf(st) + 1}</kbd></button>
+          ))}
+          <div className="menu-sep" role="separator" />
           <p className="menu-sub-h">复制引用</p>
           {STYLES.map(([s, name]) => <button key={s} type="button" role="menuitem" onClick={() => copyCite(menu.p, s, name)}>{name}</button>)}
           <div className="menu-sep" role="separator" />

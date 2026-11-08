@@ -122,6 +122,8 @@ export interface PaperApi {
   popupMenu(x: number, y: number): Promise<void>
   /** 选一个文件夹，把整个资料库备份进去；返回备份的位置，取消时是 null */
   backup(): Promise<string | null>
+  /** 换资料文件夹：选空文件夹就搬过去，选已有的资料文件夹就改用它；成功后应用重启。取消时返回 false */
+  moveData(): Promise<boolean>
   /** 选一个备份恢复：现在的资料挪到一旁，然后应用重启；取消时返回 false */
   restore(): Promise<boolean>
   library: LibraryApi

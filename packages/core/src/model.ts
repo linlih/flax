@@ -14,6 +14,7 @@ export interface Author {
   family: string
 }
 
+/** 阅读状态：未读（刚加入）、待读（自己标的）、在读（真的读了一会儿自动变）、读过 */
 export type ReadingStatus = 'inbox' | 'to_read' | 'reading' | 'done'
 
 export interface Identifiers {
@@ -53,6 +54,8 @@ export interface Paper extends Versioned {
   folderIds: UUID[]
   tags: string[]
   readingStatus: ReadingStatus
+  /** 批量导入的（比如从 Zotero）：未读时不标蓝点，免得几百篇一下子全是"新的" */
+  batch?: boolean
   rating?: number
   addedAt: string
   lastOpenedAt?: string

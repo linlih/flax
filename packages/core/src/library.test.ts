@@ -27,6 +27,14 @@ beforeEach(() => {
 })
 
 describe('Library papers', () => {
+  it('marks bulk imports so they do not show as new', () => {
+    const one = lib.addPaper(meta())
+    const many = lib.addPaper(meta({ title: 'From Zotero', identifiers: {} }), { batch: true })
+    expect(one.readingStatus).toBe('inbox')
+    expect(one.batch).toBeUndefined()
+    expect(lib.getPaper(many.id)?.batch).toBe(true)
+  })
+
   it('adds and lists papers, newest first, with sync fields', () => {
     const a = lib.addPaper(meta(), { file: file('h1') })
     const b = lib.addPaper(meta({ title: 'Another One About Retrieval', identifiers: {} }))

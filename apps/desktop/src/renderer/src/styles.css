@@ -11,6 +11,9 @@ button:disabled { opacity: .55; cursor: default; }
 .app { display: flex; height: 100%; }
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
+/* 阅读器盖在文献库上面，但 macOS 照样认下面文献库的拖动区域（侧栏、标题栏）：
+   真实的点击会变成拖窗口，盖在那里的按钮（比如开着 AI 时的"批注"标签）就点不到了。阅读时把它们关掉 */
+.app.reading > :not(.reader), .app.reading > :not(.reader) .drag { -webkit-app-region: no-drag; }
 
 /* 侧边栏 */
 .app-sidebar { flex: 0 0 264px; display: flex; flex-direction: column; gap: 12px; padding: 48px 12px 16px 16px; }
@@ -688,3 +691,22 @@ kbd { font-family: inherit; font-size: 12px; color: var(--text-2); white-space: 
 .os-other .header { padding-top: 28px; }
 .os-other .reader-bar { padding-left: 12px; padding-right: 148px; }
 .os-other .insp-top { padding-right: 148px; }
+
+/* 阅读状态：列表行最前面的小标记。未读蓝点（批量导入的不标），待读书签，在读打开的书，读过打勾、标题变灰 */
+.thumb { position: relative; }
+.thumb.st-to_read { color: var(--warn); }
+.thumb.st-reading { color: var(--accent-top); }
+.thumb.st-done { color: var(--placeholder); }
+.new-dot { position: absolute; top: -3px; right: -3px; width: 9px; height: 9px; border-radius: 50%; background: var(--accent-top); box-shadow: 0 0 0 2px var(--card); }
+.row-title.read { color: var(--text-2); font-weight: 500; }
+.row-progress { display: block; height: 3px; margin-top: 3px; border-radius: 2px; background: var(--divider); overflow: hidden; max-width: 240px; }
+.row-progress i { display: block; height: 100%; background: var(--accent-top); }
+.td.stale { color: var(--text-2); }
+.td.stale .thumb { color: var(--placeholder); }
+.td.stale .row-progress i { background: var(--placeholder); }
+.tr-sep { padding: 14px 14px 6px; font-size: 12px; color: var(--text-2); border-bottom: 1px solid var(--divider); }
+.menu button[role="menuitemradio"] { padding-left: 28px; position: relative; display: flex; align-items: center; }
+.menu button[role="menuitemradio"] kbd { margin-left: auto; padding-left: 16px; }
+.menu button[role="menuitemradio"][aria-checked="true"]::before { content: ""; position: absolute; left: 11px; top: 50%; width: 8px; height: 4px; margin-top: -4px; border: solid currentColor; border-width: 0 0 1.6px 1.6px; transform: rotate(-45deg); }
+.insp-status { margin-top: 8px; }
+.mark-done { flex: none; gap: 4px; color: var(--ok); }

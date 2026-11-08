@@ -5,7 +5,10 @@ import type { View } from '../lib/library'
 import { isMac, kbd } from '../lib/platform'
 import { api } from '../lib/library'
 
+// 在读、待读放在最上面：打开应用先看到正在读和接下来要读的
 const LIBRARY: { id: View; label: string; icon: IconName }[] = [
+  { id: 'reading', label: '在读', icon: 'reading' },
+  { id: 'toread', label: '待读', icon: 'toread' },
   { id: 'all', label: '全部论文', icon: 'all' }
 ]
 const KNOWLEDGE: { id: View; label: string; icon: IconName }[] = [
