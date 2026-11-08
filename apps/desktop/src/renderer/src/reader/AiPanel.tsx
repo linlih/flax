@@ -10,7 +10,7 @@ import { ModelPicker } from '../components/ModelPicker'
 import { EffortPicker } from '../components/EffortPicker'
 import { stream, usableServices } from '../lib/ai'
 import { api } from '../lib/library'
-import { kbd } from '../lib/platform'
+import { composing, kbd } from '../lib/platform'
 
 interface Props {
   paperId: string
@@ -247,6 +247,7 @@ function ChatHistory({ convs, busy, onOpen, onDelete, onRename }: {
         onFocus={(e) => e.target.select()}
         onBlur={(e) => { onRename(current.id, e.target.value); setEditing(null) }}
         onKeyDown={(e) => {
+          if (composing(e)) return
           if (e.key === 'Enter') e.currentTarget.blur()
           if (e.key === 'Escape') { e.stopPropagation(); setEditing(null) }
         }}

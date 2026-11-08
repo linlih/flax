@@ -1,10 +1,10 @@
 // 主进程和渲染进程之间的接口。渲染进程只能通过 window.api 调这些方法。
-import type { Annotation, AnnotationPatch, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, Term } from '@paper/core'
+import type { Annotation, AnnotationPatch, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@paper/core'
 
 export interface LibrarySnapshot {
   papers: Paper[]
   folders: Folder[]
-  tags: { tag: string; count: number }[]
+  tags: { tag: string; count: number; color?: TagColor }[]
   annotationCounts: Record<string, number>
   /** 术语表 */
   terms: Term[]
@@ -69,6 +69,8 @@ export interface LibraryApi {
   renameFolder(id: string, name: string): Promise<void>
   removeFolder(id: string): Promise<void>
   renameTag(from: string, to: string): Promise<void>
+  /** 标签颜色在整个库里通用；null 去掉颜色 */
+  setTagColor(tag: string, color: TagColor | null): Promise<void>
   /** 术语表：同一个词已经有了就改译法 */
   addTerm(t: { term: string; translation: string; note?: string; paperId?: string }): Promise<Term>
   updateTerm(id: string, patch: { term?: string; translation?: string; note?: string }): Promise<Term>
@@ -150,7 +152,7 @@ export type UpdateState = (
   | { kind: 'error'; message: string }
 ) & { manual?: boolean }
 
-export type MenuCommand = 'settings' | 'importPdf' | 'importBib' | 'newNote' | 'exportBib' | 'exportRis' | 'shortcuts' | 'toggleNotes' | 'toggleAi'
+export type MenuCommand = 'settings' | 'importPdf' | 'addLink' | 'importBib' | 'newNote' | 'exportBib' | 'exportRis' | 'shortcuts' | 'toggleNotes' | 'toggleAi'
 
 // —— AI ——
 export type AiProviderKind = 'anthropic' | 'openai'

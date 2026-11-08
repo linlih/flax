@@ -16,7 +16,7 @@ import { linkAt } from '../lib/noteLinks'
 import { Icon } from './Icon'
 import { slashCommands } from './slashMenu'
 import { excerptAt, exitEmptyQuote, insertLink, livePreview, pasteLink, toggleTask, toggleWrap } from './livePreview'
-import { FILES_APP, TRASH } from '../lib/platform'
+import { composing, FILES_APP, TRASH } from '../lib/platform'
 
 /** 外面可以往正在编辑的笔记里插内容（摘到笔记用） */
 export interface EditorHandle {
@@ -253,6 +253,7 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => void rename()}
           onKeyDown={(e) => {
+            if (composing(e)) return
             if (e.key === 'Enter') { e.preventDefault(); view.current?.focus() }
             if (e.key === 'Escape') { setTitle(me?.title ?? title); view.current?.focus() }
           }}

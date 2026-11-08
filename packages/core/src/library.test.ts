@@ -123,6 +123,21 @@ describe('Library folders and tags', () => {
     expect(lib.renameTag('LLM', 'llm')).toBe(1)
     expect(lib.listTags()).toEqual([{ tag: 'llm', count: 2 }, { tag: 'rag', count: 2 }])
   })
+
+  it('keeps one color per tag and carries it through a rename', () => {
+    const a = lib.addPaper(meta({ identifiers: {} }))
+    lib.updatePaper(a.id, { tags: ['nlp', 'rag'] })
+    lib.setTagColor('nlp', 'blue')
+    lib.setTagColor('rag', 'red')
+    expect(lib.listTags()).toEqual([{ tag: 'nlp', count: 1, color: 'blue' }, { tag: 'rag', count: 1, color: 'red' }])
+    lib.renameTag('nlp', 'NLP')
+    expect(lib.tagColors()).toEqual({ NLP: 'blue', rag: 'red' })
+    // 合并进已有的标签：用那个标签自己的颜色
+    lib.renameTag('NLP', 'rag')
+    expect(lib.tagColors()).toEqual({ rag: 'red' })
+    lib.setTagColor('rag', null)
+    expect(lib.listTags()).toEqual([{ tag: 'rag', count: 1 }])
+  })
 })
 
 describe('annotations', () => {

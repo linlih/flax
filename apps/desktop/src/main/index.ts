@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { cp, mkdir, rename } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
-import { Library, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition } from '@paper/core'
+import { Library, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@paper/core'
 import type { ImportNotice, LibrarySnapshot, MenuCommand } from '../shared/api'
 import { Importer } from './importer'
 import { createNet } from './net'
@@ -455,6 +455,11 @@ function setup(): void {
     library.renameTag(str(from, 'from'), str(to, 'to'))
     changed()
   })
+  handle('library:setTagColor', (tag, color) => {
+    if (color !== null && !TAG_COLORS.includes(color as TagColor)) throw new Error('bad color')
+    library.setTagColor(str(tag, 'tag'), color as TagColor | null)
+    changed()
+  })
   handle('library:addTerm', (t) => {
     const o = (t ?? {}) as Record<string, unknown>
     const term = library.addTerm({ term: str(o['term'], 'term'), translation: str(o['translation'], 'translation'), note: typeof o['note'] === 'string' ? o['note'] : undefined, paperId: typeof o['paperId'] === 'string' ? o['paperId'] : undefined })
@@ -488,6 +493,7 @@ function setMenu(): void {
   const checkUpdate: MenuItemConstructorOptions = { label: '检查更新…', click: () => { if (!win) createWindow(); updater?.check(true) } }
   const fileItems: MenuItemConstructorOptions[] = [
     { label: '导入 PDF…', accelerator: 'CmdOrCtrl+O', click: cmd('importPdf') },
+    { label: '通过 DOI 或 arXiv 链接添加…', accelerator: 'Shift+CmdOrCtrl+O', click: cmd('addLink') },
     { label: '从 Zotero 或 BibTeX 导入…', click: cmd('importBib') },
     { label: '新建笔记', accelerator: 'CmdOrCtrl+N', click: cmd('newNote') },
     { type: 'separator' },

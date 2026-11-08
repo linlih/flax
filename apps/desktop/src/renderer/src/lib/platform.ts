@@ -34,3 +34,8 @@ export function kbd(text: string, mac = isMac): string {
     return mods.join('+') + (next && !/\s/.test(next) ? '+' : '')
   }).replace(/[↩⌫⎋]/g, (c) => KEYS[c]!)
 }
+
+/** 输入法正在组字（中文拼音选词、按回车上屏英文等）时按下的键：这时的回车 / Esc 是给输入法的，不能当成"确定"/"取消" */
+export function composing(e: { keyCode: number; nativeEvent?: { isComposing?: boolean }; isComposing?: boolean }): boolean {
+  return Boolean(e.nativeEvent?.isComposing ?? e.isComposing) || e.keyCode === 229
+}

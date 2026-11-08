@@ -10,6 +10,7 @@ import { Reader } from './reader/Reader'
 import { NotesView } from './components/NotesView'
 import { SettingsView } from './components/SettingsView'
 import { Shortcuts } from './components/Shortcuts'
+import { AddPaper } from './components/AddPaper'
 import { TermsView } from './components/TermsView'
 import { useNotes } from './lib/notes'
 import { warmUp } from './reader/pdf'
@@ -41,6 +42,7 @@ export function App() {
   const [toasts, setToasts] = useState<Toast[]>([])
   const [dragging, setDragging] = useState(false)
   const [keys, setKeys] = useState(false)
+  const [linkOpen, setLinkOpen] = useState(false)
   /** 重新选了 PDF 后让阅读器从头加载 */
   const [reloads, setReloads] = useState(0)
 
@@ -129,6 +131,10 @@ export function App() {
     }
     setReadingId(null)
     if (c === 'settings') return setView('settings')
+    if (c === 'addLink') {
+      if (['terms', 'notes', 'settings'].includes(view)) setView('all')
+      return setLinkOpen(true)
+    }
     if (c === 'newNote') {
       void api.notes.create({}).then((n) => {
         setView('notes')
@@ -235,7 +241,7 @@ export function App() {
             <div className="crumb">{folder ? '文件夹' : listView ? '文献库' : view === 'settings' ? '偏好' : '知识'}</div>
             <h1>{title}</h1>
           </div>
-          {listView && <button type="button" className="btn btn-p no-drag" onClick={() => void api.library.pickAndImport()}><Icon name="plus" size={16} />导入 PDF</button>}
+          {listView && <AddPaper open={linkOpen} setOpen={setLinkOpen} />}
         </header>
         {!lib.loaded ? null : view === 'settings' ? (
           <SettingsView onShortcuts={() => setKeys(true)} />

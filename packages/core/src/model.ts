@@ -88,6 +88,10 @@ export interface ReadingPosition {
 /** 高亮的颜色。存语义名，具体色值由界面 token 决定，深色模式下换成深色版本 */
 export type HighlightColor = 'yellow' | 'green' | 'blue' | 'pink' | 'purple'
 
+/** 标签的颜色（和访达的标签同一组）；一个标签在整个库里是同一种颜色 */
+export type TagColor = 'red' | 'orange' | 'yellow' | 'green' | 'blue' | 'purple' | 'gray'
+export const TAG_COLORS: TagColor[] = ['red', 'orange', 'yellow', 'green', 'blue', 'purple', 'gray']
+
 /** PDF 页面坐标（pt，原点左下）：[x0, y0, x1, y1] */
 export type PdfRect = [number, number, number, number]
 

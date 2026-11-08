@@ -22,7 +22,7 @@ import { COLORS } from './colors'
 import { TranslateCard } from './TranslateCard'
 import { ReaderToolbar, type Tool } from './ReaderToolbar'
 import { useAiStatus } from '../lib/ai'
-import { FOCUS_KEY, isMac, kbd, mod } from '../lib/platform'
+import { composing, FOCUS_KEY, isMac, kbd, mod } from '../lib/platform'
 import { nearEnd } from '../lib/status'
 
 
@@ -923,6 +923,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
                   value={find.query}
                   onChange={(e) => { setFind((f) => ({ ...f, query: e.target.value })); runFind(e.target.value) }}
                   onKeyDown={(e: ReactKeyboardEvent) => {
+                    if (composing(e)) return
                     if (e.key === 'Enter') runFind(find.query, true, e.shiftKey)
                     if (e.key === 'Escape') { e.stopPropagation(); closeFind() }
                   }}

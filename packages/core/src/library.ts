@@ -1,6 +1,7 @@
 // 文献库仓储层：所有读写都经过这里。
 // 每条记录存成 JSON，另抽几列做索引。以后接 CRDT 同步只改这一层。
-import type { Annotation, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingStatus, Term, UUID } from './model'
+import type { Annotation, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingStatus, TagColor, Term, UUID } from './model'
+import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
 
 // Node、浏览器和 React Native（加 polyfill）都有全局 crypto.randomUUID
@@ -410,10 +411,33 @@ export class Library {
 
   // —— 标签 ——
 
-  listTags(): { tag: string; count: number }[] {
+  listTags(): { tag: string; count: number; color?: TagColor }[] {
     const m = new Map<string, number>()
     for (const p of this.listPapers()) for (const t of p.tags) m.set(t, (m.get(t) ?? 0) + 1)
-    return [...m].map(([tag, count]) => ({ tag, count })).sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+    const colors = this.tagColors()
+    return [...m]
+      .map(([tag, count]) => (colors[tag] ? { tag, count, color: colors[tag] } : { tag, count }))
+      .sort((a, b) => b.count - a.count || a.tag.localeCompare(b.tag))
+  }
+
+  /** 标签颜色，存在 meta 表里（标签本身只是论文上的字符串，没有自己的表） */
+  tagColors(): Record<string, TagColor> {
+    const row = this.db.prepare("SELECT value FROM meta WHERE key = 'tagColors'").get() as { value: string } | undefined
+    if (!row) return {}
+    try {
+      const v = JSON.parse(row.value) as Record<string, unknown>
+      return Object.fromEntries(Object.entries(v).filter((e): e is [string, TagColor] => TAG_COLORS.includes(e[1] as TagColor)))
+    } catch {
+      return {}
+    }
+  }
+
+  /** 给标签设颜色；null 去掉颜色 */
+  setTagColor(tag: string, color: TagColor | null): void {
+    const c = this.tagColors()
+    if (color) c[tag] = color
+    else delete c[tag]
+    this.db.prepare("INSERT INTO meta (key, value) VALUES ('tagColors', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").run(JSON.stringify(c))
   }
 
   /** 改名；新名字已存在时就是合并 */
@@ -427,6 +451,10 @@ export class Library {
         this.write(p.id, (x) => { x.tags = cleanTags(x.tags.map((t) => (t === from ? target : t))) })
         n++
       }
+      // 颜色跟着走；合并到已有标签时用那个标签自己的颜色
+      const c = this.tagColors()
+      if (c[from] && !c[target]) this.setTagColor(target, c[from])
+      if (c[from] && from !== target) this.setTagColor(from, null)
     })
     return n
   }

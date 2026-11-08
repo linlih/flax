@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { kbd } from './platform'
+import { composing, kbd } from './platform'
 
 describe('kbd', () => {
   it('keeps macOS symbols on macOS', () => expect(kbd('返回（⌘[）', true)).toBe('返回（⌘[）'))
@@ -15,5 +15,14 @@ describe('kbd', () => {
     expect(kbd('⇧↩', false)).toBe('Shift+Enter')
     expect(kbd('⌘+ / ⌘− / ⌘0', false)).toBe('Ctrl++ / Ctrl+− / Ctrl+0')
     expect(kbd('⌘,', false)).toBe('Ctrl+,')
+  })
+})
+
+describe('composing', () => {
+  it('treats keys sent while an input method is composing as the input method’s', () => {
+    expect(composing({ keyCode: 229 })).toBe(true)
+    expect(composing({ keyCode: 13, nativeEvent: { isComposing: true } })).toBe(true)
+    expect(composing({ keyCode: 13, isComposing: true })).toBe(true)
+    expect(composing({ keyCode: 13, nativeEvent: { isComposing: false } })).toBe(false)
   })
 })

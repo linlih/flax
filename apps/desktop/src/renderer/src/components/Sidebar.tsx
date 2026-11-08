@@ -2,7 +2,7 @@ import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import type { Folder } from '@paper/core'
 import { Icon, type IconName } from './Icon'
 import type { View } from '../lib/library'
-import { isMac, kbd } from '../lib/platform'
+import { composing, isMac, kbd } from '../lib/platform'
 import { api } from '../lib/library'
 
 // 在读、待读放在最上面：打开应用先看到正在读和接下来要读的
@@ -139,6 +139,7 @@ function FolderInput({ initial, label, onDone }: { initial: string; label: strin
     onDone(name)
   }
   const key = (e: KeyboardEvent) => {
+    if (composing(e)) return
     if (e.key === 'Enter') finish(v.trim())
     if (e.key === 'Escape') finish('')
   }

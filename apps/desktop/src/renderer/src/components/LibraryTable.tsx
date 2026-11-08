@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
-import type { Paper, ReadingStatus } from '@paper/core'
+import type { Paper, ReadingStatus, TagColor } from '@paper/core'
+import { tagColorMap } from '../lib/tags'
 import { formatCitation, type CiteStyle } from '@paper/core'
 import { Icon, Spinner } from './Icon'
 import { PAPER_DRAG_TYPE } from './Sidebar'
@@ -12,7 +13,7 @@ import { FILES_APP, mod, TRASH } from '../lib/platform'
 interface Props {
   label: string
   papers: Paper[]
-  tags: { tag: string; count: number }[]
+  tags: { tag: string; count: number; color?: TagColor }[]
   importing: Set<string>
   downloading: Set<string>
   /** 选中的论文，右边详情栏显示它 */
@@ -108,6 +109,20 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
   /** 在读视图里第一篇"最近没碰"的，前面加一个分隔 */
   const firstStale = reading ? rows.find((p) => isStale(p))?.id : undefined
   const group = useRef<HTMLDivElement>(null)
+  const colorOf = useMemo(() => tagColorMap(tags), [tags])
+  // 行里放几个标签看列表有多宽：窄的时候少放几个、每个完整显示，其余收进"+N"
+  const table = useRef<HTMLDivElement>(null)
+  const [tagSlots, setTagSlots] = useState(3)
+  useLayoutEffect(() => {
+    const el = table.current
+    if (!el) return
+    const ro = new ResizeObserver(([e]) => {
+      const w = e!.contentRect.width
+      setTagSlots(w >= 960 ? 3 : w >= 760 ? 2 : 1)
+    })
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
   const virtual = !reading && rows.length > VIRTUAL_FROM
   const [win, setWin] = useState({ start: 0, end: 60 })
 
@@ -204,7 +219,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
         </label>
       </div>
       <div className="card" style={{ overflow: 'hidden' }}>
-        <div role="table" aria-label="论文列表" aria-rowcount={rows.length}>
+        <div role="table" ref={table} aria-label="论文列表" aria-rowcount={rows.length}>
           <div role="row" className="tr th">
             <span role="columnheader">论文</span>
             <span role="columnheader">来源</span>
@@ -256,10 +271,11 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                       <small className={p.needsMatch && !busy && !pr ? 'warn-text' : undefined}>{sub}</small>
                       {pr && <span className="row-progress" aria-hidden="true"><i style={{ width: `${Math.round((pr.page / pr.total) * 100)}%` }} /></span>}
                     </span>
-                    {p.files.length > 0 && (
-                      <button type="button" className="btn btn-s row-read" tabIndex={-1} title="开始读（双击或回车也可以）" onClick={(e) => { e.stopPropagation(); read(p.id) }} onDoubleClick={(e) => e.stopPropagation()}>
-                        <Icon name="reading" size={14} />读
-                      </button>
+                    {p.tags.length > 0 && (
+                      <span className="row-tags" title={p.tags.join('、')}>
+                        {p.tags.slice(0, tagSlots).map((t) => <span key={t} className={'row-tag' + (colorOf.has(t) ? ` tc tc-${colorOf.get(t)}` : '')}>{t}</span>)}
+                        {p.tags.length > tagSlots && <span className="row-tag more">+{p.tags.length - tagSlots}</span>}
+                      </span>
                     )}
                   </div>
                   <div role="cell" className="cell-muted" title={p.venue}>{p.venue ?? '—'}</div>

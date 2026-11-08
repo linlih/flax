@@ -1,17 +1,18 @@
 import { useEffect, useRef, useState } from 'react'
-import { splitName, suggestFileName, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus } from '@paper/core'
+import { splitName, suggestFileName, TAG_COLORS, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus, type TagColor } from '@paper/core'
 import type { PaperPatch } from '@paper/core'
 import type { Candidate } from '../../../shared/api'
 import { Icon, Spinner } from './Icon'
 import { api } from '../lib/library'
 import { addedLabel, authorLine, MATCH_HINT, sizeLabel, SOURCE_LABEL, STATUS_LABEL } from '../lib/format'
 import { progress, STATUSES } from '../lib/status'
-import { FILES_APP, TRASH } from '../lib/platform'
+import { composing, FILES_APP, TRASH } from '../lib/platform'
+import { renameTag, TAG_COLOR_LABEL, tagColorMap } from '../lib/tags'
 
 interface Props {
   paper: Paper
   folders: Folder[]
-  allTags: { tag: string; count: number }[]
+  allTags: { tag: string; count: number; color?: TagColor }[]
   busy: boolean
   downloading: boolean
   onClose: () => void
@@ -237,6 +238,7 @@ function Field({ label, value, placeholder, multiline, rows = 2, mono, inputMode
     onBlur: commit,
     onChange: (e: { target: { value: string } }) => setV(e.target.value),
     onKeyDown: (e: React.KeyboardEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      if (composing(e)) return
       if (e.key === 'Escape') {
         setV(value)
         ;(e.target as HTMLElement).blur()
@@ -255,8 +257,27 @@ function Field({ label, value, placeholder, multiline, rows = 2, mono, inputMode
   )
 }
 
-function TagEditor({ tags, all, onChange }: { tags: string[]; all: { tag: string; count: number }[]; onChange: (t: string[]) => void }) {
+function TagEditor({ tags, all, onChange }: { tags: string[]; all: { tag: string; count: number; color?: TagColor }[]; onChange: (t: string[]) => void }) {
   const [v, setV] = useState('')
+  const [editing, setEditing] = useState<string | null>(null)
+  // 右键标签：选颜色（整个库里这个标签都变）、改名字
+  const [menu, setMenu] = useState<{ tag: string; x: number; y: number } | null>(null)
+  const colorOf = tagColorMap(all)
+  useEffect(() => {
+    if (!menu) return
+    const down = (e: MouseEvent) => !(e.target as HTMLElement).closest('.tag-menu') && setMenu(null)
+    const key = (e: KeyboardEvent) => e.key === 'Escape' && (e.stopPropagation(), setMenu(null))
+    window.addEventListener('mousedown', down)
+    window.addEventListener('keydown', key, true)
+    return () => {
+      window.removeEventListener('mousedown', down)
+      window.removeEventListener('keydown', key, true)
+    }
+  }, [menu])
+  const setColor = (tag: string, c: TagColor | null) => {
+    setMenu(null)
+    void api.library.setTagColor(tag, c)
+  }
   const add = () => {
     const t = v.trim().replace(/^#/, '')
     if (t && !tags.includes(t)) onChange([...tags, t])
@@ -267,8 +288,38 @@ function TagEditor({ tags, all, onChange }: { tags: string[]; all: { tag: string
     <div className="field">
       <label className="field-l" htmlFor="tag-input">标签</label>
       <div className="chips">
-        {tags.map((t) => (
-          <span key={t} className="chip">
+        {tags.map((t) => editing === t ? (
+          // 双击标签就地改：回车或点别处保存，Esc 放弃；改成空就是删掉，改成已有的就合并
+          <input
+            key={t}
+            className="tag-input tag-edit"
+            aria-label={`修改标签 ${t}`}
+            autoFocus
+            defaultValue={t}
+            size={Math.max(4, t.length + 2)}
+            onFocus={(e) => e.target.select()}
+            onBlur={(e) => {
+              setEditing(null)
+              const next = renameTag(tags, t, e.target.value)
+              if (next !== tags) onChange(next)
+            }}
+            onKeyDown={(e) => {
+              if (composing(e)) return
+              if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+              if (e.key === 'Escape') { e.stopPropagation(); e.currentTarget.value = t; e.currentTarget.blur() }
+            }}
+          />
+        ) : (
+          <span
+            key={t}
+            className={'chip' + (colorOf.has(t) ? ` tc tc-${colorOf.get(t)}` : '')}
+            title="双击修改，右键选颜色"
+            onDoubleClick={() => setEditing(t)}
+            onContextMenu={(e) => {
+              e.preventDefault()
+              setMenu({ tag: t, x: Math.min(e.clientX, window.innerWidth - 196), y: Math.min(e.clientY, window.innerHeight - 360) })
+            }}
+          >
             {t}
             <button type="button" className="chip-x" aria-label={`去掉标签 ${t}`} onClick={() => onChange(tags.filter((x) => x !== t))}><Icon name="close" size={12} /></button>
           </span>
@@ -279,8 +330,15 @@ function TagEditor({ tags, all, onChange }: { tags: string[]; all: { tag: string
           list="tag-suggestions"
           placeholder="+ 标签"
           value={v}
-          onChange={(e) => setV(e.target.value)}
+          onChange={(e) => {
+            const parts = e.target.value.split(/[,，、]/)
+            if (parts.length < 2) return setV(e.target.value)
+            const fresh = parts.slice(0, -1).map((t) => t.trim().replace(/^#/, '')).filter((t) => t && !tags.includes(t))
+            if (fresh.length) onChange([...tags, ...new Set(fresh)])
+            setV(parts[parts.length - 1]!)
+          }}
           onKeyDown={(e) => {
+            if (composing(e)) return
             if (e.key === 'Enter' || e.key === ',') {
               e.preventDefault()
               add()
@@ -289,6 +347,21 @@ function TagEditor({ tags, all, onChange }: { tags: string[]; all: { tag: string
           }}
           onBlur={add}
         />
+        {menu && (
+          <div className="menu row-menu tag-menu" role="menu" aria-label={`标签 ${menu.tag}`} style={{ left: menu.x, top: menu.y, minWidth: 180 }}>
+            <p className="menu-sub-h">颜色（所有论文通用）</p>
+            {TAG_COLORS.map((c) => (
+              <button key={c} type="button" role="menuitemradio" aria-checked={colorOf.get(menu.tag) === c} onClick={() => setColor(menu.tag, c)}>
+                <span className={`swatch tc tc-${c}`} aria-hidden="true" />{TAG_COLOR_LABEL[c]}
+              </button>
+            ))}
+            <button type="button" role="menuitemradio" aria-checked={!colorOf.has(menu.tag)} onClick={() => setColor(menu.tag, null)}>
+              <span className="swatch none" aria-hidden="true" />无颜色
+            </button>
+            <div className="menu-sep" role="separator" />
+            <button type="button" role="menuitem" onClick={() => { setEditing(menu.tag); setMenu(null) }}>修改名字</button>
+          </div>
+        )}
         <datalist id="tag-suggestions">
           {suggestions.map((t) => <option key={t.tag} value={t.tag}>{`${t.count} 篇`}</option>)}
         </datalist>

@@ -40,6 +40,7 @@ const library = {
   renameFolder: invoke('renameFolder'),
   removeFolder: invoke('removeFolder'),
   renameTag: invoke('renameTag'),
+  setTagColor: invoke('setTagColor'),
   addTerm: invoke('addTerm'),
   updateTerm: invoke('updateTerm'),
   removeTerm: invoke('removeTerm'),
