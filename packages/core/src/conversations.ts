@@ -51,7 +51,9 @@ const isTurn = (t: unknown): t is StoredTurn => {
 }
 
 /** 按时间排；同一时间的保持原来的先后（sort 是稳定的） */
-export const byTime = (a: { at: string }, b: { at: string }): number => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0)
+/** 消息的顺序：按时间；同一毫秒里问题在回答前面，再按 id。两台设备同一毫秒各问了一句时，排出来的顺序也一样 */
+export const byTime = (a: { at: string; role: string; id: string }, b: { at: string; role: string; id: string }): number =>
+  a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.role !== b.role ? (a.role === 'user' ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
 
 export class Conversations {
   constructor(
@@ -89,8 +91,8 @@ export class Conversations {
   }
 
   turns(convId: string): StoredTurn[] {
-    const rows = this.db.prepare('SELECT data FROM ai_messages WHERE conv_id = ? ORDER BY at, rowid').all(convId) as { data: string }[]
-    return rows.map((r) => JSON.parse(r.data) as StoredTurn)
+    const rows = this.db.prepare('SELECT data FROM ai_messages WHERE conv_id = ?').all(convId) as { data: string }[]
+    return rows.map((r) => JSON.parse(r.data) as StoredTurn).sort(byTime)
   }
 
   /** 这台设备上开着的对话；null 是"新对话、还没问" */

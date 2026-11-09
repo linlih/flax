@@ -1,6 +1,6 @@
 // 文献库仓储层：所有读写都经过这里。
 // 每条记录存成 JSON，另抽几列做索引。以后接 CRDT 同步只改这一层。
-import type { Annotation, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingStatus, TagColor, Term, UUID } from './model'
+import type { Annotation, DevicePosition, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingPosition, ReadingStatus, TagColor, Term, UUID } from './model'
 import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
 import { createLibrarySyncStore, LIBRARY_SYNC_SCHEMA } from './sync/libraryStore'
@@ -327,6 +327,31 @@ export class Library {
       this.db.prepare('INSERT OR REPLACE INTO files (hash, paper_id) VALUES (?, ?)').run(file.hash, id)
       return p
     })
+  }
+
+  /**
+   * 存阅读位置。readingPosition 只属于这台设备（精确到滚动位置和缩放）；
+   * 给了 device（设备名）时，再把页码记进会同步的 positions，别的设备打开时能提示"在这台设备上读到第几页"。
+   * 滚动时频繁调用，所以 positions 由调用的一方决定隔多久记一次，免得每翻一页都同步一回
+   */
+  savePosition(id: UUID, pos: ReadingPosition, device?: string): void {
+    this.write(id, (p) => {
+      p.readingPosition = pos
+      if (device) p.positions = { ...(p.positions ?? {}), [this.deviceId]: { device, fileHash: pos.fileHash, page: pos.page, at: pos.updatedAt } }
+    })
+  }
+
+  /** 别的设备上比这台更晚读到的位置（最近的一个）；没有就是 null */
+  positionElsewhere(id: UUID): DevicePosition | null {
+    const p = this.getPaper(id)
+    if (!p) return null
+    const mine = p.readingPosition?.updatedAt ?? ''
+    let best: DevicePosition | null = null
+    for (const [dev, pos] of Object.entries(p.positions ?? {})) {
+      if (dev === this.deviceId || !pos || typeof pos.page !== 'number' || !(pos.at > mine)) continue
+      if (!best || pos.at > best.at) best = pos
+    }
+    return best
   }
 
   /** 软删除：保留记录，同步时作为删除标记；可以撤销 */

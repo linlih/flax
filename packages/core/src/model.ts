@@ -61,6 +61,8 @@ export interface Paper extends Versioned {
   lastOpenedAt?: string
   /** 上次读到的位置，下次打开从这里接着读 */
   readingPosition?: ReadingPosition
+  /** 每台设备最后读到哪一页（设备 id → 位置），会同步；打开时提示"在 iPad 上读到第 12 页" */
+  positions?: Record<string, DevicePosition>
   metadataSource: MetadataSource
   /** 识别不完整时为 true，界面显示"需要匹配" */
   needsMatch: boolean
@@ -83,6 +85,15 @@ export interface ReadingPosition {
   /** 'page-width' 等预设，或数字缩放比例 */
   scale: string
   updatedAt: string
+}
+
+/** 一台设备上次读到的地方。只记页码，精确的滚动位置和缩放只属于那台设备 */
+export interface DevicePosition {
+  /** 设备名，显示用："在 MacBook Pro 上读到第 12 页" */
+  device: string
+  fileHash: string
+  page: number
+  at: string
 }
 
 /** 高亮的颜色。存语义名，具体色值由界面 token 决定，深色模式下换成深色版本 */

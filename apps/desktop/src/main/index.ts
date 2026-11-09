@@ -18,6 +18,7 @@ import { NoteStore } from './notes'
 import { Updater, realUpdater } from './updater'
 import { FileStore } from './store'
 import { SyncService } from './sync'
+import { deviceName } from './device'
 
 app.setName('Flax')
 
@@ -356,12 +357,19 @@ function setup(): void {
   })
   // 阅读位置滚动时频繁保存，不通知界面刷新
   // 关阅读器时最后存一次（final），这时才通知界面刷新
+  // 读到第几页也记进会同步的 positions，但隔两分钟才记一次（关阅读器时一定记），免得读着读着每翻一页都同步一次
+  const shared = new Map<string, number>()
   handle('library:savePosition', (id, pos, final) => {
     const p = pos as ReadingPosition
     if (!p || typeof p.page !== 'number' || typeof p.fileHash !== 'string') throw new Error('bad position')
-    if (library.getPaper(str(id, 'id'))) library.updatePaper(str(id, 'id'), { readingPosition: p })
+    const pid = str(id, 'id')
+    if (!library.getPaper(pid)) return
+    const share = final === true || Date.now() - (shared.get(pid) ?? 0) > 120_000
+    if (share) shared.set(pid, Date.now())
+    library.savePosition(pid, p, share ? deviceName() : undefined)
     if (final === true) changed()
   })
+  handle('library:positionElsewhere', (id) => library.positionElsewhere(str(id, 'id')))
   handle('library:annotations', (id) => library.listAnnotations(str(id, 'id')))
   handle('library:addAnnotation', (a) => {
     const n = a as NewAnnotation

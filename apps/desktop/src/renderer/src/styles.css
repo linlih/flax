@@ -543,6 +543,8 @@ select.input { appearance: none; padding-right: 30px; background-image: url("dat
 .ai-a-foot { display: flex; align-items: center; gap: 2px; margin-top: 4px; }
 .ai-a-foot .hint { margin-right: 4px; font-size: 12px; }
 .ai-input { flex: none; display: flex; flex-direction: column; gap: 6px; }
+.ai-offline { flex-direction: row; align-items: center; gap: 10px; padding-top: 8px; border-top: 1px solid var(--border); }
+.ai-offline p { flex: 1; margin: 0; color: var(--text-2); font-size: 13px; }
 .ai-pending { display: flex; align-items: flex-start; gap: 4px; padding: 8px 6px 2px 10px; border-radius: 10px; background: var(--card); box-shadow: var(--shadow-card); }
 .ai-pending span { flex: 1; margin: 0 0 6px; }
 .ai-box { display: flex; flex-direction: column; gap: 4px; padding: 8px 6px 6px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--card); box-shadow: var(--shadow-card); }

@@ -167,6 +167,55 @@ describe('sync engine', () => {
     }
   })
 
+  it('keeps each device\'s reading position: the exact spot stays local, the page is shared and never overwritten by another device', async () => {
+    const { a, b } = await pair()
+    const p = a.lib.addPaper(meta('Paper'))
+    await a.engine.sync()
+    await b.engine.sync()
+    const pos = (page: number, left = 0) => ({ fileHash: 'h1', page, left, top: 700, scale: 'page-width', updatedAt: tick() })
+
+    // 两台设备同时（都离线）读了这篇
+    a.lib.savePosition(p.id, pos(3, 40), 'Mac')
+    b.lib.savePosition(p.id, pos(12), 'iPad')
+    // 只存本机位置、不记进 positions 的那种（滚动中途）也不该同步出去
+    b.lib.savePosition(p.id, pos(13))
+    await a.engine.sync()
+    await b.engine.sync()
+    await a.engine.sync()
+
+    const onA = a.lib.getPaper(p.id)!
+    const onB = b.lib.getPaper(p.id)!
+    expect(onA.readingPosition).toMatchObject({ page: 3, left: 40 })
+    expect(onB.readingPosition).toMatchObject({ page: 13 })
+    for (const x of [onA, onB]) {
+      expect(x.positions?.[a.lib.deviceId]).toMatchObject({ device: 'Mac', page: 3 })
+      expect(x.positions?.[b.lib.deviceId]).toMatchObject({ device: 'iPad', page: 12 })
+    }
+    // A 上次读是在 iPad 之前：提示 iPad 的位置；B 自己的更晚，没有提示
+    expect(a.lib.positionElsewhere(p.id)).toMatchObject({ device: 'iPad', page: 12 })
+    expect(b.lib.positionElsewhere(p.id)).toBeNull()
+
+    // A 接着读到第 15 页以后，iPad 那个位置就旧了
+    a.lib.savePosition(p.id, pos(15), 'Mac')
+    expect(a.lib.positionElsewhere(p.id)).toBeNull()
+    await a.engine.sync()
+    await b.engine.sync()
+    expect(b.lib.positionElsewhere(p.id)).toMatchObject({ device: 'Mac', page: 15 })
+  })
+
+  it('merges map fields key by key', () => {
+    const t = (n: number) => () => String(n).padStart(16, '0') + '-0000-x'
+    const base = stampChanges('paper', null, { id: 'p', positions: { a: { page: 1 } } }, false, t(1))!
+    const left = stampChanges('paper', base, { id: 'p', positions: { a: { page: 4 } } }, false, t(2))!
+    const right = stampChanges('paper', base, { id: 'p', positions: { a: { page: 1 }, b: { page: 9 } } }, false, t(3))!
+    expect(Object.keys(right.c)).toContain('positions/b')
+    expect(right.c['positions/a']).toBe(base.c['positions/a'])
+    const ab = mergeRecord(left, right)!
+    const ba = mergeRecord(right, left)!
+    expect(ab.d['positions']).toEqual({ a: { page: 4 }, b: { page: 9 } })
+    expect(ba.d['positions']).toEqual(ab.d['positions'])
+  })
+
   it('syncs deletions and keeps an edit made after the delete for when it is restored', async () => {
     const { a, b } = await pair()
     const p = a.lib.addPaper(meta('Gone'))
@@ -301,6 +350,31 @@ describe('ai conversations', () => {
     expect(mergeTurns(local, [{ id: 'x' }, null, 'y', t('a1', '99')]).map((x) => x.id)).toEqual(['a1', 'a2'])
     // 两边各自的结果一样
     expect(mergeTurns(remote, local).map((x) => x.id)).toEqual(['a1', 'b1', 'a2', 'b2'])
+  })
+
+  it('orders messages from the same millisecond the same way on every device, questions before answers', async () => {
+    // 同一毫秒：问题在回答前面；两台设备各问的一句按 id 排
+    const same = [t('z-answer', '05', 'assistant'), t('m-ipad', '05'), t('k-mac', '05')]
+    expect(mergeTurns([], same).map((x) => x.id)).toEqual(['k-mac', 'm-ipad', 'z-answer'])
+    expect(mergeTurns(same.slice().reverse(), []).map((x) => x.id)).toEqual(['k-mac', 'm-ipad', 'z-answer'])
+
+    const { a, b } = await pair(null)
+    const ca = a.lib.conversations()
+    const cb = b.lib.conversations()
+    const conv = ca.create('paper-1', '问', '2026-11-09T09:00:00.000Z')
+    await a.engine.sync()
+    await b.engine.sync()
+    const at = '2026-11-09T09:10:00.000Z'
+    ca.append(conv.id, { role: 'user', text: 'Mac 上问的', at })
+    ca.append(conv.id, { role: 'assistant', text: 'Mac 上的回答', at })
+    cb.append(conv.id, { role: 'user', text: 'iPad 上问的', at })
+    await a.engine.sync()
+    await b.engine.sync()
+    await a.engine.sync()
+    const order = ca.get(conv.id)!.turns.map((x) => x.text)
+    expect(cb.get(conv.id)!.turns.map((x) => x.text)).toEqual(order)
+    // 回答不会跑到问题前面
+    expect(order.indexOf('Mac 上的回答')).toBe(2)
   })
 
   it('keeps the messages both devices added offline, in time order', async () => {

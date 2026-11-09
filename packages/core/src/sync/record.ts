@@ -20,6 +20,13 @@ export interface SyncRecord {
 /** 集合字段：按元素合并 */
 export const SET_FIELDS: Partial<Record<SyncKind, string[]>> = { paper: ['tags', 'folderIds'] }
 
+/** 字典字段：每个键单独记时间戳，比如每台设备各自的阅读位置（键是设备 id），两台设备各写各的，不会互相盖掉 */
+export const MAP_FIELDS: Partial<Record<SyncKind, string[]>> = { paper: ['positions'] }
+
+function asMap(v: unknown): Record<string, unknown> {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : {}
+}
+
 const DEL = '_del'
 
 function equal(a: unknown, b: unknown): boolean {
@@ -38,6 +45,7 @@ function asList(v: unknown): string[] {
  */
 export function stampChanges(kind: SyncKind, prev: SyncRecord | null, d: Record<string, unknown>, del: boolean, tick: () => HlcStamp): SyncRecord | null {
   const sets = SET_FIELDS[kind] ?? []
+  const maps = MAP_FIELDS[kind] ?? []
   const c: Record<string, HlcStamp> = { ...(prev?.c ?? {}) }
   let changed = !prev
   const stampNow = (key: string) => {
@@ -50,6 +58,10 @@ export function stampChanges(kind: SyncKind, prev: SyncRecord | null, d: Record<
       const before = new Set(asList(prev?.d[key]))
       const after = new Set(asList(d[key]))
       for (const e of new Set([...before, ...after])) if (!prev || before.has(e) !== after.has(e)) stampNow(`${key}/${e}`)
+    } else if (maps.includes(key)) {
+      const before = asMap(prev?.d[key])
+      const after = asMap(d[key])
+      for (const e of new Set([...Object.keys(before), ...Object.keys(after)])) if (!prev || !equal(before[e], after[e])) stampNow(`${key}/${e}`)
     } else if (!prev || !equal(prev.d[key], d[key])) stampNow(key)
   }
   if (!prev || prev.del !== del) stampNow(DEL)
@@ -66,6 +78,7 @@ export function stampChanges(kind: SyncKind, prev: SyncRecord | null, d: Record<
 export function mergeRecord(local: SyncRecord | null, remote: SyncRecord): SyncRecord | null {
   if (!local) return clone(remote)
   const sets = SET_FIELDS[remote.k] ?? []
+  const maps = MAP_FIELDS[remote.k] ?? []
   const out = clone(local)
   let changed = false
   for (const [key, stamp] of Object.entries(remote.c)) {
@@ -83,6 +96,13 @@ export function mergeRecord(local: SyncRecord | null, remote: SyncRecord): SyncR
       const list = asList(out.d[field])
       const want = asList(remote.d[field]).includes(elem)
       out.d[field] = want ? (list.includes(elem) ? list : [...list, elem]) : list.filter((x) => x !== elem)
+    } else if (slash > 0 && maps.includes(field)) {
+      const k = key.slice(slash + 1)
+      const map = { ...asMap(out.d[field]) }
+      const theirs = asMap(remote.d[field])
+      if (k in theirs) map[k] = clone(theirs[k])
+      else delete map[k]
+      out.d[field] = map
     } else if (key in remote.d) out.d[key] = clone(remote.d[key])
     else delete out.d[key]
   }

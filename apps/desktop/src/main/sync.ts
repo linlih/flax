@@ -5,7 +5,7 @@
 // 设置存在资料文件夹的 sync/settings.json；WebDAV 密码和库密钥用系统钥匙串加密后存在 sync/secret.bin。
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { hostname } from 'node:os'
+import { deviceName } from './device'
 import { join } from 'node:path'
 import {
   createLibrary,
@@ -140,7 +140,7 @@ export class SyncService {
       stores: this.stores,
       state: { get: (k) => lib.metaGet(k), set: (k, v) => lib.metaSet(k, v) },
       deviceId: lib.deviceId,
-      deviceName: hostname().replace(/\.local$/, ''),
+      deviceName: deviceName(),
       platform: process.platform,
       key
     })

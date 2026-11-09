@@ -1,5 +1,5 @@
 // 主进程和渲染进程之间的接口。渲染进程只能通过 window.api 调这些方法。
-import type { Annotation, AnnotationPatch, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
+import type { Annotation, AnnotationPatch, DevicePosition, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
 
 export interface LibrarySnapshot {
   papers: Paper[]
@@ -41,6 +41,8 @@ export interface LibraryApi {
   openFile(id: string): Promise<void>
   markOpened(id: string): Promise<void>
   savePosition(id: string, pos: ReadingPosition, final?: boolean): Promise<void>
+  /** 别的设备上比这台更晚读到的位置；没有就是 null */
+  positionElsewhere(id: string): Promise<DevicePosition | null>
   /** 按 id 取一条批注；删掉了就是 null */
   annotation(id: string): Promise<Annotation | null>
   annotations(paperId: string): Promise<Annotation[]>

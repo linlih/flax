@@ -27,6 +27,7 @@ const library = {
   openFile: invoke('openFile'),
   markOpened: invoke('markOpened'),
   savePosition: invoke('savePosition'),
+  positionElsewhere: invoke('positionElsewhere'),
   annotations: invoke('annotations'),
   annotation: invoke('annotation'),
   addAnnotation: invoke('addAnnotation'),

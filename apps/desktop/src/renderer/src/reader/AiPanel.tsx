@@ -55,7 +55,18 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
     if (el) el.scrollTop = el.scrollHeight
   }, [turns.length, live?.text])
 
-  if (!status || usableServices(status).length === 0) {
+  const usable = !!status && usableServices(status).length > 0
+  // 没设 AI 服务的设备（比如只用来看的那台）：同步过来的对话照样能看，直接打开最近的一个
+  const first = convs.list[0]?.id
+  useEffect(() => {
+    if (usable || convs.current !== null || !first) return
+    void api.ai.openConversation(paperId, first).then((t) => {
+      setTurns(t)
+      refreshConvs()
+    })
+  }, [usable, convs.current, first, paperId])
+
+  if (!usable && convs.list.length === 0) {
     return (
       <div className="ai-panel ai-empty">
         <div className="panel-head ai-empty-head">
@@ -68,7 +79,7 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
       </div>
     )
   }
-  const ready = status.ready
+  const ready = usable && !!status?.ready
   const busy = live !== null
 
   const send = async (text = input, withQuote = pending ?? undefined) => {
@@ -128,7 +139,7 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
     <div className="ai-panel">
       <div className="panel-head ai-head">
         <ChatHistory convs={convs} busy={busy} onOpen={(id) => void openChat(id)} onDelete={(id) => void deleteChat(id)} onRename={(id, t) => void renameChat(id, t)} />
-        <button type="button" className="icon-btn tool" aria-label="新对话" title="新对话（之前的在左边的历史里）" disabled={busy || (convs.current === null && turns.length === 0)} onClick={() => void newChat()}><Icon name="plus" size={16} /></button>
+        {usable && <button type="button" className="icon-btn tool" aria-label="新对话" title="新对话（之前的在左边的历史里）" disabled={busy || (convs.current === null && turns.length === 0)} onClick={() => void newChat()}><Icon name="plus" size={16} /></button>}
         <HideButton onHide={onHide} />
       </div>
       <div className="ai-scroll" ref={list}>
@@ -143,7 +154,7 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
               {t.error ? (
                 <p className="ai-error">
                   {t.error}
-                  {i === turns.length - 1 && lastUser && <button type="button" className="link" onClick={() => void send(lastUser.text, lastUser.quote)}>重试</button>}
+                  {usable && i === turns.length - 1 && lastUser && <button type="button" className="link" onClick={() => void send(lastUser.text, lastUser.quote)}>重试</button>}
                 </p>
               ) : (
                 <>
@@ -164,44 +175,51 @@ export function AiPanel({ paperId, status, quote, onCite, onOpenSettings, onToNo
         )}
       </div>
 
-      <div className="ai-input">
-        {pending && (
-          <div className="ai-pending">
-            <span>{pending}</span>
-            <button type="button" className="icon-btn tool" aria-label="不带这段文字" onClick={() => setPending(null)}><Icon name="close" size={14} /></button>
-          </div>
-        )}
-        <div className="ai-box">
-          <textarea
-            ref={box}
-            rows={1}
-            value={input}
-            placeholder={pending ? '关于这段，想问什么？' : '提问…'}
-            aria-label="提问"
-            onChange={(e) => {
-              setInput(e.target.value)
-              e.target.style.height = 'auto'
-              e.target.style.height = `${Math.min(160, e.target.scrollHeight)}px`
-            }}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
-                e.preventDefault()
-                void send()
-              }
-            }}
-          />
-          <div className="ai-box-row">
-            <ModelPicker status={status} onManage={onOpenSettings} />
-            <EffortPicker status={status} />
-            <span className="grow" />
-            {busy ? (
-              <button type="button" className="icon-btn ai-send" aria-label="停止" title="停止" onClick={() => live?.id && void api.ai.cancel(live.id)}><Icon name="stop" size={16} /></button>
-            ) : (
-              <button type="button" className="icon-btn ai-send" aria-label="发送" title={kbd('发送（↩）')} disabled={!input.trim() || !ready} onClick={() => void send()}><Icon name="send" size={16} /></button>
-            )}
+      {!usable || !status ? (
+        <div className="ai-input ai-offline">
+          <p>连接 AI 服务后就能继续提问。</p>
+          <button type="button" className="btn btn-s" onClick={onOpenSettings}>{status?.services.length ? '去设置填 Key' : '添加 AI 服务'}</button>
+        </div>
+      ) : (
+        <div className="ai-input">
+          {pending && (
+            <div className="ai-pending">
+              <span>{pending}</span>
+              <button type="button" className="icon-btn tool" aria-label="不带这段文字" onClick={() => setPending(null)}><Icon name="close" size={14} /></button>
+            </div>
+          )}
+          <div className="ai-box">
+            <textarea
+              ref={box}
+              rows={1}
+              value={input}
+              placeholder={pending ? '关于这段，想问什么？' : '提问…'}
+              aria-label="提问"
+              onChange={(e) => {
+                setInput(e.target.value)
+                e.target.style.height = 'auto'
+                e.target.style.height = `${Math.min(160, e.target.scrollHeight)}px`
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !e.nativeEvent.isComposing) {
+                  e.preventDefault()
+                  void send()
+                }
+              }}
+            />
+            <div className="ai-box-row">
+              <ModelPicker status={status} onManage={onOpenSettings} />
+              <EffortPicker status={status} />
+              <span className="grow" />
+              {busy ? (
+                <button type="button" className="icon-btn ai-send" aria-label="停止" title="停止" onClick={() => live?.id && void api.ai.cancel(live.id)}><Icon name="stop" size={16} /></button>
+              ) : (
+                <button type="button" className="icon-btn ai-send" aria-label="发送" title={kbd('发送（↩）')} disabled={!input.trim() || !ready} onClick={() => void send()}><Icon name="send" size={16} /></button>
+              )}
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   )
 }

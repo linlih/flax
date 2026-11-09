@@ -13,7 +13,10 @@ export function isNew(p: Paper): boolean {
 
 /** 读到第几页、一共几页；没读过或不知道总页数时是 null */
 export function progress(p: Paper): { page: number; total: number } | null {
-  const pos = p.readingPosition
+  // 这台设备和别的设备里最近读的那一次（在手机上读到第 12 页，列表里也是 12）
+  let pos: { fileHash: string; page: number } | undefined = p.readingPosition
+  let at = p.readingPosition?.updatedAt ?? ''
+  for (const o of Object.values(p.positions ?? {})) if (o.at > at) (pos = o), (at = o.at)
   if (!pos) return null
   const file = p.files.find((f) => f.hash === pos.fileHash) ?? p.files[0]
   const total = file?.pageCount

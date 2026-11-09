@@ -207,6 +207,11 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       restored = true
       container.focus({ preventScroll: true })
       setReady(true)
+      // 别的设备上读得更靠后（或更晚读过别的页）：提示一下，点了才跳，不自己跳
+      void api.library.positionElsewhere(paper.id).then((o) => {
+        if (closed || !o || o.fileHash !== hash || o.page === (saved?.page ?? 1) || o.page > viewer.pagesCount) return
+        toast({ text: `在 ${o.device} 上读到第 ${o.page} 页`, group: 'elsewhere', action: { label: '跳过去', run: () => viewer.scrollPageIntoView({ pageNumber: o.page }) } })
+      })
     })
     eventBus.on('pagechanging', ({ pageNumber }: { pageNumber: number }) => {
       setPage(pageNumber)
