@@ -11,9 +11,7 @@ export function deviceName(): string {
   if (process.platform === 'darwin') {
     try {
       name = execFileSync('/usr/sbin/scutil', ['--get', 'ComputerName'], { encoding: 'utf8', timeout: 2000 }).trim()
-    } catch {
-      name = ''
-    }
+    } catch {}
   }
   cached = name || hostname().replace(/\.local$/, '')
   return cached

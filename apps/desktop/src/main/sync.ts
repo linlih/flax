@@ -5,7 +5,6 @@
 // 设置存在资料文件夹的 sync/settings.json；WebDAV 密码和库密钥用系统钥匙串加密后存在 sync/secret.bin。
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
-import { deviceName } from './device'
 import { join } from 'node:path'
 import {
   createLibrary,
@@ -29,6 +28,7 @@ import type { NoteStore } from './notes'
 import { sha256, type FileStore } from './store'
 import { folderBackend } from './syncFolder'
 import { nodeCodec } from './syncCodec'
+import { deviceName } from './device'
 
 export const JIANGUOYUN = 'https://dav.jianguoyun.com/dav/'
 

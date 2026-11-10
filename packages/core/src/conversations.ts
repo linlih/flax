@@ -50,7 +50,6 @@ const isTurn = (t: unknown): t is StoredTurn => {
   return !!o && typeof o['id'] === 'string' && (o['role'] === 'user' || o['role'] === 'assistant') && typeof o['text'] === 'string' && typeof o['at'] === 'string'
 }
 
-/** 按时间排；同一时间的保持原来的先后（sort 是稳定的） */
 /** 消息的顺序：按时间；同一毫秒里问题在回答前面，再按 id。两台设备同一毫秒各问了一句时，排出来的顺序也一样 */
 export const byTime = (a: { at: string; role: string; id: string }, b: { at: string; role: string; id: string }): number =>
   a.at !== b.at ? (a.at < b.at ? -1 : 1) : a.role !== b.role ? (a.role === 'user' ? -1 : 1) : a.id < b.id ? -1 : a.id > b.id ? 1 : 0
