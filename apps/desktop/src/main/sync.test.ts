@@ -242,19 +242,64 @@ describe('when it syncs', () => {
   })
 
   it('syncs when the window comes back only if the last sync was over a minute ago', async () => {
-    const a = device('a')
+    const a = device('a', { pollMs: undefined })
     await a.svc.connect(folder, null)
     await settled(a.svc)
-    a.svc.stop()
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'], now: Date.now() })
+    a.svc.stop()
     a.statuses.length = 0
+    // 刚同步过：回到前台不马上同步，一分钟到了才同步
     a.svc.focused()
     expect(syncs(a.statuses)).toBe(0)
-    vi.setSystemTime(Date.now() + 61_000)
-    a.svc.focused()
+    await vi.advanceTimersByTimeAsync(59_000)
+    expect(syncs(a.statuses)).toBe(0)
+    await vi.advanceTimersByTimeAsync(1000)
     await settled(a.svc)
     expect(syncs(a.statuses)).toBe(1)
+    // 到后台待了一分多钟（后台五分钟才看一次），回来马上同步
+    a.svc.blurred()
+    await vi.advanceTimersByTimeAsync(60_000)
+    await settled(a.svc)
+    expect(syncs(a.statuses)).toBe(2)
+    await vi.advanceTimersByTimeAsync(61_000)
+    expect(syncs(a.statuses)).toBe(2)
+    a.svc.focused()
+    await settled(a.svc)
+    expect(syncs(a.statuses)).toBe(3)
     a.svc.stop()
+  })
+
+  it('checks every minute while the window is in front and every 5 minutes behind it', async () => {
+    const a = device('a', { pollMs: undefined })
+    await a.svc.connect(folder, null)
+    await settled(a.svc)
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'Date'] })
+    const s = a.reopen()
+    a.statuses.length = 0
+    // 启动时窗口正好到前台：还是等启动后 3 秒那次
+    s.start()
+    s.focused()
+    await vi.advanceTimersByTimeAsync(2900)
+    expect(syncs(a.statuses)).toBe(0)
+    await vi.advanceTimersByTimeAsync(100)
+    await settled(s)
+    expect(syncs(a.statuses)).toBe(1)
+    for (let i = 2; i <= 4; i++) {
+      await vi.advanceTimersByTimeAsync(60_000)
+      await settled(s)
+      expect(syncs(a.statuses)).toBe(i)
+    }
+    // 到后台：已经排好的那一次照常，之后五分钟一次
+    s.blurred()
+    await vi.advanceTimersByTimeAsync(60_000)
+    await settled(s)
+    expect(syncs(a.statuses)).toBe(5)
+    await vi.advanceTimersByTimeAsync(4 * 60_000 + 59_000)
+    expect(syncs(a.statuses)).toBe(5)
+    await vi.advanceTimersByTimeAsync(1000)
+    await settled(s)
+    expect(syncs(a.statuses)).toBe(6)
+    s.stop()
   })
 })
 

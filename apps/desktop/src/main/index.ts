@@ -433,6 +433,7 @@ function setup(): void {
     return r.canceled ? null : (r.filePaths[0] ?? null)
   })
   app.on('browser-window-focus', () => syncSvc.focused())
+  app.on('browser-window-blur', () => syncSvc.blurred())
   app.on('before-quit', () => syncSvc.stop())
   syncSvc.start()
   handle('notes:list', () => notes.list())

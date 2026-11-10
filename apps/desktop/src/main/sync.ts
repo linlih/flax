@@ -60,9 +60,13 @@ export interface SyncDeps {
   onReceived: () => void
   /** 测试时改短 */
   pollMs?: number
+  activePollMs?: number
 }
 
+/** 窗口不在前台时多久看一次云端。坚果云对 WebDAV 有请求频率限制（同一个账号的设备共用），没人看的时候不必问得勤 */
 const POLL_MS = 5 * 60_000
+/** 窗口在前台时：别的设备改的东西一分钟内就能看到。一般同一时间只有一台设备在前台，请求数不会超 */
+const ACTIVE_POLL_MS = 60_000
 const POKE_MS = 4000
 const MAX_BACKOFF_MS = 30 * 60_000
 
@@ -73,8 +77,12 @@ export class SyncService {
   private saved: Saved | null = null
   private status: SyncStatus
   private timer: ReturnType<typeof setTimeout> | null = null
+  /** timer 到点的时间 */
+  private due = 0
   private pokeTimer: ReturnType<typeof setTimeout> | null = null
   private failures = 0
+  /** 窗口在前台 */
+  private active = false
   private downloads = new Map<string, Promise<boolean>>()
   private uploading = false
 
@@ -220,7 +228,11 @@ export class SyncService {
 
   private schedule(ms: number): void {
     if (this.timer) clearTimeout(this.timer)
-    this.timer = setTimeout(() => void this.run(), ms)
+    this.due = Date.now() + ms
+    this.timer = setTimeout(() => {
+      this.timer = null
+      void this.run()
+    }, ms)
   }
 
   /** 本机改了东西（任何一次界面请求之后都会叫）：几秒后看看有没有要传的 */
@@ -232,11 +244,25 @@ export class SyncService {
     }, POKE_MS)
   }
 
-  /** 窗口回到前台：离上次同步超过一分钟就同步一次 */
+  private interval(): number {
+    return this.active ? (this.d.activePollMs ?? ACTIVE_POLL_MS) : (this.d.pollMs ?? POLL_MS)
+  }
+
+  /** 窗口回到前台：离上次同步超过一分钟就同步一次，不然一分钟到了再同步；之后每分钟看一次 */
   focused(): void {
-    if (!this.engine || this.failures) return
+    this.active = true
+    if (!this.engine || this.failures || this.status.state === 'syncing') return
     const last = this.status.lastSync ? Date.parse(this.status.lastSync) : 0
-    if (Date.now() - last > 60_000) void this.run()
+    const wait = Math.max(0, this.interval() - (Date.now() - last))
+    // 已经排了更早的（比如启动后 3 秒那次），就等它
+    if (this.timer && this.due - Date.now() <= wait) return
+    if (wait === 0) void this.run()
+    else this.schedule(wait)
+  }
+
+  /** 窗口到后台了：下次同步完改回慢的间隔 */
+  blurred(): void {
+    this.active = false
   }
 
   /** 立即同步（界面上的按钮）；出错时抛出去显示 */
@@ -257,7 +283,7 @@ export class SyncService {
       const at = new Date().toISOString()
       this.d.library.metaSet('sync.lastSync', at)
       this.set({ state: 'idle', lastSync: at, error: undefined })
-      this.schedule(this.d.pollMs ?? POLL_MS)
+      this.schedule(this.interval())
       void this.syncFiles()
     } catch (e) {
       if (engine !== this.engine) return
