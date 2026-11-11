@@ -1,0 +1,45 @@
+{
+  "expo": {
+    "name": "Flax",
+    "slug": "flax",
+    "scheme": "flax",
+    "version": "0.0.1",
+    "orientation": "default",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "android": {
+      "package": "app.flax.mobile"
+    },
+    "ios": {
+      "bundleIdentifier": "app.flax.mobile",
+      "supportsTablet": true
+    },
+    "plugins": [
+      "expo-router",
+      "expo-sqlite",
+      "expo-secure-store",
+      "expo-dev-client",
+      [
+        "expo-sharing",
+        {
+          "ios": {
+            "enabled": false
+          },
+          "android": {
+            "enabled": true,
+            "singleShareMimeTypes": [
+              "application/pdf",
+              "text/plain"
+            ],
+            "multipleShareMimeTypes": [
+              "application/pdf"
+            ]
+          }
+        }
+      ],
+      "./plugins/withReaderAssets",
+      "./plugins/withReleaseSigning"
+    ]
+  }
+}

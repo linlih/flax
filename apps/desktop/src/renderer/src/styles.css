@@ -235,54 +235,7 @@ textarea.inp { min-height: 0; }
 .reader .pdfViewer .textLayer .highlight { --highlight-bg-color: color-mix(in srgb, var(--accent-top) 28%, transparent); --highlight-selected-bg-color: color-mix(in srgb, var(--accent-top) 55%, transparent); }
 .reader .textLayer ::selection { background: color-mix(in srgb, var(--accent-top) 35%, transparent); }
 
-/* 整层和页面混合（层内的色块不各自混合，否则层本身会挡住文字） */
-.hl-layer { position: absolute; inset: 0; pointer-events: none; }
-.paper-light .hl-layer { mix-blend-mode: multiply; }
-.paper-dark .hl-layer { mix-blend-mode: lighten; }
-.hl { position: absolute; border-radius: 2px; }
-.paper-light .hl-highlight.hl-c-yellow { background: var(--hl-light-yellow); }
-.paper-light .hl-highlight.hl-c-green { background: var(--hl-light-green); }
-.paper-light .hl-highlight.hl-c-blue { background: var(--hl-light-blue); }
-.paper-light .hl-highlight.hl-c-pink { background: var(--hl-light-pink); }
-.paper-light .hl-highlight.hl-c-purple { background: var(--hl-light-purple); }
-.paper-dark .hl-highlight.hl-c-yellow { background: var(--hl-dark-yellow); }
-.paper-dark .hl-highlight.hl-c-green { background: var(--hl-dark-green); }
-.paper-dark .hl-highlight.hl-c-blue { background: var(--hl-dark-blue); }
-.paper-dark .hl-highlight.hl-c-pink { background: var(--hl-dark-pink); }
-.paper-dark .hl-highlight.hl-c-purple { background: var(--hl-dark-purple); }
-.hl-underline { background: transparent !important; }
-.hl-underline::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: max(1.5px, 8%); border-radius: 1px; background: currentColor; }
-.hl-underline.hl-c-yellow { color: var(--ul-yellow); }
-.hl-underline.hl-c-green { color: var(--ul-green); }
-.hl-underline.hl-c-blue { color: var(--ul-blue); }
-.hl-underline.hl-c-pink { color: var(--ul-pink); }
-.hl-underline.hl-c-purple { color: var(--ul-purple); }
-.hl-active { box-shadow: 0 0 0 1.5px var(--ul-blue); }
-.hl-note { background: transparent !important; }
-/* 只写评论：一条淡淡的虚线，不涂颜色 */
-.hl-note::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1.5px; background: linear-gradient(to right, var(--note-line) 60%, transparent 0) 0 0 / 5px 100% repeat-x; }
-.paper-light .hl-note { --note-line: rgba(60, 60, 67, .55); }
-.paper-dark .hl-note { --note-line: rgba(235, 235, 245, .5); }
-.hl-marks { position: absolute; inset: 0; z-index: 3; pointer-events: none; }
-/* 有评论的高亮：页边的小标记，颜色跟高亮；悬停显示评论 */
-.hl-mark { position: absolute; display: flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-top: -11px; border-radius: 6px; background: var(--card); color: var(--text-2); box-shadow: var(--shadow-card), inset 0 0 0 1px var(--border); pointer-events: auto; cursor: pointer; }
-.hl-mark.left { left: 1.2%; }
-.hl-mark.right { right: 1.2%; }
-.hl-mark::before { content: ""; position: absolute; top: 4px; bottom: 4px; width: 2.5px; border-radius: 2px; background: currentColor; }
-.hl-mark.left::before { right: 2px; }
-.hl-mark.right::before { left: 2px; }
-.hl-mark.hl-q::before { background: var(--text-2); }
-.hl-mark.hl-c-yellow::before { background: var(--ul-yellow); }
-.hl-mark.hl-c-green::before { background: var(--ul-green); }
-.hl-mark.hl-c-blue::before { background: var(--ul-blue); }
-.hl-mark.hl-c-pink::before { background: var(--ul-pink); }
-.hl-mark.hl-c-purple::before { background: var(--ul-purple); }
-.hl-mark:hover, .hl-mark.on { color: var(--text); background: var(--card); box-shadow: var(--shadow-card), inset 0 0 0 1.5px var(--accent-top); }
-.hl-mark::after { content: attr(data-comment); position: absolute; top: 50%; transform: translateY(-50%); width: max-content; max-width: 240px; padding: 6px 10px; border-radius: 8px; background: var(--card); color: var(--text); box-shadow: var(--shadow-float); font: 13px/1.5 var(--font-ui); white-space: pre-wrap; text-align: left; pointer-events: none; opacity: 0; visibility: hidden; transition: opacity .12s; }
-.hl-mark.left::after { left: calc(100% + 8px); }
-.hl-mark.right::after { right: calc(100% + 8px); }
-.hl-mark:hover::after { opacity: 1; visibility: visible; transition-delay: .15s; }
-.hl-mark.on::after { display: none; }
+/* 高亮层的样式在 @flax/ui/highlights.css（桌面和手机共用） */
 
 /* 浮在页面上的工具条和批注卡片 */
 .reader-float { position: absolute; z-index: 20; transform: translateX(-50%); display: flex; align-items: center; gap: 4px; padding: 6px; border-radius: var(--r-card); background: var(--card); box-shadow: var(--shadow-float); }

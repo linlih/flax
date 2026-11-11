@@ -1,6 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import '@flax/ui/tokens.css'
+import '@flax/ui/highlights.css'
 import './styles.css'
 import { App } from './App'
 import { isMac } from './lib/platform'

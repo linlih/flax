@@ -7,3 +7,9 @@ dist/
 .env*
 apps/desktop/native/out/
 apps/desktop/.electron-dist/
+apps/mobile/android/
+apps/mobile/ios/
+apps/mobile/.expo/
+apps/mobile/expo-env.d.ts
+# 发布签名的 keystore 和密码：只在本机，自己备份
+apps/mobile/signing/

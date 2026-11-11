@@ -1,0 +1,50 @@
+{
+  "name": "@flax/mobile",
+  "version": "0.0.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start --dev-client",
+    "android": "expo run:android",
+    "prebuild": "npm run build:reader && expo prebuild --platform android",
+    "typecheck": "tsc --noEmit && tsc -p reader-web",
+    "build:reader": "vite build --config reader-web/vite.config.mts"
+  },
+  "dependencies": {
+    "@flax/core": "*",
+    "expo": "58.0.19",
+    "expo-clipboard": "58.0.4",
+    "expo-constants": "58.0.13",
+    "expo-dev-client": "58.0.15",
+    "expo-file-system": "58.0.11",
+    "expo-linking": "58.0.14",
+    "expo-router": "58.0.26",
+    "expo-secure-store": "58.0.2",
+    "expo-sharing": "58.0.20",
+    "expo-sqlite": "58.0.14",
+    "expo-status-bar": "58.0.4",
+    "expo-system-ui": "58.0.6",
+    "fflate": "0.8.3",
+    "react": "19.3.0",
+    "react-native": "0.88.0",
+    "react-native-nitro-modules": "0.37.1",
+    "react-native-quick-base64": "3.0.1",
+    "react-native-quick-crypto": "1.1.8",
+    "react-native-safe-area-context": "5.10.1",
+    "react-native-screens": "4.30.0",
+    "react-native-svg": "15.16.0",
+    "react-native-webview": "14.0.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.3.0"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": [
+          ".*"
+        ]
+      }
+    }
+  }
+}

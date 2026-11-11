@@ -1,0 +1,12 @@
+/* 手机阅读器：页面铺满宽度，纸下面垫一层 --desk 的底色。高亮的样式在 @flax/ui/highlights.css。 */
+html, body { margin: 0; height: 100%; background: var(--desk); -webkit-tap-highlight-color: transparent; overscroll-behavior: none; }
+#scroll { position: absolute; inset: 0; overflow: auto; -webkit-overflow-scrolling: touch; }
+#viewer { transform-origin: 0 0; }
+.pdfViewer { padding: 8px 0 120px; }
+.pdfViewer .page { isolation: isolate; margin: 0 auto 8px; border: 0; box-shadow: 0 1px 3px rgba(0, 0, 0, 0.14); background: #FFFFFF; }
+.paper-dark .pdfViewer .page { background: #1E1E1E; }
+.paper-dark .pdfViewer .canvasWrapper { filter: invert(0.88) hue-rotate(180deg); }
+.textLayer ::selection { background: color-mix(in srgb, var(--accent-top) 35%, transparent); }
+/* 手机上没有悬停：评论的气泡不显示，点标记打开批注 */
+.hl-mark::after { display: none; }
+.hl-mark { width: 26px; height: 26px; margin-top: -13px; }
