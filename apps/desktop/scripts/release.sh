@@ -35,13 +35,14 @@ fs.writeFileSync(p, s.replace(/("version":\s*")[^"]+(")/, `$1${v}$2`))
 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
 if (lock.packages?.['apps/desktop']) lock.packages['apps/desktop'].version = v
 fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
-// 安卓版用同一个版本号（手机上的检查更新拿它和最新发布比）。versionCode 是 Android 判断新旧的数字，
+// 安卓和 iOS 用同一个版本号（手机上的检查更新拿它和最新发布比）。versionCode 是 Android 判断新旧的数字，
 // 只能往上涨：1.2.3 → 1002003（预发布版和正式版同一个数）
 const a = 'apps/mobile/app.json'
 const app = JSON.parse(fs.readFileSync(a, 'utf8'))
 const [ma, mi, pa] = v.split('-')[0].split('.').map(Number)
 app.expo.version = v
 app.expo.android.versionCode = ma * 1000000 + mi * 1000 + pa
+app.expo.ios = { ...app.expo.ios, buildNumber: String(app.expo.android.versionCode) }
 fs.writeFileSync(a, JSON.stringify(app, null, 2) + '\n')
 JS
 

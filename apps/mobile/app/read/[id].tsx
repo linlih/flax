@@ -10,6 +10,7 @@ import { nearEnd, STATUS_LABEL, type Annotation, type AnnotationPatch, type High
 import { quoteBlock } from '@flax/core'
 import { app, bump, showNotice } from '../../src/services'
 import { pdfFile } from '../../src/platform/files'
+import { readerProps } from '../../src/reader'
 import { appendToPaperNote, copyText, pageDark, setPageDark, setStatus } from '../../src/actions'
 import { Button, Chip, Empty, Field, IconButton } from '../../src/ui/kit'
 import { ActionSheet, BottomSheet, Prompt } from '../../src/ui/sheets'
@@ -17,7 +18,6 @@ import { SWATCH, useTheme } from '../../src/ui/theme'
 import { AiChat } from '../../src/ui/AiChat'
 import { TranslateSheet } from '../../src/ui/TranslateSheet'
 
-const READER = 'file:///android_asset/reader/index.html'
 // react-native-webview 的类组件类型在 TS 7 + React 19 的类型下所有属性都变成 never；运行时没问题，这里给一个正确的类型
 const Web = WebView as unknown as React.ComponentType<WebViewProps & { ref?: React.Ref<WebView> }>
 const COLORS: { id: HighlightColor; label: string }[] = [
@@ -56,6 +56,7 @@ export default function ReadScreen() {
   const paper = useMemo(() => s.library.getPaper(id), [id])
   const file = paper ? (paper.files.find((f) => f.role === 'main') ?? paper.files[0]) : undefined
   const web = useRef<WebView>(null)
+  const reader = useMemo(readerProps, [])
   const [chrome, setChrome] = useState(true)
   const [page, setPage] = useState<{ page: number; total: number } | null>(null)
   const [selection, setSelection] = useState<Part[] | null>(null)
@@ -278,16 +279,10 @@ export default function ReadScreen() {
     <View style={{ flex: 1, backgroundColor: t.desk }}>
       <Web
         ref={web}
-        source={{ uri: READER }}
-        originWhitelist={['*']}
-        allowFileAccess
-        allowFileAccessFromFileURLs
-        allowUniversalAccessFromFileURLs
-        javaScriptEnabled
+        {...reader}
         domStorageEnabled
         setSupportMultipleWindows={false}
         onMessage={onMessage}
-        onShouldStartLoadWithRequest={(r) => r.url.startsWith('file://') || r.url.startsWith('blob:') || r.url === 'about:blank'}
         style={{ flex: 1, backgroundColor: t.desk, marginTop: insets.top }}
         textZoom={100}
         overScrollMode="never"

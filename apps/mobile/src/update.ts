@@ -1,6 +1,11 @@
-// 检查更新：看 GitHub 上最新发布的版本（和桌面的自动更新同一个仓库），里面有 .apk 就给下载链接。
-// 不在应用里自己装：交给浏览器下载，用户点开安装（Android 会问一次"允许安装未知应用"）。
+// 检查更新：看 GitHub 上最新发布的版本（和桌面的自动更新同一个仓库），里面有这个系统的安装包（Android .apk、iOS .ipa）就给下载链接。
+// 不在应用里自己装：交给浏览器下载。Android 点开安装（会问一次"允许安装未知应用"）；
+// iOS 的 .ipa 没有签名，用 AltStore 或 Sideloadly 拿自己的 Apple ID 签好再装。
+import { Platform } from 'react-native'
 import Constants from 'expo-constants'
+
+/** 这个系统的安装包后缀 */
+export const PACKAGE_EXT = Platform.OS === 'ios' ? '.ipa' : '.apk'
 
 const LATEST = 'https://api.github.com/repos/linlih/flax/releases/latest'
 
@@ -26,9 +31,9 @@ export async function checkUpdate(): Promise<UpdateCheck> {
     if (!res.ok) return { kind: 'error', message: `检查失败（${res.status}），稍后再试。` }
     const r = (await res.json()) as { tag_name?: string; body?: string; assets?: { name: string; browser_download_url: string; size: number }[] }
     const version = (r.tag_name ?? '').replace(/^v/, '')
-    const apk = r.assets?.find((a) => a.name.toLowerCase().endsWith('.apk'))
+    const apk = r.assets?.find((a) => a.name.toLowerCase().endsWith(PACKAGE_EXT))
     if (!version || !newer(version, currentVersion())) return { kind: 'latest', version: currentVersion() }
-    // 新版本只发了电脑版：说清楚，不说"已是最新"
+    // 新版本没有这个系统的安装包：说清楚，不说"已是最新"
     if (!apk) return { kind: 'no_apk', version }
     return { kind: 'available', version, url: apk.browser_download_url, notes: (r.body ?? '').trim(), size: apk.size }
   } catch {

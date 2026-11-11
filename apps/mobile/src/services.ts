@@ -85,7 +85,7 @@ function deviceName(): string {
   const c = Platform.constants as { Brand?: string; Model?: string; Manufacturer?: string }
   const brand = c.Brand ? c.Brand[0]!.toUpperCase() + c.Brand.slice(1) : ''
   const name = [brand, c.Model].filter(Boolean).join(' ')
-  return name || (Platform.OS === 'android' ? 'Android 手机' : '手机')
+  return name || (Platform.OS === 'android' ? 'Android 手机' : Platform.OS === 'ios' ? (Platform.isPad ? 'iPad' : 'iPhone') : '手机')
 }
 
 function setup() {

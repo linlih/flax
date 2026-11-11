@@ -1,6 +1,6 @@
 // 设置：同步、AI 服务、翻译、外观、关于（版本、检查更新、自检）。和桌面的 SettingsView 对应。
 import { useState } from 'react'
-import { Linking, ScrollView, Text, View } from 'react-native'
+import { Linking, Platform, ScrollView, Text, View } from 'react-native'
 import { router } from 'expo-router'
 import { addedLabel, sizeLabel } from '@flax/core'
 import { app, useVersion } from '../../src/services'
@@ -60,7 +60,7 @@ export default function SettingsScreen() {
       </Group>
       <Group title="关于">
         <Row title="Flax" sub={`版本 ${currentVersion()} · 设备 ${s.library.deviceId.slice(0, 8)}`} />
-        <Row title="检查更新" sub={update === 'busy' ? '正在检查…' : !update ? '看看 GitHub 上有没有新版本' : update.kind === 'latest' ? `已经是最新版本（${update.version}）` : update.kind === 'no_apk' ? `最新的 ${update.version} 还没有 Android 安装包` : update.kind === 'error' ? update.message : `有新版本 ${update.version}${update.size ? `（${sizeLabel(update.size)}）` : ''}`} onPress={update === 'busy' ? undefined : () => void check()} />
+        <Row title="检查更新" sub={update === 'busy' ? '正在检查…' : !update ? '看看 GitHub 上有没有新版本' : update.kind === 'latest' ? `已经是最新版本（${update.version}）` : update.kind === 'no_apk' ? `最新的 ${update.version} 还没有${Platform.OS === 'ios' ? ' iOS ' : ' Android '}安装包` : update.kind === 'error' ? update.message : `有新版本 ${update.version}${update.size ? `（${sizeLabel(update.size)}）` : ''}`} onPress={update === 'busy' ? undefined : () => void check()} />
         {update && update !== 'busy' && update.kind === 'available' ? (
           <View style={{ paddingHorizontal: 16, paddingBottom: 12, gap: 8 }}>
             {update.notes ? (
@@ -69,7 +69,7 @@ export default function SettingsScreen() {
               </Text>
             ) : null}
             <Button title="用浏览器下载安装包" kind="tonal" onPress={() => void Linking.openURL(update.url)} />
-            <Text style={{ color: t.sub, fontSize: 12, lineHeight: 17 }}>下载完点开安装。资料都在手机上，装新版不会丢。</Text>
+            <Text style={{ color: t.sub, fontSize: 12, lineHeight: 17 }}>{Platform.OS === 'ios' ? '下载完用 AltStore 或 Sideloadly 装上（和第一次装一样）。资料都在手机上，装新版不会丢。' : '下载完点开安装。资料都在手机上，装新版不会丢。'}</Text>
           </View>
         ) : null}
         <Row title="自检" sub="检查加密、数据库和桌面版兼容" onPress={() => router.push('/settings/selftest')} />

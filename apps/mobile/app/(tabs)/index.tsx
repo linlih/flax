@@ -1,7 +1,7 @@
 // 文献库：在读 / 待读 / 全部，搜索，筛选（文件夹、标签、状态）和排序，"添加"浮动按钮（选 PDF、粘贴链接、从 Zotero 导入）。
 // 长按一篇：复制引用、导出、改状态、删除。和桌面的论文表格（LibraryTable）、侧栏（Sidebar）对应。
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
+import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { router, Stack, useLocalSearchParams, useNavigation } from 'expo-router'
 import { authorLine, filterPapers, formatCitation, isNew, isStale, MATCH_HINT, progress, sortReading, STATUS_LABEL, STATUSES, tagColorMap, toBibTeX, toRIS, type CiteStyle, type Paper, type ReadingStatus } from '@flax/core'
 import { app, showNotice, useVersion } from '../../src/services'
@@ -12,6 +12,9 @@ import { Button, Chip, Empty, Field, IconButton, Tabs } from '../../src/ui/kit'
 import { ActionSheet, BottomSheet, OptionRow, Prompt } from '../../src/ui/sheets'
 import { Icon } from '../../src/ui/Icon'
 import { TAG, useTheme } from '../../src/ui/theme'
+
+/** 只有 Android 能从别的应用分享进来（iOS 要另做分享扩展，见 src/share.ts） */
+const CAN_RECEIVE_SHARE = Platform.OS === 'android'
 
 type View3 = 'reading' | 'to_read' | 'all'
 type Sort = 'added' | 'opened' | 'title' | 'year'
@@ -386,7 +389,7 @@ function EmptyList({ tab, hasAny, syncOn, onAdd }: { tab: View3 | 'search'; hasA
   if (tab === 'search') return <Empty title="没有找到" sub="换个词或者清除筛选试试：标题、作者、期刊、年份、标签都能搜。" />
   if (!hasAny)
     return (
-      <Empty title="文献库是空的" sub={syncOn ? '正在从云端同步，或者点"添加"导入 PDF。' : '开启同步后，电脑上的论文、批注和笔记都会过来。也可以导入 PDF，或者在别的应用里把 PDF 分享给 Flax。'}>
+      <Empty title="文献库是空的" sub={syncOn ? '正在从云端同步，或者点"添加"导入 PDF。' : `开启同步后，电脑上的论文、批注和笔记都会过来。也可以导入 PDF${CAN_RECEIVE_SHARE ? '，或者在别的应用里把 PDF 分享给 Flax' : ''}。`}>
         {!syncOn ? <Button title="开启同步" kind="tonal" onPress={() => router.push('/settings/sync')} style={{ marginTop: 12 }} /> : <Button title="添加论文" kind="tonal" onPress={onAdd} style={{ marginTop: 12 }} />}
       </Empty>
     )
@@ -439,7 +442,7 @@ function AddSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
             void pickBibTeX()
           }}
         />
-        <Text style={{ color: t.sub, fontSize: 13, lineHeight: 19 }}>也可以在别的应用（浏览器、文件、微信…）里把 PDF 或论文链接分享给 Flax。</Text>
+        {CAN_RECEIVE_SHARE ? <Text style={{ color: t.sub, fontSize: 13, lineHeight: 19 }}>也可以在别的应用（浏览器、文件、微信…）里把 PDF 或论文链接分享给 Flax。</Text> : null}
       </View>
     </BottomSheet>
   )

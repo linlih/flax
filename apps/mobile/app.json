@@ -14,7 +14,8 @@
     },
     "ios": {
       "bundleIdentifier": "app.flax.mobile",
-      "supportsTablet": true
+      "supportsTablet": true,
+      "buildNumber": "1004"
     },
     "plugins": [
       "expo-router",
@@ -40,7 +41,8 @@
         }
       ],
       "./plugins/withReaderAssets",
-      "./plugins/withReleaseSigning"
+      "./plugins/withReleaseSigning",
+      "expo-status-bar"
     ]
   }
 }

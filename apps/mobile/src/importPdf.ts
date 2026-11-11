@@ -2,9 +2,11 @@
 // 所以先拷到缓存目录（保留原文件名，core 用文件名找 arXiv 编号），导入完删掉。
 import { Directory, File, Paths } from 'expo-file-system'
 import { app, showNotice } from './services'
+import { afterModalClose } from './platform/modal'
 
 export async function pickAndImport(): Promise<void> {
   let picked: File[]
+  await afterModalClose()
   try {
     const r = await File.pickFileAsync({ mimeTypes: ['application/pdf'], multipleFiles: true })
     if (r.canceled) return
@@ -51,6 +53,7 @@ export async function importFiles(files: File[], names: string[] = []): Promise<
 /** 从 Zotero、JabRef 导出的 .bib 读入。手机上 file 字段里的电脑路径读不到，PDF 之后靠同步或手动添加 */
 export async function pickBibTeX(): Promise<void> {
   let f: File
+  await afterModalClose()
   try {
     const r = await File.pickFileAsync({ mimeTypes: ['application/x-bibtex', 'text/x-bibtex', 'text/plain', 'application/octet-stream'] })
     if (r.canceled) return

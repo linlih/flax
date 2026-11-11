@@ -27,6 +27,8 @@ export default function Layout() {
             headerTintColor: t.text,
             headerTitleStyle: { fontSize: 20, fontWeight: '600' },
             headerShadowVisible: false,
+            // iOS 的返回按钮默认带上一页的名字（这里会是"(tabs)"）：只留箭头，和 Android 一样
+            headerBackButtonDisplayMode: 'minimal',
             contentStyle: { backgroundColor: t.bg },
             animation: 'slide_from_right'
           }}

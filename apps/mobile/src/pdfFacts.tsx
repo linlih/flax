@@ -1,13 +1,13 @@
 // 导入 PDF 时读标题、作者和前两页文字：手机上没有 Node 版的 pdf.js，借一个看不见的 WebView 跑阅读器网页里的 pdf.js
 // （reader-web 的 facts 消息），读法和桌面同一份（core 的 pdfFactsFromDoc），识别结果一样。
 // <PdfFactsHost /> 挂在根布局里，一直在；readPdfFacts() 把数据写成临时文件交给它，等它回话。
-import { useEffect, useRef } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
 import { View } from 'react-native'
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview'
 import { Directory, File, Paths } from 'expo-file-system'
 import { NotAPdfError, type PdfFacts } from '@flax/core'
+import { readerProps } from './reader'
 
-const READER = 'file:///android_asset/reader/index.html'
 const Web = WebView as unknown as React.ComponentType<WebViewProps & { ref?: React.Ref<WebView> }>
 const TIMEOUT_MS = 30_000
 
@@ -60,6 +60,7 @@ export async function readPdfFacts(data: Uint8Array, fileName: string): Promise<
 
 export function PdfFactsHost() {
   const ref = useRef<WebView>(null)
+  const reader = useMemo(readerProps, [])
   useEffect(() => {
     web = ref.current
     return () => {
@@ -94,14 +95,8 @@ export function PdfFactsHost() {
     <View pointerEvents="none" style={{ position: 'absolute', width: 1, height: 1, opacity: 0, left: -10, top: -10 }}>
       <Web
         ref={ref}
-        source={{ uri: READER }}
-        originWhitelist={['*']}
-        allowFileAccess
-        allowFileAccessFromFileURLs
-        allowUniversalAccessFromFileURLs
-        javaScriptEnabled
+        {...reader}
         onMessage={onMessage}
-        onShouldStartLoadWithRequest={(r) => r.url.startsWith('file://') || r.url.startsWith('blob:') || r.url === 'about:blank'}
       />
     </View>
   )

@@ -6,6 +6,7 @@ import { Directory, File, Paths } from 'expo-file-system'
 import { STATUS_LABEL, type ReadingStatus } from '@flax/core'
 import { app, bump, showNotice } from './services'
 import { libraryDir } from './platform/paths'
+import { afterModalClose } from './platform/modal'
 
 export async function copyText(text: string, done = '已复制'): Promise<void> {
   try {
@@ -29,6 +30,7 @@ export async function shareTextFile(name: string, text: string, mimeType: string
 
 export async function shareFile(uri: string, mimeType: string, dialogTitle: string): Promise<void> {
   if (!(await Sharing.isAvailableAsync())) return showNotice('这台手机不能分享文件')
+  await afterModalClose()
   await Sharing.shareAsync(uri, { mimeType, dialogTitle })
 }
 

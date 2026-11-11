@@ -17,9 +17,9 @@ export function BottomSheet({ open, onClose, title, children, scroll = true, max
         <Pressable accessibilityLabel="关闭" style={{ flex: 1, backgroundColor: t.scrim }} onPress={onClose} />
         <View style={{ maxHeight, backgroundColor: t.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingTop: 10 }}>
           <View style={{ alignSelf: 'center', width: 32, height: 4, borderRadius: 2, backgroundColor: t.chipLine, marginBottom: 6 }} />
-          {title ? <Text style={{ color: t.text, fontSize: 20, fontWeight: '600', paddingHorizontal: 20, paddingTop: 6, paddingBottom: 8 }}>{title}</Text> : null}
+          {title ? <Text style={{ color: t.text, fontSize: 20, fontWeight: '600', paddingHorizontal: 20, paddingTop: 6 }}>{title}</Text> : null}
           {scroll ? (
-            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingBottom: insets.bottom + 16 }}>
+            <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ paddingTop: 8, paddingBottom: insets.bottom + 16 }}>
               {children}
             </ScrollView>
           ) : (

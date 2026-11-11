@@ -1,6 +1,6 @@
-# 打 Mac、Windows 安装包和安卓 APK。在 Actions 页点 "Run workflow" 得到一份构建产物（保留 14 天）；
+# 打 Mac、Windows 安装包，安卓 APK 和 iOS IPA。在 Actions 页点 "Run workflow" 得到一份构建产物（保留 14 天）；
 # 推一个 v0.1.1 这样的标签（apps/desktop/scripts/release.sh）就发布一个版本：都打好后，
-# dmg、zip、latest-mac.yml、exe、latest.yml 和 apk 一起传到 Releases，装好的 Flax（电脑和手机）从这里检查更新。
+# dmg、zip、latest-mac.yml、exe、latest.yml、apk 和 ipa 一起传到 Releases，装好的 Flax（电脑和手机）从这里检查更新。
 name: Build app
 
 on:
@@ -177,11 +177,59 @@ jobs:
           if-no-files-found: error
           path: dist/*.apk
 
+  # iOS：没有 Apple 开发者账号，打不签名的 .ipa。用户用 AltStore 或 Sideloadly 拿自己的 Apple ID 签好再装
+  # （免费 Apple ID 签的 7 天过期，AltStore 会自动续）。
+  ios:
+    name: iOS
+    runs-on: macos-26
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v=$(node -p "require('./apps/mobile/app.json').expo.version")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::apps/mobile/app.json 的版本是 $v，标签是 $GITHUB_REF_NAME。用 npm run release 发版，它会一起改。"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      - run: npm run typecheck -w @flax/mobile
+      - name: Prebuild
+        working-directory: apps/mobile
+        run: npm run prebuild:ios -- --no-install
+      - name: Pods
+        working-directory: apps/mobile/ios
+        env:
+          LANG: en_US.UTF-8
+        run: pod install
+      - name: Package
+        working-directory: apps/mobile/ios
+        run: |
+          set -o pipefail
+          xcodebuild -workspace Flax.xcworkspace -scheme Flax -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -50
+      - name: Make the IPA
+        run: |
+          v=$(node -p "require('./apps/mobile/app.json').expo.version")
+          mkdir -p dist ipa/Payload
+          cp -R apps/mobile/ios/build/Build/Products/Release-iphoneos/Flax.app ipa/Payload/
+          (cd ipa && zip -qry "../dist/Flax-$v-ios.ipa" Payload)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flax-ios
+          retention-days: 14
+          if-no-files-found: error
+          path: dist/*.ipa
+
   # 都打好才发布，免得只有一部分
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [mac, windows, android]
+    needs: [mac, windows, android, ios]
     runs-on: ubuntu-latest
     permissions:
       contents: write

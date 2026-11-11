@@ -1,16 +1,19 @@
 // 别的应用（浏览器、文件、微信…）分享过来的东西：PDF 导入；文字或链接里有 DOI / arXiv 编号就按"粘贴链接"添加。
 // 配置在 app.json 的 expo-sharing 插件里（接收 application/pdf 和 text/plain）。
+// iOS 要另做一个分享扩展（app group），还没做：iOS 上不接收，调用会报错。
 import { useEffect, useRef } from 'react'
+import { Platform } from 'react-native'
 import { File } from 'expo-file-system'
-import { useIncomingShare } from 'expo-sharing'
+import { useIncomingShare as useExpoShare } from 'expo-sharing'
 import { router } from 'expo-router'
 import { app, showNotice } from './services'
 import { importFiles } from './importPdf'
 
-export { useIncomingShareHandler as useIncomingShare }
+/** 只在 Android 上接收：Platform.OS 在运行时不变，钩子调用的顺序稳定 */
+export const useIncomingShare: () => void = Platform.OS === 'android' ? useIncomingShareHandler : () => {}
 
 function useIncomingShareHandler(): void {
-  const { sharedPayloads, resolvedSharedPayloads, clearSharedPayloads, isResolving, error } = useIncomingShare()
+  const { sharedPayloads, resolvedSharedPayloads, clearSharedPayloads, isResolving, error } = useExpoShare()
   // 同一批只处理一次（解析完会再渲染一遍）；同样的内容再分享一次是新的一批，照样处理
   const handled = useRef<unknown>(null)
 
