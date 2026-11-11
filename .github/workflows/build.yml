@@ -1,6 +1,6 @@
-# 打 Mac 和 Windows 安装包。在 Actions 页点 "Run workflow" 得到一份构建产物（保留 14 天）；
-# 推一个 v0.1.1 这样的标签（apps/desktop/scripts/release.sh）就发布一个版本：两边都打好后，
-# dmg、zip、latest-mac.yml 和 exe、latest.yml 一起传到 Releases，装好的 Flax 从这里检查更新。
+# 打 Mac、Windows 安装包和安卓 APK。在 Actions 页点 "Run workflow" 得到一份构建产物（保留 14 天）；
+# 推一个 v0.1.1 这样的标签（apps/desktop/scripts/release.sh）就发布一个版本：都打好后，
+# dmg、zip、latest-mac.yml、exe、latest.yml 和 apk 一起传到 Releases，装好的 Flax（电脑和手机）从这里检查更新。
 name: Build app
 
 on:
@@ -118,11 +118,70 @@ jobs:
             apps/desktop/dist/*.blockmap
             apps/desktop/dist/latest.yml
 
-  # 两边都打好才发布，免得只有一半
+  android:
+    name: Android
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # 发版时 app.json 的版本号要和标签一致（release.sh 会改好），不然手机上的检查更新会一直提示有新版
+      - name: Check version
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          v=$(node -p "require('./apps/mobile/app.json').expo.version")
+          [ "v$v" = "$GITHUB_REF_NAME" ] || { echo "::error::apps/mobile/app.json 的版本是 $v，标签是 $GITHUB_REF_NAME。用 npm run release 发版，它会一起改。"; exit 1; }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+      - uses: gradle/actions/setup-gradle@v4
+      - run: npm ci
+        env:
+          ELECTRON_SKIP_BINARY_DOWNLOAD: 1
+      - run: npm run typecheck -w @flax/mobile
+      # 发布用的签名（apps/mobile/plugins/withReleaseSigning.js）。每个版本同一把密钥，
+      # 手机上才能装在旧版本之上。没有这个 secret 就用 debug 签名，打出来的包只能试，不发布。
+      - name: Android signing key
+        env:
+          ANDROID_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+        run: |
+          if [ -z "$ANDROID_KEYSTORE" ]; then
+            [ "${GITHUB_REF_NAME#v}" = "$GITHUB_REF_NAME" ] || { echo "::error::没有 ANDROID_KEYSTORE secret，不能发布安卓版。"; exit 1; }
+            echo "::warning::没有 ANDROID_KEYSTORE secret，这次用 debug 签名。"
+            exit 0
+          fi
+          mkdir -p apps/mobile/signing
+          echo "$ANDROID_KEYSTORE" | base64 --decode > apps/mobile/signing/flax-release.keystore
+          printf 'storeFile=flax-release.keystore\nstorePassword=%s\nkeyAlias=flax\nkeyPassword=%s\n' "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEYSTORE_PASSWORD" > apps/mobile/signing/release.properties
+      - name: Prebuild
+        working-directory: apps/mobile
+        run: npm run prebuild -- --no-install
+      # 只打 64 位 ARM：近几年的安卓手机都是，包小一半
+      - name: Package
+        working-directory: apps/mobile/android
+        run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --no-daemon
+      - name: Name the APK
+        run: |
+          v=$(node -p "require('./apps/mobile/app.json').expo.version")
+          mkdir -p dist
+          mv apps/mobile/android/app/build/outputs/apk/release/app-release.apk "dist/Flax-$v-android.apk"
+          rm -rf apps/mobile/signing
+      - uses: actions/upload-artifact@v4
+        with:
+          name: flax-android
+          retention-days: 14
+          if-no-files-found: error
+          path: dist/*.apk
+
+  # 都打好才发布，免得只有一部分
   release:
     name: Release
     if: startsWith(github.ref, 'refs/tags/')
-    needs: [mac, windows]
+    needs: [mac, windows, android]
     runs-on: ubuntu-latest
     permissions:
       contents: write

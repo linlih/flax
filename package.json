@@ -11,7 +11,7 @@
     "dev": "npm run dev -w @flax/desktop",
     "build": "npm run build -w @flax/desktop",
     "test": "vitest run",
-    "typecheck": "tsc -p packages/core && tsc -p packages/core/tsconfig.test.json && npm run typecheck -w @flax/desktop",
+    "typecheck": "tsc -p packages/core && tsc -p packages/core/tsconfig.test.json && npm run typecheck -w @flax/desktop && npm run typecheck -w @flax/mobile",
     "dist": "npm run dist -w @flax/desktop",
     "release": "bash apps/desktop/scripts/release.sh"
   },

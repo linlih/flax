@@ -3,13 +3,14 @@
     "name": "Flax",
     "slug": "flax",
     "scheme": "flax",
-    "version": "0.0.1",
+    "version": "0.1.4",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "android": {
-      "package": "app.flax.mobile"
+      "package": "app.flax.mobile",
+      "versionCode": 1004
     },
     "ios": {
       "bundleIdentifier": "app.flax.mobile",
