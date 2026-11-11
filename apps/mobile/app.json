@@ -10,12 +10,18 @@
     "newArchEnabled": true,
     "android": {
       "package": "app.flax.mobile",
-      "versionCode": 1004
+      "versionCode": 1004,
+      "icon": "./assets/icon-ios.png",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/adaptive-icon-fg.png",
+        "backgroundImage": "./assets/adaptive-icon-bg.png"
+      }
     },
     "ios": {
       "bundleIdentifier": "app.flax.mobile",
       "supportsTablet": true,
-      "buildNumber": "1004"
+      "buildNumber": "1004",
+      "icon": "./assets/icon-ios.png"
     },
     "plugins": [
       "expo-router",

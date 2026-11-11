@@ -15,6 +15,7 @@
 
 - `svg/flax-icon.svg`：圆角方形图标，通用源文件
 - `svg/flax-icon-ios.svg`、`ios/AppIcon-1024.png`：iOS / iPadOS，满版方形无透明（系统自动裁圆角）
+- `svg/flax-icon-android-{fg,bg}.svg`、`android/adaptive-{fg,bg}-1024.png`：Android 自适应图标的两层（108dp 画布，F 缩到 0.72 落在中间 66dp 的安全圆里；底是渐变）
 - `svg/flax-icon-macos.svg`、`macos/icon-1024.png`、`macos/Flax.icns`：macOS，按 824/1024 网格留边并带投影
 - `svg/flax-mark-on-dark.svg`、`svg/flax-mark-on-light.svg`：只有 F 的标记，透明背景
 - `svg/flax-lockup.svg`、`png/flax-lockup-1128.png`：横版图标 + 字标
