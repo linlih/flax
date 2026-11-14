@@ -59,6 +59,8 @@ export interface Paper extends Versioned {
   rating?: number
   addedAt: string
   lastOpenedAt?: string
+  /** 永久删除了：只留着当同步的删除标记，不在废纸篓里显示 */
+  purged?: boolean
   /** 上次读到的位置，下次打开从这里接着读 */
   readingPosition?: ReadingPosition
   /** 每台设备最后读到哪一页（设备 id → 位置），会同步；打开时提示"在 iPad 上读到第 12 页" */
@@ -67,6 +69,11 @@ export interface Paper extends Versioned {
   /** 识别不完整时为 true，界面显示"需要匹配" */
   needsMatch: boolean
   matchIssue?: MatchIssue
+}
+
+/** 废纸篓里的论文 */
+export interface TrashedPaper extends Paper {
+  deletedAt: string
 }
 
 export interface Folder extends Versioned {

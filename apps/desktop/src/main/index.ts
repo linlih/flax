@@ -2,9 +2,9 @@ import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
-import { cp, mkdir, rename } from 'node:fs/promises'
+import { cp, mkdir, rename, rm } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
-import { Library, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
+import { Library, LibraryTooNewError, resetDeviceIdentity, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
 import type { ImportNotice, LibrarySnapshot, MenuCommand, SyncConnect } from '../shared/api'
 import { Importer } from './importer'
 import { createNet } from './net'
@@ -240,7 +240,7 @@ function setup(): void {
     const ok = await dialog.showMessageBox(win, {
       type: 'warning',
       message: '用这个备份替换现在的资料库？',
-      detail: `现在的论文、批注和笔记会先挪到旁边的文件夹，不会删除：\n${aside}\n\n恢复后 ${app.name} 会重新打开。API Key 保留现在的。`,
+      detail: `现在的论文、批注和笔记会先挪到旁边的文件夹，不会删除：\n${aside}\n\n恢复后 ${app.name} 会重新打开。API Key 保留现在的。${sync?.enabled ? '\n\n同步开着：恢复回来的内容会同步到其他设备，盖掉备份之后在那些设备上做的修改。' : ''}`,
       buttons: ['恢复', '取消'],
       defaultId: 1,
       cancelId: 1
@@ -248,10 +248,33 @@ function setup(): void {
     if (ok.response !== 0) return false
     // ai/conversations：0.1.4 以前的备份里对话还是文件，恢复后启动时读进数据库
     const items = ['library.sqlite', 'library.sqlite-wal', 'library.sqlite-shm', 'files', 'notes', 'prefs.json', join('ai', 'conversations'), join('ai', 'settings.json')]
+    sync?.stop()
     db.close()
-    await mkdir(join(aside, 'ai'), { recursive: true })
-    for (const name of items) if (existsSync(join(dataDir, name))) await rename(join(dataDir, name), join(aside, name))
-    for (const name of items) if (existsSync(join(src, name))) await cp(join(src, name), join(dataDir, name), { recursive: true })
+    const had = items.filter((name) => existsSync(join(dataDir, name)))
+    const moved: string[] = []
+    try {
+      await mkdir(join(aside, 'ai'), { recursive: true })
+      for (const name of had) {
+        await rename(join(dataDir, name), join(aside, name))
+        moved.push(name)
+      }
+      for (const name of items) if (existsSync(join(src, name))) await cp(join(src, name), join(dataDir, name), { recursive: true })
+      // 备份里的数据库带着原来那台设备的 id 和同步进度：清掉，当成一台新设备；恢复回来的内容算现在改的
+      const restored = new DatabaseSync(join(dataDir, 'library.sqlite'))
+      try {
+        resetDeviceIdentity(restored, Date.now())
+      } finally {
+        restored.close()
+      }
+    } catch (e) {
+      // 中途出错：把拷了一半的删掉（只删拷进来的，原来的那些已经挪到旁边了），再把原来的挪回来
+      for (const name of items) if (moved.includes(name) || !had.includes(name)) await rm(join(dataDir, name), { recursive: true, force: true }).catch(() => {})
+      for (const name of moved) await rename(join(aside, name), join(dataDir, name)).catch((err: unknown) => console.error('restore rollback:', err))
+      await dialog.showMessageBox(win, { type: 'error', message: '恢复失败', detail: `${e instanceof Error ? e.message : String(e)}\n\n现在的资料没有改动。${app.name} 会重新打开。` })
+      app.relaunch()
+      app.exit(0)
+      return false
+    }
     app.relaunch()
     app.exit(0)
     return true
@@ -267,6 +290,13 @@ function setup(): void {
     if (existsSync(target)) throw new Error('那里已经有一个同名的备份了，过一分钟再试。')
     await mkdir(target, { recursive: true })
     db.exec(`VACUUM INTO '${join(target, 'library.sqlite').replace(/'/g, "''")}'`)
+    // 备份不带这台设备的 id 和同步进度：恢复到哪台电脑上都是一台新设备，不会和这台抢同一个名字
+    const copy = new DatabaseSync(join(target, 'library.sqlite'))
+    try {
+      resetDeviceIdentity(copy)
+    } finally {
+      copy.close()
+    }
     for (const name of ['files', 'notes', 'prefs.json', join('ai', 'settings.json')]) {
       const from = join(dataDir, name)
       if (existsSync(from)) await cp(from, join(target, name), { recursive: true })
@@ -276,6 +306,7 @@ function setup(): void {
 
   handle('library:snapshot', (): LibrarySnapshot => ({
     papers: library.listPapers(),
+    trash: library.listTrash(),
     folders: library.listFolders(),
     tags: library.listTags(),
     annotationCounts: library.annotationCounts(),
@@ -324,6 +355,34 @@ function setup(): void {
   handle('library:restore', (id) => {
     library.restorePaper(str(id, 'id'))
     changed()
+  })
+  // 永久删除后没人用的 PDF：本机那份移到系统废纸篓（还能找回来），云端那份删掉
+  const cleanFiles = async () => {
+    for (const hash of library.takeOrphanFiles()) {
+      const path = store.pathFor(hash)
+      if (existsSync(path)) await shell.trashItem(path).catch((e: unknown) => console.error('trash pdf:', e))
+      await sync?.deleteRemoteFile(hash)
+    }
+  }
+  handle('library:purge', async (ids) => {
+    if (!win || !Array.isArray(ids)) return false
+    const trash = library.listTrash()
+    const want = ids.length ? trash.filter((p) => ids.includes(p.id)) : trash
+    if (!want.length) return false
+    const bin = process.platform === 'darwin' ? '废纸篓' : '回收站'
+    const ok = await dialog.showMessageBox(win, {
+      type: 'warning',
+      message: want.length === 1 ? `永久删除"${want[0]!.title}"？` : `永久删除这 ${want.length} 篇论文？`,
+      detail: `论文的信息和批注在所有设备上都会删除，不能恢复。PDF 文件会移到系统的${bin}。写过的笔记不受影响。`,
+      buttons: ['永久删除', '取消'],
+      defaultId: 1,
+      cancelId: 1
+    })
+    if (ok.response !== 0) return false
+    for (const p of want) library.purgePaper(p.id)
+    changed()
+    await cleanFiles()
+    return true
   })
   handle('library:retryLookup', (id) => importer.retry(str(id, 'id')))
   handle('library:downloadPdf', (id) => importer.startDownload(str(id, 'id')))
@@ -410,6 +469,8 @@ function setup(): void {
     fetch: (url, init) => net.fetch(url, init as RequestInit),
     onStatus: (st) => send('sync:status', st),
     onReceived: () => {
+      // 别的设备永久删除了论文：这台上那些 PDF 也清掉
+      void cleanFiles()
       notes.scan()
       changed()
       notesChanged()
@@ -665,7 +726,13 @@ app.whenReady().then(async () => {
     } catch {}
   }
   setMenu()
-  setup()
+  try {
+    setup()
+  } catch (e) {
+    if (!(e instanceof LibraryTooNewError)) throw e
+    dialog.showErrorBox('打不开资料库', `${e.message}\n\n${dataDir}`)
+    return app.quit()
+  }
   createWindow()
   // Windows 的窗口按钮不会自己跟着深浅色变
   if (!isMac) nativeTheme.on('updated', () => win?.setTitleBarOverlay(overlay()))

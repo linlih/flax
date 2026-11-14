@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { splitName, suggestFileName, TAG_COLORS, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus, type TagColor } from '@flax/core'
+import { splitName, TAG_COLORS, type Author, type Folder, type Paper, type PaperMeta, type ReadingStatus, type TagColor } from '@flax/core'
 import type { PaperPatch } from '@flax/core'
 import type { Candidate } from '../../../shared/api'
 import { Icon, Spinner } from './Icon'
@@ -29,6 +29,9 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
   const titleRef = useRef<HTMLTextAreaElement>(null)
   const hasIds = Boolean(p.identifiers.arxiv || p.identifiers.doi)
   const byline = [authorLine(p), p.year].filter(Boolean).join(' · ')
+  // 信息平时只看不改：收着，点"编辑"才展开成表单。识别不完整、需要手动填的时候直接展开
+  const [editing, setEditing] = useState(p.needsMatch)
+  const facts = ([['发表', p.venue], ['DOI', p.identifiers.doi], ['arXiv', p.identifiers.arxiv]] as [string, string | undefined][]).filter((f): f is [string, string] => !!f[1])
 
   return (
     <aside className="inspector" aria-labelledby="insp-title">
@@ -41,7 +44,7 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
           <h2 id="insp-title" className="insp-title">{p.title}</h2>
           {byline && <span className="insp-by">{byline}</span>}
           {p.files.length > 0 ? (
-            <button type="button" className="btn btn-p insp-read" onClick={onRead}><Icon name="reading" size={16} />开始读</button>
+            <button type="button" className="btn btn-p insp-read" onClick={onRead}><Icon name="reading" size={16} />{progress(p) ? '继续读' : '开始读'}</button>
           ) : downloading ? (
             <span className="hint insp-dl"><Spinner />正在从 arXiv 下载 PDF…</span>
           ) : p.identifiers.arxiv ? (
@@ -57,37 +60,7 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
           {p.readingStatus === 'reading' && <ProgressLine paper={p} />}
         </div>
 
-        {(p.needsMatch || busy) && <MatchCard paper={p} busy={busy} onManual={() => titleRef.current?.focus()} />}
-
-        <section className="tray" aria-labelledby="h-info">
-          <div className="tray-h tray-h-row">
-            <div style={{ flex: 1 }}>
-              <h3 id="h-info" className="lbl" style={{ margin: 0 }}>信息</h3>
-              <span className="hint">{SOURCE_LABEL[p.metadataSource]}</span>
-            </div>
-            {hasIds && (
-              <button type="button" className="btn btn-s" disabled={busy} onClick={() => void api.library.retryLookup(p.id)}>
-                {busy ? <Spinner /> : <Icon name="refresh" size={14} />}重新获取
-              </button>
-            )}
-          </div>
-          <div className="card fields">
-            <Field label="标题" value={p.title} multiline inputRef={titleRef} onCommit={(v) => v && update({ title: v })} />
-            <Field label="作者" value={p.authors.map(nameOf).join(', ')} placeholder="用逗号分隔，例如 Ada Lovelace, Alan Turing" onCommit={(v) => update({ authors: parseAuthors(v) })} />
-            <div className="field-pair">
-              <Field label="年份" value={p.year ? String(p.year) : ''} placeholder="例如 2024" inputMode="numeric" onCommit={(v) => {
-                const y = Number(v)
-                update({ year: v && Number.isInteger(y) && y > 1000 && y < 3000 ? y : undefined })
-              }} />
-              <Field label="发表" value={p.venue ?? ''} placeholder="期刊或会议" onCommit={(v) => update({ venue: v || undefined })} />
-            </div>
-            <div className="field-pair">
-              <Field label="DOI" value={p.identifiers.doi ?? ''} placeholder="10.1145/…" mono onCommit={(v) => update({ identifiers: withId(p, 'doi', v.toLowerCase()) })} />
-              <Field label="arXiv" value={p.identifiers.arxiv ?? ''} placeholder="2401.01234" mono onCommit={(v) => update({ identifiers: withId(p, 'arxiv', v) })} />
-            </div>
-            <Field label="摘要" value={p.abstract ?? ''} multiline rows={5} placeholder="没有摘要" onCommit={(v) => update({ abstract: v || undefined })} />
-          </div>
-        </section>
+        {(p.needsMatch || busy) && <MatchCard paper={p} busy={busy} onManual={() => { setEditing(true); requestAnimationFrame(() => titleRef.current?.focus()) }} />}
 
         <section className="tray" aria-labelledby="h-org">
           <div className="tray-h"><h3 id="h-org" className="lbl" style={{ margin: 0 }}>整理</h3></div>
@@ -113,6 +86,51 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
           </div>
         </section>
 
+        {p.abstract && !editing && (
+          <section className="tray" aria-labelledby="h-abs">
+            <div className="tray-h"><h3 id="h-abs" className="lbl" style={{ margin: 0 }}>摘要</h3></div>
+            <p className="card insp-abstract">{p.abstract}</p>
+          </section>
+        )}
+
+        <section className="tray" aria-labelledby="h-info">
+          <div className="tray-h tray-h-row">
+            <div style={{ flex: 1 }}>
+              <h3 id="h-info" className="lbl" style={{ margin: 0 }}>信息</h3>
+              <span className="hint">{SOURCE_LABEL[p.metadataSource]}</span>
+            </div>
+            {hasIds && (
+              <button type="button" className="btn btn-s" disabled={busy} onClick={() => void api.library.retryLookup(p.id)}>
+                {busy ? <Spinner /> : <Icon name="refresh" size={14} />}重新获取
+              </button>
+            )}
+            <button type="button" className="btn btn-s" aria-expanded={editing} onClick={() => setEditing((v) => !v)}>{editing ? '收起' : '编辑'}</button>
+          </div>
+          {!editing ? (
+            <dl className="card insp-facts">
+              {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className={k === 'DOI' || k === 'arXiv' ? 'mono' : undefined}>{v}</dd></div>)}
+              {facts.length === 0 && <div><dd className="hint">还没有发表信息和编号。点"编辑"可以自己填。</dd></div>}
+            </dl>
+          ) : (
+          <div className="card fields">
+            <Field label="标题" value={p.title} multiline inputRef={titleRef} onCommit={(v) => v && update({ title: v })} />
+            <Field label="作者" value={p.authors.map(nameOf).join(', ')} placeholder="用逗号分隔，例如 Ada Lovelace, Alan Turing" onCommit={(v) => update({ authors: parseAuthors(v) })} />
+            <div className="field-pair">
+              <Field label="年份" value={p.year ? String(p.year) : ''} placeholder="例如 2024" inputMode="numeric" onCommit={(v) => {
+                const y = Number(v)
+                update({ year: v && Number.isInteger(y) && y > 1000 && y < 3000 ? y : undefined })
+              }} />
+              <Field label="发表" value={p.venue ?? ''} placeholder="期刊或会议" onCommit={(v) => update({ venue: v || undefined })} />
+            </div>
+            <div className="field-pair">
+              <Field label="DOI" value={p.identifiers.doi ?? ''} placeholder="10.1145/…" mono onCommit={(v) => update({ identifiers: withId(p, 'doi', v.toLowerCase()) })} />
+              <Field label="arXiv" value={p.identifiers.arxiv ?? ''} placeholder="2401.01234" mono onCommit={(v) => update({ identifiers: withId(p, 'arxiv', v) })} />
+            </div>
+            <Field label="摘要" value={p.abstract ?? ''} multiline rows={5} placeholder="没有摘要" onCommit={(v) => update({ abstract: v || undefined })} />
+          </div>
+          )}
+        </section>
+
         {p.files.length > 0 && (
           <section className="tray" aria-labelledby="h-files">
             <div className="tray-h"><h3 id="h-files" className="lbl" style={{ margin: 0 }}>文件 · {p.files.length} 个</h3></div>
@@ -131,10 +149,6 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
                   )}
                 </div>
               ))}
-              <div className="field">
-                <span className="field-l">导出文件名</span>
-                <span className="field-ro">{suggestFileName(p)}</span>
-              </div>
             </div>
           </section>
         )}

@@ -59,7 +59,8 @@ const K = {
   seq: 'sync.seq',
   snapSeq: 'sync.snapSeq',
   cursors: 'sync.cursors',
-  hlc: 'sync.hlc'
+  hlc: 'sync.hlc',
+  writer: 'sync.writer'
 }
 
 export async function readLibraryInfo(backend: Backend): Promise<LibraryInfo | null> {
@@ -135,9 +136,17 @@ export class SyncEngine {
     return this.o.stores.some((s) => s.pending().length > 0)
   }
 
+  /**
+   * 这台设备在云端写日志用的名字。一般就是设备 id；发现云端有"自己"写的、但本机不记得的日志时换一个
+   * （资料库从备份恢复过，或者被拷到了另一台电脑上，两边用着同一个设备 id）
+   */
+  private writer(): string {
+    return this.o.state.get(K.writer) ?? this.o.deviceId
+  }
+
   /** 换了同步库或者断开同步：忘掉读到哪了，所有记录下次都当成新的 */
   static forget(state: SyncState, stores: SyncStore[]): void {
-    for (const k of Object.values(K)) if (k !== K.hlc) state.set(k, null)
+    for (const k of Object.values(K)) if (k !== K.hlc && k !== K.writer) state.set(k, null)
     for (const s of stores) s.reset()
   }
 
@@ -188,14 +197,30 @@ export class SyncEngine {
   }
 
   private async pull(): Promise<number> {
-    const { backend, state, deviceId } = this.o
-    const devices = ((await backend.list('log/')) ?? []).filter((n) => n.endsWith('/')).map((n) => n.slice(0, -1)).filter((d) => d !== deviceId)
+    const { backend, state } = this.o
+    const all = ((await backend.list('log/')) ?? []).filter((n) => n.endsWith('/')).map((n) => n.slice(0, -1))
     const snaps = new Map<string, number>()
     for (const name of (await backend.list('snap/')) ?? []) {
       const m = /^(.+)-(\d+)\.flx$/.exec(name)
-      if (m && m[1] !== deviceId) snaps.set(m[1]!, Math.max(snaps.get(m[1]!) ?? 0, Number(m[2])))
+      if (m) snaps.set(m[1]!, Math.max(snaps.get(m[1]!) ?? 0, Number(m[2])))
     }
-    for (const d of snaps.keys()) if (!devices.includes(d)) devices.push(d)
+    for (const d of snaps.keys()) if (!all.includes(d)) all.push(d)
+
+    // 云端有"自己"写的、序号比本机记得的还大的日志：资料库是从备份恢复的，或者被拷到了另一台电脑上。
+    // 接着用原来的名字写，会盖掉那些日志，或者写出别的设备已经读过的序号，改动就丢了。
+    // 换一个名字从头写，原来那个名字下的日志当成别的设备的读回来
+    let me = this.writer()
+    if (all.includes(me)) {
+      const mine = ((await backend.list(`log/${me}/`)) ?? []).map((n) => Number(/^(\d+)\.flx$/.exec(n)?.[1] ?? 0))
+      if (Math.max(0, snaps.get(me) ?? 0, ...mine) > Number(state.get(K.seq) ?? 0)) {
+        me = `${this.o.deviceId}.${[...this.o.codec.random(4)].map((b) => b.toString(16).padStart(2, '0')).join('')}`
+        state.set(K.writer, me)
+        state.set(K.seq, null)
+        state.set(K.snapSeq, null)
+        state.set(K.cursors, null)
+      }
+    }
+    const devices = all.filter((d) => d !== me)
 
     let received = 0
     const cursors = this.cursors()
@@ -208,7 +233,7 @@ export class SyncEngine {
       if (!snap) return false
       received += this.apply(snap.records)
       // 快照里已经包含了它当时读过的其他设备的修改
-      for (const [d, s] of Object.entries(snap.cursors)) if (d !== deviceId && s > (cursors[d] ?? 0)) cursors[d] = s
+      for (const [d, s] of Object.entries(snap.cursors)) if (d !== me && s > (cursors[d] ?? 0)) cursors[d] = s
       cursors[dev] = Math.max(cursors[dev] ?? 0, snap.seq)
       save()
       return true
@@ -250,7 +275,8 @@ export class SyncEngine {
   }
 
   private async push(): Promise<number> {
-    const { backend, state, stores, deviceId } = this.o
+    const { backend, state, stores } = this.o
+    const me = this.writer()
     const size = this.o.segmentSize ?? 2000
     let sent = 0
     for (;;) {
@@ -259,16 +285,17 @@ export class SyncEngine {
       if (!items.length) break
       const batch = items.slice(0, size)
       const seq = Number(state.get(K.seq) ?? 0) + 1
-      const head: SegmentHead = { v: 1, dev: deviceId, seq }
+      const head: SegmentHead = { v: 1, dev: me, seq }
       const body = [JSON.stringify(head), ...batch.map((x) => JSON.stringify(x.out.rec))].join('\n') + '\n'
-      await backend.put(`log/${deviceId}/${pad(seq)}.flx`, await seal(this.o.codec, this.o.key, utf8(body), true))
+      // 先记下序号再传：上传"失败"时文件可能其实已经到了云端、被别的设备读过，重试要用新的序号，不能改写同一个文件
       state.set(K.seq, String(seq))
+      await backend.put(`log/${me}/${pad(seq)}.flx`, await seal(this.o.codec, this.o.key, utf8(body), true))
       for (const store of stores) store.sent(batch.filter((x) => x.store === store).map((x) => x.out))
       sent += batch.length
       if (items.length <= size) break
     }
     if (sent) {
-      await this.write(`devices/${deviceId}.flx`, { name: this.o.deviceName, platform: this.o.platform, seq: Number(state.get(K.seq)), at: new Date(this.o.now?.() ?? Date.now()).toISOString() })
+      await this.write(`devices/${me}.flx`, { name: this.o.deviceName, platform: this.o.platform, seq: Number(state.get(K.seq)), at: new Date(this.o.now?.() ?? Date.now()).toISOString() })
       await this.maybeSnapshot()
     }
     return sent
@@ -276,7 +303,8 @@ export class SyncEngine {
 
   /** 自己的日志多了以后：写一份完整快照，然后删掉自己的旧日志和旧快照 */
   private async maybeSnapshot(): Promise<void> {
-    const { backend, state, stores, deviceId } = this.o
+    const { backend, state, stores } = this.o
+    const deviceId = this.writer()
     const seq = Number(state.get(K.seq) ?? 0)
     const last = Number(state.get(K.snapSeq) ?? 0)
     if (seq - last < (this.o.snapshotEvery ?? 50)) return
@@ -301,6 +329,11 @@ export class SyncEngine {
 
   async putFile(hash: string, data: Uint8Array): Promise<void> {
     await this.o.backend.put(SyncEngine.filePath(hash), await seal(this.o.codec, this.o.key, data, false))
+  }
+
+  /** 永久删除的论文的 PDF：云端那份也删掉 */
+  async deleteFile(hash: string): Promise<void> {
+    await this.o.backend.del(SyncEngine.filePath(hash))
   }
 
   /** 云端没有返回 null */

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, expect, test } from 'vitest'
@@ -64,4 +64,24 @@ test('remove sends the file to trash', async () => {
   await s.remove(a.id)
   expect(existsSync(join(dir, 'Gone.md'))).toBe(false)
   expect(s.list()).toEqual([])
+})
+
+test('a copied note file (same id in its header) still shows up, and gets its own id when saved', () => {
+  const s = make()
+  const a = s.create({ title: 'Original', body: 'one\n' })
+  writeFileSync(join(dir, 'Original copy.md'), readFileSync(join(dir, 'Original.md'), 'utf8').replace('one', 'two'))
+  const again = make()
+  expect(again.list().map((x) => x.title).sort()).toEqual(['Original', 'Original copy'])
+  expect(again.read(a.id)?.body).toBe('one\n')
+  const copy = again.list().find((x) => x.title === 'Original copy')!
+  const saved = again.save(copy.id, 'two, edited\n')
+  expect(saved.id).not.toBe(a.id)
+  expect(make().list().map((x) => x.id).sort()).toEqual([a.id, saved.id].sort())
+})
+
+test('saving leaves no temporary file behind', () => {
+  const s = make()
+  const a = s.create({ title: 'Clean', body: 'x\n' })
+  s.save(a.id, 'y\n')
+  expect(readdirSync(dir)).toEqual(['Clean.md'])
 })

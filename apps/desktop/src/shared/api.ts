@@ -1,8 +1,10 @@
 // 主进程和渲染进程之间的接口。渲染进程只能通过 window.api 调这些方法。
-import type { Annotation, AnnotationPatch, DevicePosition, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
+import type { Annotation, AnnotationPatch, DevicePosition, TrashedPaper, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
 
 export interface LibrarySnapshot {
   papers: Paper[]
+  /** 废纸篓里的论文 */
+  trash: TrashedPaper[]
   folders: Folder[]
   tags: { tag: string; count: number; color?: TagColor }[]
   annotationCounts: Record<string, number>
@@ -40,6 +42,8 @@ export interface LibraryApi {
   /** 用系统默认程序打开 */
   openFile(id: string): Promise<void>
   markOpened(id: string): Promise<void>
+  /** 永久删除废纸篓里的论文（ids 为空就是清空废纸篓）；先问用户，取消返回 false。PDF 移到系统废纸篓 */
+  purge(ids: string[]): Promise<boolean>
   savePosition(id: string, pos: ReadingPosition, final?: boolean): Promise<void>
   /** 别的设备上比这台更晚读到的位置；没有就是 null */
   positionElsewhere(id: string): Promise<DevicePosition | null>

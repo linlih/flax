@@ -33,6 +33,8 @@ export const ICON_PATHS = {
   copy: 'M9 9h10v10H9zM15 9V5H5v10h4',
   paper: 'M12 4a8 8 0 1 0 0 16zM12 4a8 8 0 0 1 0 16',
   info: 'M12 4a8 8 0 1 0 0 16 8 8 0 0 0 0-16zM12 11v5M12 8h.01',
+  warn: 'M12 4.5L3.5 19h17zM12 10v4.5M12 16.8h.01',
+  sync: 'M19 8a7.5 7.5 0 0 0-13.2-2M5 4v3.5h3.5M5 16a7.5 7.5 0 0 0 13.2 2M19 20v-3.5h-3.5',
   fit: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5',
   shrink: 'M9 4v5H4M15 4v5h5M9 20v-5H4M15 20v-5h5',
   textcursor: 'M9 4.5c1.5 0 3 .5 3 2v11c0 1.5-1.5 2-3 2M15 4.5c-1.5 0-3 .5-3 2v11c0 1.5 1.5 2 3 2M10 12h4',

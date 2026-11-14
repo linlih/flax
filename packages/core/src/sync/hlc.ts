@@ -18,7 +18,11 @@ export class Hlc {
     if (now > this.ms) {
       this.ms = now
       this.n = 0
-    } else this.n++
+    } else if (++this.n > 9999) {
+      // 计数器只有 4 位（多一位，按字符串比大小就不对了）：用完了就把时间往后拨 1 毫秒
+      this.ms++
+      this.n = 0
+    }
     return stamp(this.ms, this.n, this.deviceId)
   }
 

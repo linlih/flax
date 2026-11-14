@@ -1,7 +1,7 @@
 // 渲染进程这边的文献库状态：拿快照、订阅变化、收导入提示。
 import { useCallback, useEffect, useState } from 'react'
 import type { Paper, ReadingStatus } from '@flax/core'
-import type { ImportNotice, LibrarySnapshot, PaperApi } from '../../../shared/api'
+import type { ImportNotice, LibrarySnapshot, PaperApi, SyncStatus } from '../../../shared/api'
 
 declare global {
   interface Window {
@@ -11,7 +11,7 @@ declare global {
 
 export const api = window.api
 
-const EMPTY: LibrarySnapshot = { papers: [], folders: [], tags: [], annotationCounts: {}, terms: [], importing: [], downloading: [] }
+const EMPTY: LibrarySnapshot = { papers: [], trash: [], folders: [], tags: [], annotationCounts: {}, terms: [], importing: [], downloading: [] }
 
 export function useLibrary() {
   const [snap, setSnap] = useState<LibrarySnapshot>(EMPTY)
@@ -38,10 +38,20 @@ export function useLibrary() {
   return { ...snap, loaded, notices, dismiss, refresh }
 }
 
+/** 同步的状态（侧栏底部出错时提示用） */
+export function useSyncStatus(): SyncStatus | null {
+  const [st, setSt] = useState<SyncStatus | null>(null)
+  useEffect(() => {
+    void api.sync.status().then(setSt)
+    return api.sync.onStatus(setSt)
+  }, [])
+  return st
+}
+
 // —— 视图 ——
 
 export type StatusView = 'inbox' | 'reading' | 'toread' | 'done' | 'all'
-export type View = StatusView | 'terms' | 'notes' | 'settings' | `folder:${string}`
+export type View = StatusView | 'terms' | 'notes' | 'settings' | 'trash' | `folder:${string}`
 
 export const STATUS_OF: Partial<Record<View, ReadingStatus>> = { inbox: 'inbox', reading: 'reading', toread: 'to_read', done: 'done' }
 

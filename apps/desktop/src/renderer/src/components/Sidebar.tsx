@@ -2,7 +2,7 @@ import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
 import type { Folder } from '@flax/core'
 import { Icon, type IconName } from './Icon'
 import type { View } from '../lib/library'
-import { composing, isMac, kbd } from '../lib/platform'
+import { composing, isMac, kbd, TRASH } from '../lib/platform'
 import { api } from '../lib/library'
 
 // 在读、待读放在最上面：打开应用先看到正在读和接下来要读的
@@ -27,6 +27,9 @@ interface Props {
   onRenameFolder: (id: string, name: string) => void
   onRemoveFolder: (id: string) => void
   onDropToFolder: (folderId: string, paperIds: string[]) => void
+  onSearch: () => void
+  /** 同步出了问题，或者还有 PDF 在传：在底部说一声，点了去设置。一切正常时不显示 */
+  syncNote?: { text: string; error: boolean } | null
 }
 
 export function Sidebar(p: Props) {
@@ -66,7 +69,7 @@ export function Sidebar(p: Props) {
           <Icon name="menu" size={18} />
         </button>
       )}
-      <button type="button" className="search no-drag" aria-label={kbd('快速搜索（⌘K）')} title="M3 起可用">
+      <button type="button" className="search no-drag" aria-label={kbd('快速搜索（⌘K）')} title="在论文里找：标题、作者、标签" onClick={p.onSearch}>
         <Icon name="search" size={16} />
         <span>快速搜索</span>
         <span className="kbd">{kbd('⌘K')}</span>
@@ -120,6 +123,20 @@ export function Sidebar(p: Props) {
         </div>
       </div>
       <div className="no-drag">
+        {p.syncNote && (
+          <button type="button" className={'side side-sync' + (p.syncNote.error ? ' err' : '')} title="打开同步设置" onClick={() => p.onSelect('settings')}>
+            <Icon name={p.syncNote.error ? 'warn' : 'sync'} />
+            <span className="side-l">{p.syncNote.text}</span>
+          </button>
+        )}
+        {/* 废纸篓里有东西（或者正开着）才显示 */}
+        {((p.counts.trash ?? 0) > 0 || p.view === 'trash') && (
+          <button type="button" className="side" aria-current={p.view === 'trash' ? 'page' : undefined} onClick={() => p.onSelect('trash')}>
+            <Icon name="trash" />
+            <span className="side-l">{TRASH}</span>
+            <span className="count num">{p.counts.trash ?? 0}</span>
+          </button>
+        )}
         <button type="button" className="side" aria-current={p.view === 'settings' ? 'page' : undefined} onClick={() => p.onSelect('settings')}>
           <Icon name="settings" />
           <span>设置</span>

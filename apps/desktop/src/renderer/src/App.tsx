@@ -13,25 +13,27 @@ import { Shortcuts } from './components/Shortcuts'
 import { AddPaper } from './components/AddPaper'
 import { UpdateSheet } from './components/UpdateSheet'
 import { TermsView } from './components/TermsView'
+import { TrashView } from './components/TrashView'
 import { useNotes } from './lib/notes'
 import { warmUp } from './reader/pdf'
-import { api, papersIn, useLibrary, type View } from './lib/library'
-import { TRASH } from './lib/platform'
+import { api, papersIn, useLibrary, useSyncStatus, type View } from './lib/library'
+import { mod, TRASH } from './lib/platform'
 import { STATUS_LABEL } from './lib/format'
 import type { ReadingStatus } from '@flax/core'
 
 const TITLES: Record<string, string> = {
-  all: '全部论文', reading: '在读', toread: '待读', terms: '术语', notes: '笔记', settings: '设置'
+  all: '全部论文', reading: '在读', toread: '待读', terms: '术语', notes: '笔记', settings: '设置', trash: TRASH
 }
-const LIST_LABEL: Record<string, string> = {
-  all: '全部', reading: '最近打开的在前', toread: '打算读的'
-}
+// 列表上面的小字：只在比页面标题多说了点什么的时候才有
+const LIST_LABEL: Record<string, string> = { reading: '最近打开的在前' }
 
 let toastKey = 0
 
 export function App() {
   const lib = useLibrary()
   const { notes } = useNotes()
+  const sync = useSyncStatus()
+  const syncNote = sync?.state === 'error' ? { text: '同步出了问题', error: true } : sync?.files?.left ? { text: `还有 ${sync.files.left} 个 PDF 在同步`, error: false } : null
   /** 笔记页里打开的那篇 */
   const [noteId, setNoteId] = useState<string | null>(null)
   /** 阅读器打开后要跳到的批注 */
@@ -46,6 +48,24 @@ export function App() {
   const [linkOpen, setLinkOpen] = useState(false)
   /** 重新选了 PDF 后让阅读器从头加载 */
   const [reloads, setReloads] = useState(0)
+  /** 快速搜索（侧栏的按钮、⌘K）：回到全部论文，光标放进筛选框 */
+  const [focusFilter, setFocusFilter] = useState(0)
+  const quickSearch = useCallback(() => {
+    setReadingId(null)
+    setView((v) => (['terms', 'notes', 'settings', 'trash'].includes(v) ? 'all' : v))
+    setFocusFilter((n) => n + 1)
+  }, [])
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => {
+      if (!mod(e) || e.shiftKey || e.altKey || e.key.toLowerCase() !== 'k') return
+      // 笔记编辑器里 ⌘K 是插入链接
+      if ((e.target as HTMLElement).closest?.('.cm-editor')) return
+      e.preventDefault()
+      quickSearch()
+    }
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  }, [quickSearch])
 
   const toast = useCallback((t: Omit<Toast, 'key'>) => setToasts((l) => [...l.filter((o) => !t.group || o.group !== t.group), { ...t, key: ++toastKey }]), [])
   const dismissToast = useCallback((key: number) => setToasts((l) => l.filter((t) => t.key !== key)), [])
@@ -53,10 +73,10 @@ export function App() {
   const downloading = useMemo(() => new Set(lib.downloading), [lib.downloading])
 
   const counts = useMemo(() => {
-    const c: Partial<Record<View, number>> = { all: lib.papers.length, reading: papersIn('reading', lib.papers).length, toread: papersIn('toread', lib.papers).length, notes: notes.length, terms: lib.terms.length }
+    const c: Partial<Record<View, number>> = { all: lib.papers.length, reading: papersIn('reading', lib.papers).length, toread: papersIn('toread', lib.papers).length, notes: notes.length, terms: lib.terms.length, trash: lib.trash.length }
     for (const f of lib.folders) c[`folder:${f.id}`] = papersIn(`folder:${f.id}`, lib.papers).length
     return c
-  }, [lib.papers, lib.folders, lib.terms.length, notes.length])
+  }, [lib.papers, lib.folders, lib.terms.length, lib.trash.length, notes.length])
 
   const folder = view.startsWith('folder:') ? lib.folders.find((f) => `folder:${f.id}` === view) : undefined
   const title = folder?.name ?? TITLES[view] ?? ''
@@ -133,7 +153,7 @@ export function App() {
     setReadingId(null)
     if (c === 'settings') return setView('settings')
     if (c === 'addLink') {
-      if (['terms', 'notes', 'settings'].includes(view)) setView('all')
+      if (['terms', 'notes', 'settings', 'trash'].includes(view)) setView('all')
       return setLinkOpen(true)
     }
     if (c === 'newNote') {
@@ -218,7 +238,7 @@ export function App() {
 
   const isFileDrag = (e: DragEvent) => e.dataTransfer.types.includes('Files') && !e.dataTransfer.types.includes(PAPER_DRAG_TYPE)
   const empty = lib.loaded && lib.papers.length === 0
-  const listView = !['terms', 'notes', 'settings'].includes(view)
+  const listView = !['terms', 'notes', 'settings', 'trash'].includes(view)
 
   return (
     <div
@@ -231,6 +251,8 @@ export function App() {
         view={view}
         counts={counts}
         folders={lib.folders}
+        syncNote={syncNote}
+        onSearch={quickSearch}
         onSelect={(v) => setView(v)}
         onCreateFolder={(name) => void api.library.createFolder(name)}
         onRenameFolder={(id, name) => void api.library.renameFolder(id, name)}
@@ -249,7 +271,7 @@ export function App() {
       <main className="main">
         <header className="header drag">
           <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 6 }}>
-            <div className="crumb">{folder ? '文件夹' : listView ? '文献库' : view === 'settings' ? '偏好' : '知识'}</div>
+            <div className="crumb">{folder ? '文件夹' : listView || view === 'trash' ? '文献库' : view === 'settings' ? '偏好' : '知识'}</div>
             <h1>{title}</h1>
           </div>
           {listView && <AddPaper open={linkOpen} setOpen={setLinkOpen} />}
@@ -258,6 +280,8 @@ export function App() {
           <SettingsView onShortcuts={() => setKeys(true)} />
         ) : view === 'notes' ? (
           <NotesView notes={notes} papers={lib.papers} openId={noteId} onOpen={setNoteId} onOpenNoteTitle={(t) => void openNoteTitle(t)} onOpenAnnotation={(id) => void openAnnotation(id)} />
+        ) : view === 'trash' ? (
+          <TrashView papers={lib.trash} onToast={(text) => toast({ text })} />
         ) : !listView ? (
           <TermsView terms={lib.terms} papers={lib.papers} onOpenPaper={openPaper} toast={toast} />
         ) : empty && view === 'all' ? (
@@ -265,7 +289,9 @@ export function App() {
         ) : (
           <LibraryTable
             key={view}
-            label={folder ? `文件夹里的论文` : LIST_LABEL[view] ?? ''}
+            label={LIST_LABEL[view] ?? ''}
+            folders={lib.folders}
+            focusFilter={focusFilter}
             papers={papersIn(view, lib.papers)}
             tags={lib.tags}
             importing={importing}

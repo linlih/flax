@@ -84,6 +84,8 @@ export class SyncService {
   /** 窗口在前台 */
   private active = false
   private downloads = new Map<string, Promise<boolean>>()
+  /** 传不上去或下不下来的 PDF：哈希 → 失败了几次、什么时候再试。免得一个大文件每分钟重传一遍 */
+  private fileRetry = new Map<string, { fails: number; at: number }>()
   private uploading = false
 
   constructor(private d: SyncDeps) {
@@ -304,21 +306,38 @@ export class SyncService {
     try {
       const done = this.d.library.syncedFiles()
       const hashes = this.d.library.liveFileHashes()
-      const up = hashes.filter((h) => !done.has(h) && existsSync(this.d.files.pathFor(h)))
-      const down = hashes.filter((h) => !existsSync(this.d.files.pathFor(h)))
+      const due = (h: string) => (this.fileRetry.get(h)?.at ?? 0) <= Date.now()
+      const up = hashes.filter((h) => !done.has(h) && existsSync(this.d.files.pathFor(h)) && due(h))
+      const down = hashes.filter((h) => !existsSync(this.d.files.pathFor(h)) && due(h))
       let left = up.length + down.length
       if (left) this.set({ files: { left } })
+      let problem: unknown = null
+      const one = async (h: string, work: () => Promise<unknown>) => {
+        try {
+          await work()
+          this.fileRetry.delete(h)
+        } catch (e) {
+          // 账号、空间、限流、断网这些换一个文件也一样：整批停下。只是这一个文件的问题（太大超时、服务器不收）就跳过它，隔一阵再试
+          if (e instanceof SyncError && ['auth', 'space', 'rate_limited', 'network'].includes(e.code)) throw e
+          const fails = (this.fileRetry.get(h)?.fails ?? 0) + 1
+          this.fileRetry.set(h, { fails, at: Date.now() + Math.min(6 * 3600_000, 5 * 60_000 * 4 ** (fails - 1)) })
+          console.error('sync file', h, e)
+          problem = e
+        }
+        this.set({ files: { left: --left } })
+      }
       for (const h of up) {
         if (engine !== this.engine) return
-        await engine.putFile(h, new Uint8Array(await readFile(this.d.files.pathFor(h))))
-        this.d.library.markFileSynced(h)
-        this.set({ files: { left: --left } })
+        await one(h, async () => {
+          await engine.putFile(h, new Uint8Array(await readFile(this.d.files.pathFor(h))))
+          this.d.library.markFileSynced(h)
+        })
       }
       for (const h of down) {
         if (engine !== this.engine) return
-        await this.download(h)
-        this.set({ files: { left: --left } })
+        await one(h, () => this.download(h))
       }
+      if (problem && engine === this.engine) this.set({ state: 'error', error: `有 PDF 没传完，过一阵会再试（${message(problem)}）` })
     } catch (e) {
       console.error('sync files:', e)
       if (engine === this.engine) this.set({ state: 'error', error: message(e) })
@@ -346,6 +365,11 @@ export class SyncService {
       this.downloads.set(hash, p)
     }
     return p
+  }
+
+  /** 永久删除的论文的 PDF：云端那份也删掉。删不掉不算错（下次清理不会再碰它，只是云端多占一点空间） */
+  async deleteRemoteFile(hash: string): Promise<void> {
+    await this.engine?.deleteFile(hash).catch((e: unknown) => console.error('delete remote file:', e))
   }
 
   get enabled(): boolean {

@@ -12,7 +12,7 @@ export interface Backend {
   del(path: string): Promise<void>
 }
 
-export type SyncErrorCode = 'auth' | 'network' | 'rate_limited' | 'server' | 'space' | 'wrong_key' | 'format' | 'not_found'
+export type SyncErrorCode = 'auth' | 'network' | 'timeout' | 'rate_limited' | 'server' | 'space' | 'wrong_key' | 'format' | 'not_found'
 
 export class SyncError extends Error {
   constructor(readonly code: SyncErrorCode, message: string) {
@@ -56,16 +56,23 @@ export function webdav(o: WebDavOptions): Backend {
   const auth = basic(o.username, o.password)
   const made = new Set<string>()
 
-  const req = async (method: string, path: string, extra: { headers?: Record<string, string>; body?: Uint8Array } = {}) => {
+  const baseTimeout = o.timeoutMs ?? 60_000
+  /** 传大文件要的时间和大小成正比：在基本的超时上，按最慢 50 KB/s 再加（50 MB 的 PDF 大约 17 分钟） */
+  const forBytes = (n: number) => baseTimeout + Math.ceil(n / 50)
+  /** 下载 PDF 时不知道多大，给足 20 分钟 */
+  const FILE_GET_MS = 20 * 60_000
+
+  const req = async (method: string, path: string, extra: { headers?: Record<string, string>; body?: Uint8Array; timeoutMs?: number } = {}) => {
     let r: Awaited<ReturnType<HttpFetch>>
     try {
       r = await o.fetch(base + encodePath(path), {
         method,
         headers: { Authorization: auth, ...(extra.headers ?? {}) },
         ...(extra.body ? { body: extra.body } : {}),
-        ...(o.timeout ? { signal: o.timeout(o.timeoutMs ?? 60_000) } : {})
+        ...(o.timeout ? { signal: o.timeout(extra.timeoutMs ?? baseTimeout) } : {})
       })
     } catch (e) {
+      if ((e as { name?: string } | null)?.name === 'TimeoutError') throw new SyncError('timeout', '同步服务器太久没有回应，稍后会自动再试。')
       throw new SyncError('network', `连不上同步服务器，请检查网络和服务器地址（${e instanceof Error ? e.message : String(e)}）`)
     }
     if (r.status === 401 || r.status === 403) throw new SyncError('auth', '同步服务器拒绝了账号或密码。坚果云要用“应用密码”，不是登录密码。')
@@ -100,7 +107,7 @@ export function webdav(o: WebDavOptions): Backend {
       return parseMultistatus(await r.text(), base + encodePath(d === '/' ? '' : d))
     },
     async get(path) {
-      const r = await req('GET', path)
+      const r = await req('GET', path, path.startsWith('files/') ? { timeoutMs: Math.max(baseTimeout, FILE_GET_MS) } : {})
       if (r.status === 404) return null
       if (r.status !== 200) fail(r, '下载')
       return new Uint8Array(await r.arrayBuffer())
@@ -108,12 +115,12 @@ export function webdav(o: WebDavOptions): Backend {
     async put(path, data) {
       const dir = path.slice(0, path.lastIndexOf('/') + 1)
       if (!made.has(dir)) await mkdirs(dir)
-      let r = await req('PUT', path, { body: data, headers: { 'Content-Type': 'application/octet-stream' } })
+      let r = await req('PUT', path, { body: data, headers: { 'Content-Type': 'application/octet-stream' }, timeoutMs: forBytes(data.length) })
       if (r.status === 409 || r.status === 404) {
         // 文件夹可能被别人删了：重新建一次
         for (const k of [...made]) if (dir.startsWith(k)) made.delete(k)
         await mkdirs(dir)
-        r = await req('PUT', path, { body: data, headers: { 'Content-Type': 'application/octet-stream' } })
+        r = await req('PUT', path, { body: data, headers: { 'Content-Type': 'application/octet-stream' }, timeoutMs: forBytes(data.length) })
       }
       if (r.status < 200 || r.status >= 300) fail(r, '上传')
     },

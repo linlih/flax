@@ -1,12 +1,27 @@
 // 文献库仓储层：所有读写都经过这里。
 // 每条记录存成 JSON，另抽几列做索引。以后接 CRDT 同步只改这一层。
-import type { Annotation, DevicePosition, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingPosition, ReadingStatus, TagColor, Term, UUID } from './model'
+import type { Annotation, DevicePosition, TrashedPaper, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingPosition, ReadingStatus, TagColor, Term, UUID } from './model'
 import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
 import { createLibrarySyncStore, LIBRARY_SYNC_SCHEMA } from './sync/libraryStore'
 import { createConversationSyncStore } from './sync/conversationStore'
 import { CONVERSATION_SCHEMA, Conversations } from './conversations'
 import type { SyncStore } from './sync/store'
+import { Hlc } from './sync/hlc'
+
+/**
+ * 让一份数据库忘掉"自己是哪台设备"：设备 id 和同步进度都清掉，下次打开时是一台新设备。
+ * 备份里的数据库、从备份恢复出来的数据库都要这样处理，否则它和原来那台设备用同一个 id 同步，改动会互相盖掉。
+ * winsAt（毫秒）：给了的话，这份数据里的内容在同步时算作这个时间改的。
+ * 恢复备份时传现在的时间，恢复回来的内容就不会又被云端那些"更新"的修改盖回去
+ */
+export function resetDeviceIdentity(db: SqlDb, winsAt?: number): void {
+  const has = (table: string) => !!db.prepare("SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = ?").get(table)
+  if (!has('meta')) return
+  db.prepare("DELETE FROM meta WHERE key = 'deviceId' OR key LIKE 'sync.%'").run()
+  for (const t of ['sync_shadow', 'sync_outbox', 'sync_files']) if (has(t)) db.prepare(`DELETE FROM ${t}`).run()
+  if (winsAt !== undefined) db.prepare("INSERT INTO meta (key, value) VALUES ('sync.hlc', ?)").run(new Hlc('restore', null, () => winsAt).tick())
+}
 
 // Node、浏览器和 React Native（加 polyfill）都有全局 crypto.randomUUID
 declare const crypto: { randomUUID(): string }
@@ -37,6 +52,12 @@ const METADATA_KEYS = ['title', 'authors', 'year', 'venue', 'abstract', 'identif
 
 const SCHEMA_VERSION = 5
 
+export class LibraryTooNewError extends Error {
+  constructor() {
+    super('这个资料库是更新版本的 Flax 建的，请先把 Flax 更新到最新版本。')
+  }
+}
+
 export type NewAnnotation = Omit<Annotation, 'id' | 'updatedAt' | 'deviceId' | 'createdAt'>
 export type AnnotationPatch = Partial<Pick<Annotation, 'color' | 'type' | 'comment'>>
 
@@ -55,7 +76,9 @@ export class Library {
 
   private migrate(): void {
     const v = (this.db.prepare('PRAGMA user_version').get() as { user_version: number }).user_version
-    if (v >= SCHEMA_VERSION) return
+    // 更新的版本建的数据库：不认识里面的新东西，硬开会写坏，交给各平台提示"请先更新"
+    if (v > SCHEMA_VERSION) throw new LibraryTooNewError()
+    if (v === SCHEMA_VERSION) return
     this.tx(() => {
       if (v < 1) this.db.exec(`
         CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT NOT NULL);
@@ -361,6 +384,47 @@ export class Library {
 
   restorePaper(id: UUID): void {
     this.db.prepare('UPDATE papers SET deleted = 0, updated_at = ? WHERE id = ?').run(this.now(), id)
+  }
+
+  /** 废纸篓：删掉了、还没永久删除的论文，最近删的在前 */
+  listTrash(): TrashedPaper[] {
+    const rows = this.db.prepare('SELECT data, updated_at FROM papers WHERE deleted = 1 ORDER BY updated_at DESC').all() as { data: string; updated_at: string }[]
+    return rows.map((r) => ({ ...(JSON.parse(r.data) as Paper), deletedAt: r.updated_at })).filter((p) => !p.purged)
+  }
+
+  /**
+   * 永久删除废纸篓里的一篇：记录留着当删除标记（同步要用），但不再出现在废纸篓里，也不再占着它的 PDF。
+   * PDF 文件本身由各平台删：之后调 takeOrphanFiles 拿到没人用的文件
+   */
+  purgePaper(id: UUID): void {
+    const row = this.db.prepare('SELECT data FROM papers WHERE id = ? AND deleted = 1').get(id) as { data: string } | undefined
+    if (!row) return
+    const p = JSON.parse(row.data) as Paper
+    if (p.purged) return
+    const next: Paper = { ...p, purged: true, files: [], updatedAt: this.now(), deviceId: this.deviceId }
+    delete next.abstract
+    delete next.readingPosition
+    this.db.prepare('UPDATE papers SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(next), next.updatedAt, id)
+  }
+
+  /**
+   * 已经没有任何论文（包括废纸篓里的）用到的 PDF：从记录里拿掉并返回它们的哈希，调用的一方去删本机和云端的文件。
+   * 永久删除之后调；同步收到别的设备的永久删除之后也调
+   */
+  takeOrphanFiles(): string[] {
+    return this.tx(() => {
+      const used = new Set<string>()
+      for (const r of this.db.prepare('SELECT data FROM papers').all() as { data: string }[]) {
+        const p = JSON.parse(r.data) as Paper
+        if (!p.purged) for (const f of p.files ?? []) used.add(f.hash)
+      }
+      const orphans = (this.db.prepare('SELECT hash FROM files').all() as { hash: string }[]).map((r) => r.hash).filter((h) => !used.has(h))
+      for (const h of orphans) {
+        this.db.prepare('DELETE FROM files WHERE hash = ?').run(h)
+        this.db.prepare('DELETE FROM sync_files WHERE hash = ?').run(h)
+      }
+      return orphans
+    })
   }
 
   private write(id: UUID, fn: (p: Paper) => void): Paper {

@@ -28,5 +28,5 @@ export function editedLabel(iso: string): string {
   const y = new Date(now)
   y.setDate(now.getDate() - 1)
   if (d.toDateString() === y.toDateString()) return '昨天'
-  return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1} 月 ${d.getDate()} 日` : `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
+  return d.getFullYear() === now.getFullYear() ? `${d.getMonth() + 1}月${d.getDate()}日` : `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 }

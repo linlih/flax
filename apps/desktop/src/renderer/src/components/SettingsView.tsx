@@ -91,7 +91,7 @@ function AppearanceSection() {
     <section className="tray settings" aria-labelledby="h-look">
       <div className="tray-h"><h2 id="h-look" className="lbl" style={{ margin: 0 }}>外观</h2></div>
       <div className="card settings-row">
-        <span className="rt"><b>主题</b><small>阅读器里的 PDF 页面保持原样</small></span>
+        <span className="rt"><b>主题</b><small>深色时，阅读器里的 PDF 页面也换成深色</small></span>
         <div className="seg" role="group" aria-label="主题">
           {LOOKS.map(([v, label]) => (
             <button key={v} type="button" aria-pressed={look === v} onClick={() => { setLook(v); void api.setAppearance(v) }}>{label}</button>

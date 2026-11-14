@@ -27,6 +27,20 @@ import { nearEnd } from '../lib/status'
 
 
 /** 当前外观是不是深色；外观由整个应用统一切换（见 main/appearance.ts），这里只跟着变 */
+/** 缩略图栏的宽度（和 styles.css 的 .thumbs 一致）、论文那一块至少留多宽 */
+const THUMBS_W = 148
+const MIN_STAGE_W = 460
+
+function useWindowWidth(): number {
+  const [w, setW] = useState(() => window.innerWidth)
+  useEffect(() => {
+    const on = () => setW(window.innerWidth)
+    window.addEventListener('resize', on)
+    return () => window.removeEventListener('resize', on)
+  }, [])
+  return w
+}
+
 function useDark(): boolean {
   const mq = useMemo(() => window.matchMedia('(prefers-color-scheme: dark)'), [])
   const [dark, setDark] = useState(mq.matches)
@@ -155,6 +169,19 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     else void document.documentElement.requestFullscreen().catch(() => setFocus((f) => !f))
   }
   const dark = useDark()
+  /** 工具栏的"更多"菜单：不常用的两项（论文详情、深色 / 浅色）收在里面 */
+  const [more, setMore] = useState(false)
+  useEffect(() => {
+    if (!more) return
+    const away = (e: PointerEvent) => !(e.target as HTMLElement).closest?.('.reader-more') && setMore(false)
+    const esc = (e: KeyboardEvent) => e.key === 'Escape' && setMore(false)
+    window.addEventListener('pointerdown', away, true)
+    window.addEventListener('keydown', esc)
+    return () => {
+      window.removeEventListener('pointerdown', away, true)
+      window.removeEventListener('keydown', esc)
+    }
+  }, [more])
 
   const [find, setFind] = useState<{ open: boolean; query: string; current: number; total: number; state: number | null }>({ open: false, query: '', current: 0, total: 0, state: null })
   const findInput = useRef<HTMLInputElement>(null)
@@ -733,8 +760,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   useEffect(() => {
     const on = (e: Event) => {
       const c = (e as CustomEvent<string>).detail
-      if (c === 'toggleNotes') togglePref('panel', !showPanel, setShowPanel)
-      if (c === 'toggleAi') togglePref('ai', !showAi, setShowAi)
+      if (c === 'toggleNotes') toggleSide('panel')
+      if (c === 'toggleAi') toggleSide('ai')
     }
     window.addEventListener('reader-cmd', on)
     return () => window.removeEventListener('reader-cmd', on)
@@ -747,6 +774,20 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [aiQuote, setAiQuote] = useState<{ text: string; n: number } | null>(null)
   const [panelW, setPanelW] = useState(() => Math.min(640, Math.max(260, Number(pref.get('panelW')) || 320)))
   const [aiW, setAiW] = useState(() => Math.min(640, Math.max(280, Number(pref.get('aiW')) || 360)))
+  // 窗口窄的时候论文要留够地方：先收缩略图；两栏都开着就只留刚才用的那一栏；还不够就把那一栏挤窄。
+  // 只是这时候不显示，开关的设置不改，窗口拉宽了就都回来
+  const [lastSide, setLastSide] = useState<'panel' | 'ai'>('panel')
+  const winW = useWindowWidth()
+  const room = (thumbs: boolean, panel: boolean, ai: boolean) => winW - (thumbs ? THUMBS_W : 0) - (panel ? panelW : 0) - (ai ? aiW : 0)
+  let seeThumbs = showThumbs
+  let seePanel = showPanel
+  let seeAi = showAi
+  if (room(seeThumbs, seePanel, seeAi) < MIN_STAGE_W) seeThumbs = false
+  if (room(seeThumbs, seePanel, seeAi) < MIN_STAGE_W && seePanel && seeAi) {
+    if (lastSide === 'ai') seePanel = false
+    else seeAi = false
+  }
+  const sideCap = Math.max(240, winW - MIN_STAGE_W - (seeThumbs ? THUMBS_W : 0) - (seePanel && seeAi ? Math.min(panelW, aiW) : 0))
   const paperNotes = useMemo(() => notes.filter((n) => n.paperId === paper.id), [notes, paper.id])
   const [noteId, setNoteId] = useState<string | null>(null)
   /** 正在写一篇还没存盘的新笔记 */
@@ -760,10 +801,18 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     setTab(t)
     pref.set('tab', t)
     setFocusNote(t === 'note')
+    setLastSide('panel')
     if (!showPanel) togglePref('panel', true, setShowPanel)
   }
   const openAi = () => {
+    setLastSide('ai')
     if (!showAi) togglePref('ai', true, setShowAi)
+  }
+  /** 工具栏上那两栏的按钮：开着但因为窗口窄没显示出来时，点一下是把它换出来，不是关掉 */
+  const toggleSide = (k: 'panel' | 'ai') => {
+    const [on, seen, set] = k === 'panel' ? [showPanel, seePanel, setShowPanel] as const : [showAi, seeAi, setShowAi] as const
+    if (on && !seen) setLastSide(k)
+    else togglePref(k, !on, set)
   }
   const newPaperNote = () => {
     setDrafting(true)
@@ -827,6 +876,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const togglePref = (k: 'thumbs' | 'panel' | 'ai', v: boolean, set: (v: boolean) => void) => {
     set(v)
     pref.set(k, v ? '1' : '0')
+    if (v && k !== 'thumbs') setLastSide(k)
   }
 
   const activeAnno = active ? annos.find((a) => a.id === active.id) : undefined
@@ -868,7 +918,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
       <header className="reader-bar drag">
         <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
-        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={showThumbs} aria-label="显示缩略图" title={showThumbs ? kbd('隐藏缩略图（⌥⌘S）') : kbd('显示缩略图（⌥⌘S）')} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
+        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="显示缩略图" title={showThumbs ? kbd('隐藏缩略图（⌥⌘S）') : kbd('显示缩略图（⌥⌘S）')} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
         <div className="reader-title">
           <span className="reader-name" title={paper.title}>{paper.title}</span>
           {pageCount > 0 && (
@@ -898,22 +948,23 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
             <button type="button" className="icon-btn tool" aria-label="放大" title={kbd('放大（⌘+，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(1)}><Icon name="plus" size={16} /></button>
           </div>
           <button type="button" className="icon-btn tool" aria-pressed={find.open} aria-label="在文中查找" title={kbd('在文中查找（⌘F）')} onClick={() => (find.open ? closeFind() : openFind())}><Icon name="search" /></button>
-          <button
-            type="button"
-            className="icon-btn tool"
-            aria-label={dark ? '换成浅色外观' : '换成深色外观'}
-            title={dark ? '深色外观：点一下换成浅色（显示 › 外观里可以改回跟随系统）' : '浅色外观：点一下换成深色（显示 › 外观里可以改回跟随系统）'}
-            onClick={() => void api.setAppearance(dark ? 'light' : 'dark')}
-          ><Icon name="paper" /></button>
-          <button type="button" className="icon-btn tool" aria-label="论文详情" title="论文详情：标题、作者、标签和文件" onClick={onInfo}><Icon name="info" /></button>
+          <div className="reader-more">
+            <button type="button" className="icon-btn tool" aria-haspopup="menu" aria-expanded={more} aria-label="更多" title="更多：论文详情、深色 / 浅色" onClick={() => setMore((v) => !v)}><Icon name="more" /></button>
+            {more && (
+              <div className="menu" role="menu" onMouseLeave={() => setMore(false)}>
+                <button type="button" role="menuitem" onClick={() => { setMore(false); onInfo() }}>论文详情</button>
+                <button type="button" role="menuitem" onClick={() => { setMore(false); void api.setAppearance(dark ? 'light' : 'dark') }}>{dark ? '换成浅色外观' : '换成深色外观'}</button>
+              </div>
+            )}
+          </div>
           <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : kbd(kbd(`全屏阅读：只留论文（${FOCUS_KEY}）`))} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showPanel} aria-label="批注和笔记" title={showPanel ? kbd('隐藏批注和笔记（⌥⌘N）') : kbd('显示批注和笔记（⌥⌘N）')} onClick={() => togglePref('panel', !showPanel, setShowPanel)}><Icon name="panel" /></button>}
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={showAi} aria-label="AI" title={showAi ? kbd('隐藏 AI（⌥⌘A）') : kbd('显示 AI（⌥⌘A）：可以和笔记并排')} onClick={() => togglePref('ai', !showAi, setShowAi)}><Icon name="sparkle" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seePanel} aria-label="批注和笔记" title={seePanel ? kbd('隐藏批注和笔记（⌥⌘N）') : kbd('显示批注和笔记（⌥⌘N）')} onClick={() => toggleSide('panel')}><Icon name="panel" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seeAi} aria-label="AI" title={seeAi ? kbd('隐藏 AI（⌥⌘A）') : kbd('显示 AI（⌥⌘A）：可以和笔记并排')} onClick={() => toggleSide('ai')}><Icon name="sparkle" /></button>}
         </div>
       </header>
 
       <div className="reader-body">
-        {showThumbs && !focus && (doc ? <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} /> : <nav className="thumbs tray" aria-label="页面缩略图" />)}
+        {seeThumbs && !focus && (doc ? <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} /> : <nav className="thumbs tray" aria-label="页面缩略图" />)}
 
         <div className="reader-stage">
           {find.open && (
@@ -1007,8 +1058,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
           </div>
         </div>
 
-        {showPanel && !focus && (
-          <aside className="reader-panel" style={{ flexBasis: panelW } as CSSProperties} aria-label="批注和笔记">
+        {seePanel && !focus && (
+          <aside className="reader-panel" style={{ flexBasis: Math.min(panelW, sideCap) } as CSSProperties} aria-label="批注和笔记">
             <div className="panel-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => startResize(e, panelW, setPanelW, 'panelW', 260)} />
             <div className="panel-tabs" role="tablist">
               <button type="button" role="tab" aria-selected={tab === 'annos'} onClick={() => switchTab('annos')}>批注 · {annos.length}</button>
@@ -1036,8 +1087,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
           </aside>
         )}
 
-        {showAi && !focus && (
-          <aside className="reader-panel" style={{ flexBasis: aiW } as CSSProperties} aria-label="AI">
+        {seeAi && !focus && (
+          <aside className="reader-panel" style={{ flexBasis: Math.min(aiW, sideCap) } as CSSProperties} aria-label="AI">
             <div className="panel-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => startResize(e, aiW, setAiW, 'aiW', 280)} />
             {aiView}
           </aside>

@@ -26,6 +26,7 @@ const library = {
   resolveDuplicate: invoke('resolveDuplicate'),
   openFile: invoke('openFile'),
   markOpened: invoke('markOpened'),
+  purge: invoke('purge'),
   savePosition: invoke('savePosition'),
   positionElsewhere: invoke('positionElsewhere'),
   annotations: invoke('annotations'),

@@ -11,6 +11,8 @@ interface Entry extends NoteSummary {
   body: string
   /** 文件里原本有没有头信息；没有的话第一次保存时补上 */
   hasHead: boolean
+  /** 文件是什么时候建的（毫秒） */
+  born: number
 }
 
 export interface NoteStoreDeps {
@@ -41,7 +43,16 @@ export class NoteStore {
     for (const name of readdirSync(this.dir)) {
       if (!name.endsWith('.md') || name.startsWith('.')) continue
       const e = this.load(name)
-      if (e && !next.has(e.id)) next.set(e.id, e)
+      if (!e) continue
+      // 两个文件头信息里的 id 一样（比如在访达里复制了一篇）：先建的那个留着 id，
+      // 另一个当成还没有 id 的新笔记，第一次保存时给它新的 id
+      const other = next.get(e.id)
+      if (!other) next.set(e.id, e)
+      else {
+        const [keep, copy] = other.born < e.born || (other.born === e.born && other.file.length <= e.file.length) ? [other, e] : [e, other]
+        next.set(keep.id, keep)
+        next.set(`file:${copy.file}`, { ...copy, id: `file:${copy.file}`, hasHead: false })
+      }
     }
     this.entries = next
   }
@@ -64,7 +75,8 @@ export class NoteStore {
         file,
         extra,
         body,
-        hasHead: Boolean(head.id)
+        hasHead: Boolean(head.id),
+        born: st.birthtimeMs
       }
     } catch {
       return null
@@ -171,6 +183,8 @@ export class NoteStore {
     let timer: ReturnType<typeof setTimeout> | undefined
     try {
       this.watcher = watch(this.dir, (_event, name) => {
+        // 自己保存时用的临时文件
+        if (name && name.startsWith('.') && name.endsWith('.tmp')) return
         if (name && this.ownWrites.has(name)) {
           const path = join(this.dir, name)
           const same = existsSync(path) && readFileSync(path, 'utf8') === this.ownWrites.get(name)
@@ -193,7 +207,10 @@ export class NoteStore {
 
   private write(file: string, text: string): void {
     this.ownWrites.set(file, text)
-    writeFileSync(join(this.dir, file), text)
+    // 先写临时文件再改名：写到一半退出或断电，原来的笔记还是完整的
+    const tmp = join(this.dir, `.${file}.tmp`)
+    writeFileSync(tmp, text)
+    renameSync(tmp, join(this.dir, file))
   }
 
   private freeTitle(title: string): string {

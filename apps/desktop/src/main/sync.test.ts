@@ -196,6 +196,42 @@ describe('PDFs', () => {
   })
 })
 
+describe('a PDF that will not upload', () => {
+  it('is skipped so the others still go up, and is not sent again on every sync', async () => {
+    const srv = await webdavServer('me@example.com', 'app-pass-123')
+    const PDF2 = new Uint8Array([...PDF, 10, 37, 37, 69, 79, 70])
+    const bad = sha256(PDF2)
+    let tries = 0
+    const picky: HttpFetch = (u, i) => {
+      if (i.method === 'PUT' && u.endsWith(bad)) {
+        tries++
+        return Promise.resolve({ status: 500, text: async () => '', arrayBuffer: async () => new ArrayBuffer(0) })
+      }
+      return realFetch(u, i)
+    }
+    try {
+      const a = device('a', { fetch: picky })
+      const good = await a.files.put(PDF)
+      await a.files.put(PDF2)
+      const ref = (hash: string, size: number) => ({ file: { hash, size, mime: 'application/pdf' as const, role: 'main' as const, addedAt: '2026-11-09T00:00:00.000Z' } })
+      a.library.addPaper(meta('Fine'), ref(good, PDF.length))
+      a.library.addPaper(meta('Too much for the server'), ref(bad, PDF2.length))
+      await a.svc.connect({ kind: 'webdav', url: srv.url, username: 'me@example.com', password: 'app-pass-123' }, null)
+      await settled(a.svc)
+      expect(a.library.syncedFiles().has(good)).toBe(true)
+      expect(a.library.syncedFiles().has(bad)).toBe(false)
+      expect(a.svc.get().error).toContain('有 PDF 没传完')
+      expect(tries).toBe(1)
+
+      await a.svc.syncNow()
+      await settled(a.svc)
+      expect(tries).toBe(1)
+    } finally {
+      await srv.close()
+    }
+  })
+})
+
 describe('when it syncs', () => {
   it('syncs 3 seconds after start, then on the poll interval', async () => {
     const a = device('a')
