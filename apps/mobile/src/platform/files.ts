@@ -31,3 +31,9 @@ export async function putPdf(data: Uint8Array, hash = sha256(data)): Promise<str
 export async function readPdf(hash: string): Promise<Uint8Array> {
   return pdfFile(hash).bytes()
 }
+
+/** 删掉本机的 PDF（永久删除的论文用不到了）。没有就算了 */
+export function deletePdf(hash: string): void {
+  const f = pdfFile(hash)
+  if (f.exists) f.delete()
+}

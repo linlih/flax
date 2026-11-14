@@ -9,16 +9,19 @@ import { router } from 'expo-router'
 import { app, showNotice } from './services'
 import { importFiles } from './importPdf'
 
-/** 只在 Android 上接收：Platform.OS 在运行时不变，钩子调用的顺序稳定 */
-export const useIncomingShare: () => void = Platform.OS === 'android' ? useIncomingShareHandler : () => {}
+/**
+ * 只在 Android 上接收：Platform.OS 在运行时不变，钩子调用的顺序稳定。
+ * enabled 为 false 时（资料库打不开）收到了也不处理
+ */
+export const useIncomingShare: (enabled?: boolean) => void = Platform.OS === 'android' ? useIncomingShareHandler : () => {}
 
-function useIncomingShareHandler(): void {
+function useIncomingShareHandler(enabled = true): void {
   const { sharedPayloads, resolvedSharedPayloads, clearSharedPayloads, isResolving, error } = useExpoShare()
   // 同一批只处理一次（解析完会再渲染一遍）；同样的内容再分享一次是新的一批，照样处理
   const handled = useRef<unknown>(null)
 
   useEffect(() => {
-    if (isResolving || !sharedPayloads.length || handled.current === sharedPayloads) return
+    if (!enabled || isResolving || !sharedPayloads.length || handled.current === sharedPayloads) return
     // 文件要等解析完（expo-sharing 会拷一份到缓存目录，给出文件名）；刚启动的第一帧还没开始解析
     if (sharedPayloads.some((p) => p.shareType !== 'text' && p.shareType !== 'url') && !resolvedSharedPayloads.length && !error) return
     handled.current = sharedPayloads
@@ -49,5 +52,5 @@ function useIncomingShareHandler(): void {
         }
       }
     })()
-  }, [sharedPayloads, resolvedSharedPayloads, isResolving, error])
+  }, [enabled, sharedPayloads, resolvedSharedPayloads, isResolving, error])
 }

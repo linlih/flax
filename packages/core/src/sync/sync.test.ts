@@ -2,7 +2,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { describe, expect, it } from 'vitest'
 import { Library } from '../library'
 import type { PaperMeta } from '../model'
-import { parseMultistatus, SyncError, webdav } from './backend'
+import { parseMultistatus, plainHttp, SyncError, webdav } from './backend'
 import { WrongKeyError } from './codec'
 import { merge3 } from './diff3'
 import { createLibrary, readLibraryInfo, SyncEngine, unlockLibrary } from './engine'
@@ -505,5 +505,17 @@ describe('webdav', () => {
     } finally {
       await srv.close()
     }
+  })
+})
+
+describe('plainHttp', () => {
+  it('warns for http:// to another machine, not for https or this machine', () => {
+    expect(plainHttp('http://nas.local:5005/dav/')).toBe(true)
+    expect(plainHttp(' HTTP://192.168.1.5/ ')).toBe(true)
+    expect(plainHttp('https://nas.local/dav/')).toBe(false)
+    expect(plainHttp('http://localhost:8080/')).toBe(false)
+    expect(plainHttp('http://127.0.0.1/')).toBe(false)
+    expect(plainHttp('http://[::1]:8080/')).toBe(false)
+    expect(plainHttp('')).toBe(false)
   })
 })

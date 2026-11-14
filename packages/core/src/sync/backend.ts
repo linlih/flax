@@ -51,6 +51,14 @@ function basic(user: string, pass: string): string {
 
 const encodePath = (p: string) => p.split('/').map(encodeURIComponent).join('/')
 
+/** http:// 而且不是本机地址：账号密码会明文发出去，设置同步时提醒一下 */
+export function plainHttp(url: string): boolean {
+  const m = /^http:\/\/(\[[^\]]+\]|[^/:]+)/i.exec(url.trim())
+  return !!m && !['localhost', '127.0.0.1', '[::1]'].includes(m[1]!.toLowerCase())
+}
+
+export const PLAIN_HTTP_HINT = '这个地址没有加密，账号密码会以明文发送。在家里的局域网里连 NAS 可以这样用；从外网连，请用 https:// 地址。'
+
 export function webdav(o: WebDavOptions): Backend {
   const base = o.url.replace(/\/*$/, '/') + encodePath((o.folder ?? 'Flax').replace(/^\/+|\/+$/g, '')) + '/'
   const auth = basic(o.username, o.password)

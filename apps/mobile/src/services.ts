@@ -3,11 +3,11 @@
 import { useSyncExternalStore } from 'react'
 import { AppState, Platform } from 'react-native'
 import { File } from 'expo-file-system'
-import { Importer, Library, type ImportNotice } from '@flax/core'
+import { Importer, Library, LibraryTooNewError, type ImportNotice } from '@flax/core'
 import { AiService, AiSettings } from '@flax/core/ai/runtime'
 import type { AiEvent, AiStatus } from '@flax/core'
 import { openLibraryDb } from './platform/db'
-import { putPdf } from './platform/files'
+import { deletePdf, putPdf } from './platform/files'
 import { mtCrypto, sha256 } from './platform/hash'
 import { fetchLike, net } from './platform/net'
 import { NoteStore } from './platform/notes'
@@ -130,6 +130,18 @@ function setup() {
     mtCrypto
   })
 
+  // 永久删除后没人用的 PDF：本机那份删掉，云端那份也删掉
+  const cleanFiles = async () => {
+    for (const hash of library.takeOrphanFiles()) {
+      try {
+        deletePdf(hash)
+      } catch (e) {
+        console.warn('delete pdf:', e)
+      }
+      await syncRef?.deleteRemoteFile(hash)
+    }
+  }
+
   const device = deviceName()
   const sync = new SyncService({
     db,
@@ -138,6 +150,8 @@ function setup() {
     deviceName: device,
     onStatus: (_s: SyncStatus) => bump('sync'),
     onReceived: () => {
+      // 别的设备永久删除了论文：这台上那些 PDF 也清掉
+      void cleanFiles()
       notes.scan()
       bump('library', 'notes')
     }
@@ -160,6 +174,8 @@ function setup() {
     deviceName: device,
     /** 改了库里的东西以后调：刷新界面，几秒后同步 */
     changed,
+    /** 永久删除以后调：删掉没人用的 PDF */
+    cleanFiles,
     notesChanged: () => {
       bump('notes')
       sync.poke()
@@ -177,4 +193,18 @@ let services: Services | null = null
 
 export function app(): Services {
   return (services ??= setup())
+}
+
+/**
+ * 启动时先打开一次：资料库是更新版本的 Flax 建的（装回了旧版本）就返回提示，界面只显示它，
+ * 不往下走（硬开会写坏）。别的错照常抛出
+ */
+export function openProblem(): string | null {
+  try {
+    app()
+    return null
+  } catch (e) {
+    if (e instanceof LibraryTooNewError) return e.message
+    throw e
+  }
 }

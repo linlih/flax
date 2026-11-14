@@ -1,5 +1,5 @@
 // 文献库：在读 / 待读 / 全部，搜索，筛选（文件夹、标签、状态）和排序，"添加"浮动按钮（选 PDF、粘贴链接、从 Zotero 导入）。
-// 长按一篇：复制引用、导出、改状态、删除。和桌面的论文表格（LibraryTable）、侧栏（Sidebar）对应。
+// 长按一篇：复制引用、导出、改状态、删除（进废纸篓，"更多 → 废纸篓"里放回或永久删除）。和桌面的论文表格（LibraryTable）、侧栏（Sidebar）对应。
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { router, Stack, useLocalSearchParams, useNavigation } from 'expo-router'
@@ -63,10 +63,10 @@ export default function LibraryScreen() {
     }
   }, [tagParam])
 
-  const { papers, tagColors, allFolders, allTags, importing, downloading } = useMemo(() => {
+  const { papers, trashCount, tagColors, allFolders, allTags, importing, downloading } = useMemo(() => {
     const lib = s.library
     const tags = lib.listTags()
-    return { papers: lib.listPapers(), tagColors: tagColorMap(tags), allTags: tags, allFolders: lib.listFolders(), importing: new Set(s.importer.importingIds()), downloading: new Set(s.importer.downloadingIds()) }
+    return { papers: lib.listPapers(), trashCount: lib.listTrash().length, tagColors: tagColorMap(tags), allTags: tags, allFolders: lib.listFolders(), importing: new Set(s.importer.importingIds()), downloading: new Set(s.importer.downloadingIds()) }
   }, [v])
 
   const counts = useMemo(
@@ -171,7 +171,9 @@ export default function LibraryScreen() {
           { label: '文件夹', icon: 'folder', onPress: () => setFolders(true) },
           { label: '从 Zotero 或 BibTeX 导入', icon: 'upload', onPress: () => void pickBibTeX() },
           { label: `导出 BibTeX（${shown.length || papers.length} 篇）`, icon: 'share', onPress: () => void exportList('bibtex'), disabled: !papers.length },
-          { label: `导出 RIS（${shown.length || papers.length} 篇）`, icon: 'share', onPress: () => void exportList('ris'), disabled: !papers.length }
+          { label: `导出 RIS（${shown.length || papers.length} 篇）`, icon: 'share', onPress: () => void exportList('ris'), disabled: !papers.length },
+          // 和桌面侧栏一样：有东西才出现
+          trashCount > 0 && { label: `废纸篓（${trashCount} 篇）`, icon: 'trash', onPress: () => router.push('/trash') }
         ]}
       />
 

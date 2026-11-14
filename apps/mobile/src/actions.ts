@@ -1,5 +1,5 @@
-// 几处界面都要用的操作：复制、分享文件、删除（能撤销）、摘到论文笔记、改阅读状态、应用自己的设置。
-import { Appearance } from 'react-native'
+// 几处界面都要用的操作：复制、分享文件、删除（能撤销，删掉的进废纸篓）、永久删除、摘到论文笔记、改阅读状态、应用自己的设置。
+import { Alert, Appearance } from 'react-native'
 import * as Clipboard from 'expo-clipboard'
 import * as Sharing from 'expo-sharing'
 import { Directory, File, Paths } from 'expo-file-system'
@@ -40,7 +40,7 @@ export function removePaper(id: string): void {
   if (!p) return
   s.library.removePaper(id)
   s.changed()
-  showNotice(`删掉了：${p.title}`, {
+  showNotice(`移到了废纸篓：${p.title}`, {
     action: {
       label: '撤销',
       run: () => {
@@ -49,6 +49,42 @@ export function removePaper(id: string): void {
       }
     }
   })
+}
+
+/** 从废纸篓放回文献库 */
+export function restoreFromTrash(id: string): void {
+  const s = app()
+  s.library.restorePaper(id)
+  s.changed()
+}
+
+/**
+ * 永久删除废纸篓里的论文（ids 为空就是清空废纸篓）。先问一次；删了返回 true。
+ * 记录留着当同步的删除标记；没有别的论文用到的 PDF 在本机和云端都删掉
+ */
+export async function purgePapers(ids: string[]): Promise<boolean> {
+  const s = app()
+  const trash = s.library.listTrash()
+  const want = ids.length ? trash.filter((p) => ids.includes(p.id)) : trash
+  if (!want.length) return false
+  await afterModalClose()
+  const ok = await new Promise<boolean>((resolve) =>
+    Alert.alert(
+      want.length === 1 ? `永久删除"${want[0]!.title}"？` : `永久删除这 ${want.length} 篇论文？`,
+      '论文的信息和批注在所有设备上都会删除，PDF 文件也一起删掉，不能恢复。写过的笔记不受影响。',
+      [
+        { text: '取消', style: 'cancel', onPress: () => resolve(false) },
+        { text: '永久删除', style: 'destructive', onPress: () => resolve(true) }
+      ],
+      { cancelable: true, onDismiss: () => resolve(false) }
+    )
+  )
+  if (!ok) return false
+  for (const p of want) s.library.purgePaper(p.id)
+  s.changed()
+  await s.cleanFiles()
+  showNotice(want.length === 1 ? '永久删除了 1 篇论文' : `永久删除了 ${want.length} 篇论文`)
+  return true
 }
 
 /** 手动改阅读状态；改成读过时给个撤销（读到最后点"标为读过"） */

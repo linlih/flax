@@ -1,18 +1,13 @@
 // 设置 › 同步：选同步的地方（坚果云、别的 WebDAV、本地文件夹），设同步密码，看同步状态。
 // 两步：先填连接信息并检查那里是不是已经有 Flax 的同步库；有就输入当时的同步密码加入，没有就新建并设同步密码。
 import { useEffect, useState } from 'react'
+import { plainHttp, PLAIN_HTTP_HINT } from '@flax/core'
 import type { SyncConnect, SyncStatus } from '../../../shared/api'
 import { api } from '../lib/library'
 import { KEYCHAIN } from '../lib/platform'
 import { Spinner } from './Icon'
 
 const JIANGUOYUN = 'https://dav.jianguoyun.com/dav/'
-
-/** http:// 而且不是本机地址：账号密码会明文发出去，提醒一下 */
-export function plainHttp(url: string): boolean {
-  const m = /^http:\/\/(\[[^\]]+\]|[^/:]+)/i.exec(url.trim())
-  return !!m && !['localhost', '127.0.0.1', '[::1]'].includes(m[1]!.toLowerCase())
-}
 type Kind = 'jianguoyun' | 'webdav' | 'folder'
 const KINDS: [Kind, string][] = [['jianguoyun', '坚果云'], ['webdav', '其他 WebDAV'], ['folder', '本地文件夹']]
 
@@ -227,7 +222,7 @@ function SyncForm({ canEncrypt, onDone }: { canEncrypt: boolean; onDone: () => v
             <label className="field">
               <span className="field-l">服务器地址</span>
               <input className="input" type="url" placeholder="例如 https://nas.local:5006/" value={url} onChange={(e) => setUrl(e.target.value)} spellCheck={false} />
-              {plainHttp(url) && <span className="hint">这个地址没有加密，账号密码会以明文发送。在家里的局域网里连 NAS 可以这样用；从外网连，请用 https:// 地址。</span>}
+              {plainHttp(url) && <span className="hint">{PLAIN_HTTP_HINT}</span>}
             </label>
           )}
           <div className="field-pair">

@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Alert, KeyboardAvoidingView, ScrollView, Text, View } from 'react-native'
 import { Stack } from 'expo-router'
-import { addedLabel } from '@flax/core'
+import { addedLabel, plainHttp, PLAIN_HTTP_HINT } from '@flax/core'
 import { app, useVersion } from '../../src/services'
 import { JIANGUOYUN } from '../../src/sync'
 import { Button, Chip, Field } from '../../src/ui/kit'
@@ -124,7 +124,7 @@ function Connect() {
         <Chip label="坚果云" selected={kind === 'jgy'} onPress={() => (setKind('jgy'), reset())} />
         <Chip label="其他 WebDAV" selected={kind === 'dav'} onPress={() => (setKind('dav'), reset())} />
       </View>
-      {kind === 'dav' ? <Field label="服务器地址" value={url} onChangeText={(x) => (setUrl(x), reset())} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://nas.example.com/dav/" /> : null}
+      {kind === 'dav' ? <Field label="服务器地址" value={url} onChangeText={(x) => (setUrl(x), reset())} autoCapitalize="none" autoCorrect={false} keyboardType="url" placeholder="https://nas.example.com/dav/" hint={plainHttp(url) ? PLAIN_HTTP_HINT : undefined} /> : null}
       <Field label={kind === 'jgy' ? '坚果云账号' : '用户名'} value={user} onChangeText={(x) => (setUser(x), reset())} autoCapitalize="none" autoCorrect={false} keyboardType={kind === 'jgy' ? 'email-address' : 'default'} textContentType="username" />
       <Field
         label={kind === 'jgy' ? '应用密码' : '密码'}
