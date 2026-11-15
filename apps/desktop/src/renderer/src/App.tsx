@@ -19,6 +19,8 @@ import { warmUp } from './reader/pdf'
 import { api, papersIn, useLibrary, useSyncStatus, type View } from './lib/library'
 import { mod, TRASH } from './lib/platform'
 import { STATUS_LABEL } from './lib/format'
+import { useAiStatus } from './lib/ai'
+import { identifyWithAi } from './lib/identify'
 import type { ReadingStatus } from '@flax/core'
 
 const TITLES: Record<string, string> = {
@@ -69,7 +71,9 @@ export function App() {
 
   const toast = useCallback((t: Omit<Toast, 'key'>) => setToasts((l) => [...l.filter((o) => !t.group || o.group !== t.group), { ...t, key: ++toastKey }]), [])
   const dismissToast = useCallback((key: number) => setToasts((l) => l.filter((t) => t.key !== key)), [])
-  const importing = useMemo(() => new Set(lib.importing), [lib.importing])
+  /** 正在交给 AI 识别的（包括排着队还没轮到的）：和正在联网查的一样显示成"识别中" */
+  const [identifying, setIdentifying] = useState<string[]>([])
+  const importing = useMemo(() => new Set([...lib.importing, ...identifying]), [lib.importing, identifying])
   const downloading = useMemo(() => new Set(lib.downloading), [lib.downloading])
 
   const counts = useMemo(() => {
@@ -211,6 +215,27 @@ export function App() {
     return () => cancelIdleCallback(id)
   }, [])
 
+  const aiStatus = useAiStatus()
+  /** 用户同意了：一个一个交给 AI 识别。失败的合成一条提示；连着两个失败多半是服务有问题，剩下的不再试 */
+  const identifyAll = async (ids: string[]) => {
+    const todo = ids.flatMap((id) => lib.papers.find((x) => x.id === id) ?? [])
+    setIdentifying((l) => [...l, ...todo.map((p) => p.id)])
+    const failed: string[] = []
+    let message = ''
+    let streak = 0
+    for (const p of todo) {
+      const r = streak < 2 ? await identifyWithAi(p) : { ok: false as const, message }
+      setIdentifying((l) => l.filter((id) => id !== p.id))
+      if (r.ok) streak = 0
+      else {
+        streak++
+        failed.push(p.title)
+        message ||= r.message
+      }
+    }
+    if (failed.length) toast({ text: `AI 没能识别${failed.length > 1 ? ` ${failed.length} 个 PDF` : `“${failed[0]}”`}：${message}` })
+  }
+
   // 粘贴 DOI 或 arXiv 链接直接添加
   useEffect(() => {
     const onPaste = async (e: ClipboardEvent) => {
@@ -219,7 +244,7 @@ export function App() {
       const text = e.clipboardData?.getData('text/plain')?.trim()
       if (!text) return
       const ok = await api.library.addFromText(text)
-      if (!ok) toast({ text: '粘贴的内容里没有找到 DOI 或 arXiv 编号' })
+      if (!ok) toast({ text: '粘贴的内容里没有找到 DOI、arXiv 编号或 ISBN' })
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)
@@ -329,7 +354,7 @@ export function App() {
       )}
       {reading && <Reader key={`${reading.id}:${reloads}`} onReloadFile={() => setReloads((n) => n + 1)} paper={reading} backLabel={title} onBack={() => setReadingId(null)} onInfo={() => { setSelId(reading.id); setReadingId(null); setView('all') }} toast={toast} notes={notes} jump={jump} onOpenNoteTitle={(t) => void openNoteTitle(t)} onOpenAnnotation={(id) => void openAnnotation(id)} onOpenSettings={() => { setReadingId(null); setView('settings') }} terms={lib.terms} onStatus={(st) => setStatus(reading.id, st)} />}
       {keys && <Shortcuts onClose={() => setKeys(false)} />}
-      <Notices notices={lib.notices} toasts={toasts} dismiss={lib.dismiss} dismissToast={dismissToast} onShowPaper={(id) => { setReadingId(null); setView('all'); setSelId(id) }} />
+      <Notices notices={lib.notices} toasts={toasts} dismiss={lib.dismiss} dismissToast={dismissToast} aiReady={aiStatus?.ready ?? false} onIdentify={(ids) => void identifyAll(ids)} onOpenSettings={() => { setReadingId(null); setView('settings') }} onShowPaper={(id) => { setReadingId(null); setView('all'); setSelId(id) }} />
     </div>
   )
 }

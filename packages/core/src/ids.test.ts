@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractArxivId, extractDoi } from './ids'
+import { extractArxivId, extractDoi, extractIsbn } from './ids'
 
 describe('extractArxivId', () => {
   it('finds a new-style id with version in a PDF header', () => {
@@ -35,5 +35,24 @@ describe('extractDoi', () => {
   })
   it('returns null without a DOI', () => {
     expect(extractDoi('no identifier here')).toBeNull()
+  })
+})
+
+describe('extractIsbn', () => {
+  it('reads a 13-digit ISBN with hyphens and ignores what follows', () => {
+    expect(extractIsbn('ISBN 978-0-306-40615-7 定价 59.00 元')).toBe('9780306406157')
+    expect(extractIsbn('ISBN-13: 978 0 306 40615 7')).toBe('9780306406157')
+  })
+  it('turns a 10-digit ISBN into 13 digits', () => {
+    expect(extractIsbn('ISBN 0-306-40615-2 (hardcover)')).toBe('9780306406157')
+  })
+  it('skips numbers whose check digit is wrong and takes the next one', () => {
+    expect(extractIsbn('ISBN 978-0-306-40615-8, ISBN 978-0-306-40615-7')).toBe('9780306406157')
+    expect(extractIsbn('ISBN 978-0-306-40615-8')).toBeNull()
+  })
+  it('needs the word ISBN unless the whole text is the number', () => {
+    expect(extractIsbn('call 9780306406157 now')).toBeNull()
+    expect(extractIsbn('978-0-306-40615-7', true)).toBe('9780306406157')
+    expect(extractIsbn('see page 9780306406157 of it', true)).toBeNull()
   })
 })

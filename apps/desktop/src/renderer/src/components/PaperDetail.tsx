@@ -3,6 +3,8 @@ import { splitName, TAG_COLORS, type Author, type Folder, type Paper, type Paper
 import type { PaperPatch } from '@flax/core'
 import type { Candidate } from '../../../shared/api'
 import { Icon, Spinner } from './Icon'
+import { useAiStatus } from '../lib/ai'
+import { identifyWithAi } from '../lib/identify'
 import { api } from '../lib/library'
 import { addedLabel, authorLine, MATCH_HINT, sizeLabel, SOURCE_LABEL, STATUS_LABEL } from '../lib/format'
 import { progress, STATUSES } from '../lib/status'
@@ -27,11 +29,11 @@ const ROLE_LABEL = { main: '主文件', preprint: '另一个版本', supplement:
 export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onClose, onRead, onRemove, onStatus }: Props) {
   const update = (patch: PaperPatch) => void api.library.update(p.id, patch)
   const titleRef = useRef<HTMLTextAreaElement>(null)
-  const hasIds = Boolean(p.identifiers.arxiv || p.identifiers.doi)
+  const hasIds = Boolean(p.identifiers.arxiv || p.identifiers.doi || p.identifiers.isbn)
   const byline = [authorLine(p), p.year].filter(Boolean).join(' · ')
   // 信息平时只看不改：收着，点"编辑"才展开成表单。识别不完整、需要手动填的时候直接展开
   const [editing, setEditing] = useState(p.needsMatch)
-  const facts = ([['发表', p.venue], ['DOI', p.identifiers.doi], ['arXiv', p.identifiers.arxiv]] as [string, string | undefined][]).filter((f): f is [string, string] => !!f[1])
+  const facts = ([['发表', p.venue], ['DOI', p.identifiers.doi], ['arXiv', p.identifiers.arxiv], ['ISBN', p.identifiers.isbn]] as [string, string | undefined][]).filter((f): f is [string, string] => !!f[1])
 
   return (
     <aside className="inspector" aria-labelledby="insp-title">
@@ -108,7 +110,7 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
           </div>
           {!editing ? (
             <dl className="card insp-facts">
-              {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className={k === 'DOI' || k === 'arXiv' ? 'mono' : undefined}>{v}</dd></div>)}
+              {facts.map(([k, v]) => <div key={k}><dt>{k}</dt><dd className={k !== '发表' ? 'mono' : undefined}>{v}</dd></div>)}
               {facts.length === 0 && <div><dd className="hint">还没有发表信息和编号。点"编辑"可以自己填。</dd></div>}
             </dl>
           ) : (
@@ -125,6 +127,7 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
             <div className="field-pair">
               <Field label="DOI" value={p.identifiers.doi ?? ''} placeholder="10.1145/…" mono onCommit={(v) => update({ identifiers: withId(p, 'doi', v.toLowerCase()) })} />
               <Field label="arXiv" value={p.identifiers.arxiv ?? ''} placeholder="2401.01234" mono onCommit={(v) => update({ identifiers: withId(p, 'arxiv', v) })} />
+              <Field label="ISBN" value={p.identifiers.isbn ?? ''} placeholder="书才有，13 位数字" mono onCommit={(v) => update({ identifiers: withId(p, 'isbn', v.replace(/[^0-9Xx]/g, '')) })} />
             </div>
             <Field label="摘要" value={p.abstract ?? ''} multiline rows={5} placeholder="没有摘要" onCommit={(v) => update({ abstract: v || undefined })} />
           </div>
@@ -164,7 +167,18 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
 function MatchCard({ paper: p, busy, onManual }: { paper: Paper; busy: boolean; onManual: () => void }) {
   const [state, setState] = useState<'idle' | 'loading' | 'done' | 'error'>('idle')
   const [list, setList] = useState<Candidate[]>([])
-  useEffect(() => setState('idle'), [p.id])
+  const aiReady = useAiStatus()?.ready ?? false
+  /** 正在取前几页、等 AI 回答；出错时是原因 */
+  const [ai, setAi] = useState<'idle' | 'busy' | { error: string }>('idle')
+  useEffect(() => {
+    setState('idle')
+    setAi('idle')
+  }, [p.id])
+  const askAi = async () => {
+    setAi('busy')
+    const r = await identifyWithAi(p)
+    setAi(r.ok ? 'idle' : { error: r.message })
+  }
 
   const search = async () => {
     setState('loading')
@@ -180,7 +194,7 @@ function MatchCard({ paper: p, busy, onManual }: { paper: Paper; busy: boolean; 
     void api.library.applyCandidate(p.id, meta as PaperMeta)
   }
 
-  if (busy) {
+  if (busy || ai === 'busy') {
     return (
       <section className="tray match" aria-live="polite">
         <div className="tray-h tray-h-row"><Spinner size={14} /><span style={{ fontWeight: 500 }}>正在识别标题和作者…</span></div>
@@ -207,12 +221,14 @@ function MatchCard({ paper: p, busy, onManual }: { paper: Paper; busy: boolean; 
         </div>
       )}
       {state === 'error' && <p className="hint" style={{ margin: '0 8px' }}>搜索失败：检查网络后再试。</p>}
+      {typeof ai === 'object' && <p className="hint" style={{ margin: '0 8px' }}>AI 没能识别：{ai.error}</p>}
       <div className="match-actions">
         {state !== 'done' && (
           <button type="button" className="btn btn-s btn-p" disabled={state === 'loading'} onClick={() => void search()}>
             {state === 'loading' && <Spinner />}按标题搜索
           </button>
         )}
+        {aiReady && p.files.length > 0 && <button type="button" className="btn btn-s" title="把前几页的文字（扫描版是页面图片）发给你接入的 AI，会用掉一点 AI 额度" onClick={() => void askAi()}>用 AI 识别</button>}
         <button type="button" className="btn btn-s" onClick={onManual}>手动填写</button>
         <button type="button" className="btn btn-s" onClick={() => void api.library.update(p.id, { title: p.title })}>信息没问题</button>
       </div>
@@ -392,7 +408,7 @@ function parseAuthors(s: string): Author[] {
   return s.split(/\s*[,，;；]\s*|\s+and\s+/).map((x) => x.trim()).filter(Boolean).map(splitName)
 }
 
-function withId(p: Paper, key: 'doi' | 'arxiv', v: string) {
+function withId(p: Paper, key: 'doi' | 'arxiv' | 'isbn', v: string) {
   const ids = { ...p.identifiers }
   if (v) ids[key] = v
   else delete ids[key]

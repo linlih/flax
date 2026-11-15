@@ -4,7 +4,7 @@ import { DatabaseSync } from 'node:sqlite'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { cp, mkdir, rename, rm } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
-import { Library, LibraryTooNewError, resetDeviceIdentity, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
+import { IDENTIFY_IMAGES_MAX, IDENTIFY_TEXT_MAX, Library, LibraryTooNewError, resetDeviceIdentity, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PageImage, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
 import type { ImportNotice, LibrarySnapshot, MenuCommand, SyncConnect } from '../shared/api'
 import { Importer } from './importer'
 import { createNet } from './net'
@@ -547,6 +547,18 @@ function setup(): void {
     fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : input, init)
   })
   void ai.checkApple()
+  // 用户点了"用 AI 识别"：渲染进程把前几页的文字或图片传过来，这里只转给 AI，不自己去读别的
+  handle('library:identifyWithAi', async (id, input) => {
+    const paperId = str(id, 'id')
+    const raw = (input ?? {}) as { text?: unknown; images?: unknown }
+    const images = (Array.isArray(raw.images) ? raw.images : [])
+      .filter((im): im is PageImage => !!im && typeof im === 'object' && (im.mime === 'image/jpeg' || im.mime === 'image/png') && typeof im.base64 === 'string' && im.base64.length < 4_000_000)
+      .slice(0, IDENTIFY_IMAGES_MAX)
+    const r = await ai.identify({ ...(typeof raw.text === 'string' ? { text: raw.text.slice(0, IDENTIFY_TEXT_MAX) } : {}), images })
+    if (!r.ok) return r
+    await importer.applyIdentified(paperId, r.meta)
+    return { ok: true }
+  })
   handle('ai:status', () => ai.status())
   handle('ai:saveService', (service, key) => ai.saveService(service, key === null ? null : typeof key === 'string' ? key : undefined))
   handle('ai:removeService', (id) => ai.removeService(str(id, 'id')))

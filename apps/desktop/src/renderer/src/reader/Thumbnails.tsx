@@ -1,4 +1,4 @@
-// 左边的缩略图栏：滚到才画，当前页描边，有批注的页带一个小点。
+// 左边栏里的缩略图：滚到才画，当前页描边，有批注的页带一个小点。
 import { useEffect, useRef, useState } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 
@@ -27,7 +27,6 @@ export function Thumbnails({ doc, current, marked, onGo }: { doc: PDFDocumentPro
 
   const pages = Array.from({ length: doc.numPages }, (_, i) => i + 1)
   return (
-    <nav className="thumbs tray" aria-label="页面缩略图">
       <div ref={listRef} className="thumbs-list">
         {pages.map((n) => (
           <button key={n} type="button" data-page={n} className="thumb-item" aria-current={n === current ? 'page' : undefined} aria-label={`第 ${n} 页`} onClick={() => onGo(n)}>
@@ -36,7 +35,6 @@ export function Thumbnails({ doc, current, marked, onGo }: { doc: PDFDocumentPro
           </button>
         ))}
       </div>
-    </nav>
   )
 }
 

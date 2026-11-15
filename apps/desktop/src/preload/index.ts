@@ -20,6 +20,7 @@ const library = {
   remove: invoke('remove'),
   restore: invoke('restore'),
   retryLookup: invoke('retryLookup'),
+  identifyWithAi: invoke('identifyWithAi'),
   downloadPdf: invoke('downloadPdf'),
   searchCandidates: invoke('searchCandidates'),
   applyCandidate: invoke('applyCandidate'),

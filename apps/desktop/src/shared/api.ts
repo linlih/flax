@@ -1,5 +1,5 @@
 // 主进程和渲染进程之间的接口。渲染进程只能通过 window.api 调这些方法。
-import type { Annotation, AnnotationPatch, DevicePosition, TrashedPaper, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
+import type { Annotation, AnnotationPatch, DevicePosition, IdentifyInput, TrashedPaper, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
 
 export interface LibrarySnapshot {
   papers: Paper[]
@@ -34,6 +34,8 @@ export interface LibraryApi {
   remove(id: string): Promise<void>
   restore(id: string): Promise<void>
   retryLookup(id: string): Promise<void>
+  /** 用户同意以后：把前几页（文字或图片）发给接入的 AI，读出书名作者这些并填上。失败时返回原因 */
+  identifyWithAi(id: string, input: IdentifyInput): Promise<{ ok: true } | { ok: false; message: string }>
   /** 从 arXiv 下载 PDF；没有 arXiv 编号时返回 false */
   downloadPdf(id: string): Promise<boolean>
   searchCandidates(id: string): Promise<Candidate[]>

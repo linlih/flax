@@ -73,13 +73,16 @@ export function toBibTeX(papers: CitePaper[]): string {
   return papers
     .map((p, i) => {
       const id = p.identifiers
-      const type = p.venue ? 'article' : 'misc'
+      // 有 ISBN、没有 DOI 的是书：出版社写在 publisher 里
+      const book = Boolean(id.isbn && !id.doi && !id.arxiv)
+      const type = book ? 'book' : p.venue ? 'article' : 'misc'
       const fields: [string, string | undefined][] = [
         ['title', `{${bibEscape(p.title)}}`],
         ['author', p.authors.length ? p.authors.map((a) => (a.given ? `${bibEscape(a.family)}, ${bibEscape(a.given)}` : `{${bibEscape(a.family)}}`)).join(' and ') : undefined],
         ['year', p.year ? String(p.year) : undefined],
-        ['journal', p.venue ? bibEscape(p.venue) : undefined],
+        [book ? 'publisher' : 'journal', p.venue ? bibEscape(p.venue) : undefined],
         ['doi', id.doi],
+        ['isbn', book ? id.isbn : undefined],
         ['eprint', id.arxiv],
         ['archivePrefix', id.arxiv ? 'arXiv' : undefined],
         ['url', id.url ?? (id.arxiv && !id.doi ? `https://arxiv.org/abs/${id.arxiv}` : undefined)],
@@ -96,13 +99,15 @@ export function toRIS(papers: CitePaper[]): string {
   return papers
     .map((p) => {
       const id = p.identifiers
+      const book = Boolean(id.isbn && !id.doi && !id.arxiv)
       const lines: [string, string | undefined][] = [
-        ['TY', p.venue ? 'JOUR' : id.arxiv ? 'PREP' : 'GEN'],
+        ['TY', book ? 'BOOK' : p.venue ? 'JOUR' : id.arxiv ? 'PREP' : 'GEN'],
         ['TI', p.title],
         ...p.authors.map((a): [string, string] => ['AU', a.given ? `${a.family}, ${a.given}` : a.family]),
         ['PY', p.year ? String(p.year) : undefined],
-        ['T2', p.venue],
+        [book ? 'PB' : 'T2', p.venue],
         ['DO', id.doi],
+        ['SN', book ? id.isbn : undefined],
         ['UR', id.url ?? (id.arxiv ? `https://arxiv.org/abs/${id.arxiv}` : undefined)],
         ['AB', p.abstract],
         ...(p.tags ?? []).map((t): [string, string] => ['KW', t]),

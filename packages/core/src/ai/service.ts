@@ -8,6 +8,8 @@ import type { AiChatTurn, AiConfig, AiConversationList, AiEvent, AiModel, AiStat
 import { mtEngineOf } from './mtEngines'
 import { machineTranslate, toEnglish, type MtCrypto } from './mt'
 import { levelsFor, resolveEffort } from './effort'
+import { IDENTIFY_IMAGES_MAX, IDENTIFY_SYSTEM, identifyPrompt, parseIdentified, type IdentifyInput } from './identify'
+import type { PaperMeta } from '../model'
 import { AiError, makeProvider, translateSystem, type Effort, type FetchLike, type Provider, type Turn } from './providers'
 import type { AiSettings } from './settings'
 
@@ -345,6 +347,31 @@ export class AiService {
       }
     })()
     return requestId
+  }
+
+  /**
+   * 看 PDF 的前几页，读出书名作者这些。只在用户点了以后调用；发出去的就是传进来的这几页。
+   * 不走流式事件：调用方等结果就行
+   */
+  async identify(input: IdentifyInput): Promise<{ ok: true; meta: PaperMeta } | { ok: false; message: string }> {
+    const images = (input.images ?? []).slice(0, IDENTIFY_IMAGES_MAX)
+    const hasText = Boolean(input.text?.trim())
+    if (!hasText && !images.length) return { ok: false, message: '这个 PDF 的前几页读不出内容。' }
+    const conn = this.d.settings.ready() ? this.d.settings.connection() : null
+    if (!conn) return { ok: false, message: '还没有接入 AI。在设置里添加一个服务、选好模型就能用。' }
+    try {
+      const turn: Turn = { role: 'user', text: identifyPrompt(input), ...(hasText ? {} : { images }) }
+      const r = await this.makeProvider(conn.config, conn.key).run({ turns: [turn], system: IDENTIFY_SYSTEM, quick: true, signal: timeout(120_000), onText: () => {} })
+      this.d.settings.addUsage(r.usage)
+      this.d.onStatus(this.status())
+      const meta = parseIdentified(r.text)
+      return meta ? { ok: true, meta } : { ok: false, message: 'AI 没能从前几页读出标题。' }
+    } catch (e) {
+      const message = e instanceof Error ? e.message : String(e)
+      // 发图片时服务报错，多半是模型不能看图
+      const blind = !hasText && e instanceof AiError && e.code === 'other'
+      return { ok: false, message: blind ? `${message}（这个模型可能不能看图，可以在 AI 面板里换一个能看图的）` : message }
+    }
   }
 
   private get convs(): Conversations {

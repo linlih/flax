@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { findIdentifiers, guessFromPdf, identifyPdf, identifyText, parseArxivFeed, parseCrossrefWork, searchByTitle, splitName, type FetchText, type PdfFacts } from './metadata'
+import { findIdentifiers, guessFromPdf, identifyPdf, identifyText, parseArxivFeed, parseOpenLibrary, parseCrossrefWork, searchByTitle, splitName, type FetchText, type PdfFacts } from './metadata'
 
 // 测试用的响应都是自己编的，只模仿 arXiv Atom 和 Crossref JSON 的结构
 const ARXIV_FEED = `<?xml version="1.0" encoding="UTF-8"?>
@@ -139,6 +139,38 @@ describe('identifyText', () => {
   })
   it('returns null for text without an id', async () => {
     expect(await identifyText('hello world', fakeFetch({}))).toBeNull()
+  })
+})
+
+// 编的 Open Library 响应，只模仿结构
+const BOOK = { 'ISBN:9780306406157': { title: 'A Field Guide to Examples', subtitle: 'Second Edition', authors: [{ name: 'Grace Hopper' }], publishers: [{ name: 'Example Press' }], publish_date: '3 January 2017' } }
+
+describe('books', () => {
+  it('reads title, authors, publisher and year from Open Library', () => {
+    expect(parseOpenLibrary(BOOK, '9780306406157')).toEqual({
+      title: 'A Field Guide to Examples: Second Edition',
+      authors: [{ given: 'Grace', family: 'Hopper' }],
+      identifiers: { isbn: '9780306406157' },
+      year: 2017,
+      venue: 'Example Press',
+      source: 'openlibrary'
+    })
+    expect(parseOpenLibrary({}, '9780306406157')).toBeNull()
+  })
+  it('looks a book up by the ISBN found in the PDF', async () => {
+    const r = await identifyPdf(facts({ isbn: '9780306406157', pageCount: 300 }), fakeFetch({ 'openlibrary.org': { status: 200, body: JSON.stringify(BOOK) } }))
+    expect(r).toMatchObject({ needsMatch: false, meta: { title: 'A Field Guide to Examples: Second Edition', identifiers: { isbn: '9780306406157' } } })
+  })
+  it('keeps what the PDF says, and the ISBN, when the book is not in Open Library', async () => {
+    const r = await identifyPdf(facts({ isbn: '9780306406157', info: { title: '深度学习', author: '张三、李四' } }), fakeFetch({ 'openlibrary.org': { status: 200, body: '{}' } }))
+    expect(r).toMatchObject({ needsMatch: true, matchIssue: 'not_found', meta: { title: '深度学习', authors: [{ family: '张三' }, { family: '李四' }], identifiers: { isbn: '9780306406157' } } })
+  })
+  it('ignores the ISBN when the PDF has a DOI: a paper in proceedings prints the ISBN of the whole volume', () => {
+    expect(findIdentifiers({ fileName: 'p.pdf', info: {}, text: 'doi 10.9999/xyz.2', isbn: '9780306406157' })).toEqual({ doi: '10.9999/xyz.2' })
+  })
+  it('takes a pasted ISBN', async () => {
+    const r = await identifyText('978-0-306-40615-7', fakeFetch({ 'openlibrary.org': { status: 200, body: JSON.stringify(BOOK) } }))
+    expect(r?.meta.venue).toBe('Example Press')
   })
 })
 

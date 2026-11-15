@@ -263,8 +263,9 @@ textarea.inp { min-height: 0; }
 .anno-card-note textarea::placeholder { color: var(--placeholder); }
 
 /* 缩略图栏 */
-.thumbs { flex: 0 0 148px; padding: 8px 0; }
-.thumbs-list { height: 100%; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 4px 0 8px; }
+.thumbs { flex: 0 0 148px; padding: 8px 0; display: flex; flex-direction: column; min-height: 0; }
+.thumbs.toc { flex-basis: 248px; }
+.thumbs-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 4px 0 8px; }
 .thumb-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
 .thumb-item:hover { background: var(--hover); }
 .thumb-frame { display: block; border-radius: 3px; box-shadow: 0 0 0 1px var(--border); }
@@ -275,6 +276,24 @@ textarea.inp { min-height: 0; }
 .thumb-n { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; color: var(--text-2); }
 .thumb-item[aria-current="page"] .thumb-n { color: var(--accent-text); font-weight: 500; }
 .thumb-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ul-yellow); }
+/* 有目录的 PDF：栏顶上切换"页面 / 目录" */
+.side-seg { flex: none; display: flex; gap: 2px; margin: 0 8px 8px; padding: 2px; border-radius: 8px; background: var(--segmented); }
+.side-seg button { flex: 1; height: 24px; border: 0; border-radius: 6px; background: transparent; color: var(--text-2); font-size: 12px; font-weight: 500; cursor: pointer; }
+.side-seg button[aria-pressed="true"] { background: var(--seg-on); color: var(--text); box-shadow: var(--shadow-card); }
+.toc-list { flex: 1; min-height: 0; overflow: auto; padding: 0 6px 8px; }
+.toc-row { display: flex; align-items: flex-start; border-radius: 6px; }
+.toc-row:hover { background: var(--hover); }
+.toc-row[aria-current="true"] { background: var(--accent-soft); }
+.toc-fold { flex: none; width: 20px; height: 28px; display: inline-flex; align-items: center; justify-content: center; padding: 0; border: 0; background: transparent; color: var(--text-2); cursor: pointer; }
+.toc-fold svg { transition: transform .12s; }
+.toc-fold[aria-expanded="true"] svg { transform: rotate(90deg); }
+.toc-go { flex: 1; min-width: 0; display: flex; align-items: baseline; gap: 8px; padding: 5px 6px 5px 0; border: 0; background: transparent; color: var(--text); font-size: 13px; line-height: 18px; text-align: left; cursor: pointer; }
+.toc-go:disabled { color: var(--text-2); cursor: default; }
+.toc-t { flex: 1; min-width: 0; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; }
+.toc-p { flex: none; font-size: 12px; color: var(--text-2); }
+.toc-row[aria-current="true"] .toc-go { color: var(--accent-text); font-weight: 500; }
+.toc-row[aria-current="true"] .toc-p { color: var(--accent-text); }
+@media (prefers-reduced-motion: reduce) { .toc-fold svg { transition: none; } }
 
 /* 批注列表 */
 .reader-panel { position: relative; flex: 0 0 320px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--tray); }
@@ -326,6 +345,7 @@ textarea.inp { min-height: 0; }
 @media (max-width: 1180px) {
   .reader-panel { flex-basis: 260px; }
   .thumbs { flex-basis: 128px; }
+  .thumbs.toc { flex-basis: 228px; }
 }
 
 /* —— 列表右边的详情栏（点一下论文显示） —— */

@@ -457,6 +457,39 @@ describe('service', () => {
     expect(Object.keys(seen[0]!)).not.toContain('paper')
   })
 
+  it('reads book details from the first pages it is handed: text when there is some, images otherwise', async () => {
+    const answer = '{"title": "深度学习", "authors": ["张三"], "publisher": "示例出版社", "year": 2017, "isbn": null, "doi": null}'
+    const { svc, seen } = setup(async () => ({ text: answer, model: 'm', usage: { inputTokens: 5, outputTokens: 5, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 } }))
+    const img = { mime: 'image/jpeg' as const, base64: 'AAAA' }
+    expect(await svc.identify({ text: '深度学习 张三 著', images: [img] })).toMatchObject({ ok: true, meta: { title: '深度学习', venue: '示例出版社', source: 'ai' } })
+    expect(seen[0]!.turns[0]).toEqual({ role: 'user', text: '下面是这份 PDF 前几页的文字：\n\n深度学习 张三 著' })
+    expect(seen[0]!.system).toContain('JSON')
+    await svc.identify({ images: [img, img, img, img, img] })
+    expect(seen[1]!.turns[0]!.images).toHaveLength(4)
+    expect(await svc.identify({})).toMatchObject({ ok: false })
+    expect(seen).toHaveLength(2)
+    expect(svc.status().usage.calls).toBe(2)
+  })
+
+  it('tells the user when the model answer has no title, and hints at a model that cannot see images', async () => {
+    const none = setup(async () => ({ text: '看不清。', model: 'm', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 } }))
+    expect(await none.svc.identify({ text: 'x' })).toEqual({ ok: false, message: 'AI 没能从前几页读出标题。' })
+    const blind = setup(async () => { throw new AiError('other', '服务出错（400）') })
+    const r = await blind.svc.identify({ images: [{ mime: 'image/jpeg', base64: 'AAAA' }] })
+    expect(r).toMatchObject({ ok: false })
+    expect((r as { message: string }).message).toContain('不能看图')
+  })
+
+  it('sends page images in the shape each kind of service expects', async () => {
+    let body: { messages: { role: string; content: unknown }[] } | undefined
+    const p = openaiProvider({ vendor: 'custom', provider: 'openai', model: 'm', baseUrl: 'http://localhost:1/v1' }, null, async (_u, init) => {
+      body = JSON.parse(String(init?.body))
+      return new Response('data: [DONE]\n\n')
+    })
+    await p.run(req({ turns: [{ role: 'user', text: '看图', images: [{ mime: 'image/jpeg', base64: 'AAAA' }] }] }))
+    expect(body!.messages[1]!.content).toEqual([{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AAAA' } }, { type: 'text', text: '看图' }])
+  })
+
   it('translates only the selected text with the glossary, and keeps it out of the conversation', async () => {
     const { svc, seen, settle, settings } = setup(async () => ({ text: '注意力头', model: 'm', usage: { inputTokens: 1, outputTokens: 1, cacheReadTokens: 0, cacheWriteTokens: 0, costUsd: 0 } }))
     svc.translate('each atten-\ntion  head', [{ term: 'attention head', translation: '注意力头' }])

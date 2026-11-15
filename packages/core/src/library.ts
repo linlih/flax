@@ -42,7 +42,7 @@ export interface LibraryOptions {
   uuid?: () => string
 }
 
-export type DuplicateReason = 'file' | 'doi' | 'arxiv' | 'title'
+export type DuplicateReason = 'file' | 'doi' | 'arxiv' | 'isbn' | 'title'
 
 export type PaperPatch = Partial<
   Pick<Paper, 'title' | 'authors' | 'year' | 'venue' | 'abstract' | 'identifiers' | 'readingStatus' | 'rating' | 'tags' | 'folderIds' | 'lastOpenedAt' | 'readingPosition'>
@@ -236,7 +236,7 @@ export class Library {
   }
 
   /** 按文件哈希、DOI、arXiv 编号、标题依次找库里已有的同一篇 */
-  findDuplicate(q: { hash?: string; doi?: string; arxiv?: string; title?: string }, exceptId?: UUID): { paper: Paper; reason: DuplicateReason } | null {
+  findDuplicate(q: { hash?: string; doi?: string; arxiv?: string; isbn?: string; title?: string }, exceptId?: UUID): { paper: Paper; reason: DuplicateReason } | null {
     const pick = (sql: string, v: string, reason: DuplicateReason) => {
       const rows = this.db.prepare(sql).all(v) as { data: string }[]
       const p = rows.map((r) => JSON.parse(r.data) as Paper).find((x) => x.id !== exceptId)
@@ -253,6 +253,11 @@ export class Library {
     }
     if (q.arxiv) {
       const r = pick(`${live} WHERE p.arxiv = ? AND p.deleted = 0`, q.arxiv, 'arxiv')
+      if (r) return r
+    }
+    if (q.isbn) {
+      // 书很少，不单独建一列：直接从 JSON 里比
+      const r = pick(`${live} WHERE json_extract(p.data, '$.identifiers.isbn') = ? AND p.deleted = 0`, q.isbn, 'isbn')
       if (r) return r
     }
     // 标题太短容易误判（例如 "Introduction"），只比较足够长的标题

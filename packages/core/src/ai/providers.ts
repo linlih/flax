@@ -14,6 +14,8 @@ export interface Turn {
   /** 服务原样返回的内容（Anthropic 的 content 块，含思考块）；同一个模型时原样回传，保持历史只追加不改动 */
   raw?: unknown
   rawProvider?: AiConfig['provider']
+  /** 跟这条一起发的图片（识别扫描版的封面时用）；只有用户这边的才发 */
+  images?: { mime: string; base64: string }[]
 }
 
 /** 具体的思考深度（选“自动”时不填） */
@@ -84,7 +86,7 @@ export function anthropicProvider(config: AiConfig, key: string | null, fetch?: 
     const messages: Anthropic.Beta.BetaMessageParam[] = req.turns.map((t) =>
       t.role === 'assistant'
         ? { role: 'assistant', content: t.rawProvider === 'anthropic' && Array.isArray(t.raw) ? (t.raw as Anthropic.Beta.BetaContentBlockParam[]) : stripCitations(t.text) }
-        : { role: 'user', content: t.text }
+        : { role: 'user', content: t.images?.length ? [...t.images.map((im) => ({ type: 'image' as const, source: { type: 'base64' as const, media_type: im.mime as 'image/jpeg', data: im.base64 } })), { type: 'text' as const, text: t.text }] : t.text }
     )
     const fallback = official && FALLBACK_MODELS.has(config.model)
     return {
@@ -185,7 +187,10 @@ export function openaiProvider(config: AiConfig, key: string | null, fetch: Fetc
 
   return {
     async run(req) {
-      const messages = [{ role: 'system', content: req.system ?? SYSTEM }, ...req.turns.map((t) => ({ role: t.role, content: t.role === 'assistant' ? stripCitations(t.text) : t.text }))]
+      const messages = [{ role: 'system', content: req.system ?? SYSTEM }, ...req.turns.map((t) => ({
+        role: t.role,
+        content: t.role === 'assistant' ? stripCitations(t.text) : t.images?.length ? [...t.images.map((im) => ({ type: 'image_url', image_url: { url: `data:${im.mime};base64,${im.base64}` } })), { type: 'text', text: t.text }] : t.text
+      }))]
       // OpenAI 兼容接口的 reasoning_effort 只有 low / medium / high
       const reasoning = req.effort ? { reasoning_effort: req.effort === 'max' || req.effort === 'xhigh' ? 'high' : req.effort } : {}
       const res = await post({ model: config.model, messages, stream: true, stream_options: { include_usage: true }, ...reasoning }, req.signal)

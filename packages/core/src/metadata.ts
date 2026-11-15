@@ -1,7 +1,7 @@
-// 识别论文：从 PDF 里找编号 → 查 arXiv / Crossref → 都不行就从 PDF 文字猜。
+// 识别论文和书：从 PDF 里找编号 → 查 arXiv / Crossref（书按 ISBN 查 Open Library）→ 都不行就从 PDF 文字猜。
 // 网络请求由调用方注入，这里只有解析和决策逻辑，方便测试。
 import type { Author, MatchIssue, PaperMeta } from './model'
-import { extractArxivId, extractDoi } from './ids'
+import { extractArxivId, extractDoi, extractIsbn } from './ids'
 import { normalizeTitle, titleSimilarity } from './text'
 
 export type FetchText = (url: string) => Promise<{ status: number; body: string }>
@@ -23,6 +23,8 @@ export interface PdfFacts {
   /** 第一页的文字行，带字号 */
   lines: TextLine[]
   pageCount: number
+  /** 像书的 PDF（页数多）在前后几页找到的 ISBN，13 位数字 */
+  isbn?: string
 }
 
 export interface Identified {
@@ -33,45 +35,67 @@ export interface Identified {
 
 const ARXIV_API = 'https://export.arxiv.org/api/query'
 const CROSSREF_API = 'https://api.crossref.org/works'
+const OPENLIBRARY_API = 'https://openlibrary.org/api/books'
+
+export interface FoundIds {
+  arxiv?: string
+  doi?: string
+  isbn?: string
+}
 
 /** arXiv 在 PDF 左边加的戳，例如 "arXiv:1706.03762v7 [cs.CL] 2 Aug 2023"，比正文里的编号可靠 */
 const ARXIV_STAMP = /arXiv:(\d{4}\.\d{4,5})(v\d+)?\s*\[[a-z-]+(?:\.[A-Za-z-]+)?\]/
 /** arXiv 自己注册的 DOI，等同于 arXiv 编号 */
 const ARXIV_DOI = /^10\.48550\/arxiv\.(\d{4}\.\d{4,5})$/
 
-export function findIdentifiers(f: Pick<PdfFacts, 'fileName' | 'info' | 'text'>): { arxiv?: string; doi?: string } {
+export function findIdentifiers(f: Pick<PdfFacts, 'fileName' | 'info' | 'text' | 'isbn'>): FoundIds {
   const stamp = ARXIV_STAMP.exec(f.text)
   const arxiv = stamp?.[1] ?? extractArxivId(f.fileName)?.id ?? extractArxivId(f.text)?.id
   let doi = extractDoi([f.info.subject, f.info.keywords].filter(Boolean).join(' ')) ?? extractDoi(f.text) ?? undefined
   const viaDoi = doi ? ARXIV_DOI.exec(doi)?.[1] : undefined
   if (viaDoi) doi = undefined
-  const out: { arxiv?: string; doi?: string } = {}
+  const out: FoundIds = {}
   if (arxiv ?? viaDoi) out.arxiv = (arxiv ?? viaDoi)!
   if (doi) out.doi = doi
+  // 论文集里的论文第一页也印着整本论文集的 ISBN，所以有 DOI 或 arXiv 编号时不用它
+  if (f.isbn && !out.arxiv && !out.doi) out.isbn = f.isbn
   return out
 }
 
 export async function identifyPdf(f: PdfFacts, fetchText: FetchText): Promise<Identified> {
   const ids = findIdentifiers(f)
   const guess = guessFromPdf(f)
-  if (!ids.arxiv && !ids.doi) return { meta: guess, needsMatch: true, matchIssue: 'no_id' }
+  if (!ids.arxiv && !ids.doi && !ids.isbn) return { meta: guess, needsMatch: true, matchIssue: 'no_id' }
   const r = await lookupIds(ids, fetchText)
   if (r.meta) return { meta: r.meta, needsMatch: false }
   // 编号找到了但没查到：保留编号，之后可以重试
   return { meta: { ...guess, identifiers: { ...guess.identifiers, ...ids } }, needsMatch: true, matchIssue: r.issue }
 }
 
-/** 用户粘贴的 DOI、arXiv 编号或链接 */
-export async function identifyText(text: string, fetchText: FetchText): Promise<Identified | null> {
+/** 用户粘贴的文字里的编号：DOI、arXiv 编号或链接，都没有再看是不是 ISBN */
+export function idsInText(text: string): FoundIds {
   const ids = findIdentifiers({ fileName: '', info: {}, text })
-  if (!ids.arxiv && !ids.doi) return null
+  if (ids.arxiv || ids.doi) return ids
+  const isbn = extractIsbn(text, true)
+  return isbn ? { isbn } : {}
+}
+
+/** 用户粘贴的 DOI、arXiv 编号、链接或 ISBN */
+export async function identifyText(text: string, fetchText: FetchText): Promise<Identified | null> {
+  const ids = idsInText(text)
+  if (!ids.arxiv && !ids.doi && !ids.isbn) return null
   const r = await lookupIds(ids, fetchText)
   if (r.meta) return { meta: r.meta, needsMatch: false }
-  const label = ids.arxiv ? `arXiv:${ids.arxiv}` : ids.doi!
+  const label = idLabel(ids)
   return { meta: { title: label, authors: [], identifiers: ids, source: 'user' }, needsMatch: true, matchIssue: r.issue }
 }
 
-async function lookupIds(ids: { arxiv?: string; doi?: string }, fetchText: FetchText): Promise<{ meta?: PaperMeta; issue: MatchIssue }> {
+/** 还没查到信息时拿编号当标题 */
+export function idLabel(ids: FoundIds): string {
+  return ids.arxiv ? `arXiv:${ids.arxiv}` : ids.doi ?? `ISBN ${ids.isbn}`
+}
+
+async function lookupIds(ids: FoundIds, fetchText: FetchText): Promise<{ meta?: PaperMeta; issue: MatchIssue }> {
   let issue: MatchIssue = 'not_found'
   const tries: (() => Promise<PaperMeta | null>)[] = []
   if (ids.doi) tries.push(async () => {
@@ -84,6 +108,10 @@ async function lookupIds(ids: { arxiv?: string; doi?: string }, fetchText: Fetch
   })
   // 有 arXiv 编号时先查 arXiv：它的数据最完整，DOI 可能来自正文里引用的别的论文
   if (ids.arxiv) tries.reverse()
+  if (ids.isbn) tries.push(async () => {
+    const r = await fetchText(`${OPENLIBRARY_API}?bibkeys=ISBN:${ids.isbn}&format=json&jscmd=data`)
+    return r.status === 200 ? parseOpenLibrary(JSON.parse(r.body), ids.isbn!) : null
+  })
   for (const t of tries) {
     try {
       const m = await t()
@@ -180,13 +208,34 @@ export function parseCrossrefWork(w: CrossrefWork | undefined): PaperMeta | null
   return m
 }
 
+interface OpenLibraryBook {
+  title?: string
+  subtitle?: string
+  authors?: { name?: string }[]
+  publishers?: { name?: string }[]
+  publish_date?: string
+}
+
+/** Open Library 按 ISBN 查书的结果：{ "ISBN:978…": { … } }，没有这本书时是 {} */
+export function parseOpenLibrary(body: Record<string, OpenLibraryBook> | undefined, isbn: string): PaperMeta | null {
+  const b = body?.[`ISBN:${isbn}`]
+  const title = clean([b?.title, b?.subtitle].filter(Boolean).join(': '))
+  if (!b || !title) return null
+  const m: PaperMeta = { title, authors: (b.authors ?? []).flatMap((a) => (a.name ? [splitName(clean(a.name))] : [])), identifiers: { isbn }, source: 'openlibrary' }
+  const year = Number(/\b(1[5-9]|20)\d{2}\b/.exec(b.publish_date ?? '')?.[0])
+  if (year) m.year = year
+  const publisher = b.publishers?.[0]?.name
+  if (publisher) m.venue = clean(publisher)
+  return m
+}
+
 // —— 从 PDF 猜 ——
 
 /** PDF 自带的标题常常是 "Microsoft Word - x.docx" 之类，要排除 */
 function plausibleTitle(t: string | undefined): t is string {
   if (!t) return false
   const s = t.trim()
-  if (s.length < 8 || s.length > 300) return false
+  if (!longEnough(s) || s.length > 300) return false
   if (/^(untitled|microsoft word|title|paper|document|main|arxiv)\b/i.test(s)) return false
   if (/\.(pdf|docx?|tex|dvi)$/i.test(s)) return false
   if (/^[\w-]+$/.test(s)) return false // 没有空格，像文件名
@@ -204,8 +253,8 @@ export function guessFromPdf(f: PdfFacts): PaperMeta {
     meta.title = f.fileName.replace(/\.pdf$/i, '').replace(/[_]+/g, ' ').trim() || '未命名论文'
     meta.source = 'filename'
   }
-  if (f.info.author && /[a-z]/i.test(f.info.author)) {
-    meta.authors = f.info.author.split(/\s*(?:;|,| and |&)\s*/).filter((s) => s.length > 1).map(splitName)
+  if (f.info.author && /[a-z]|\p{Script=Han}/iu.test(f.info.author)) {
+    meta.authors = f.info.author.split(/\s*(?:;|；|,|，|、| and |&)\s*/).filter((s) => s.length > 1).map(splitName)
   }
   return meta
 }
@@ -225,7 +274,12 @@ function titleFromLines(lines: TextLine[]): string | null {
     else break
   }
   const t = clean(picked.map((l) => l.text).join(' '))
-  return t.length >= 8 && maxSize >= 12 ? t : null
+  return longEnough(t) && maxSize >= 12 ? t : null
+}
+
+/** 标题至少 8 个字符；中文书名常常只有三四个字，有汉字时两个字就算 */
+function longEnough(s: string): boolean {
+  return s.length >= (/\p{Script=Han}/u.test(s) ? 2 : 8)
 }
 
 // —— 小工具 ——

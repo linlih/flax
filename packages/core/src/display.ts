@@ -5,15 +5,17 @@ import { normalizeTitle } from './text'
 export const STATUS_LABEL: Record<ReadingStatus, string> = { inbox: '未读', to_read: '待读', reading: '在读', done: '读过' }
 
 export const MATCH_HINT: Record<MatchIssue, string> = {
-  no_id: '没有找到 DOI 或 arXiv 编号',
+  no_id: '没有找到 DOI、arXiv 编号或 ISBN',
   lookup_failed: '联网查询失败，可以重试',
-  not_found: '编号没有查到对应的论文'
+  not_found: '编号没有查到对应的信息'
 }
 
 export const SOURCE_LABEL: Record<MetadataSource, string> = {
   arxiv: '来自 arXiv',
   crossref: '来自 Crossref',
   openalex: '来自 OpenAlex',
+  openlibrary: '来自 Open Library',
+  ai: 'AI 从前几页识别的',
   pdf: '从 PDF 文字识别',
   filename: '用的是文件名',
   user: '手动编辑过'

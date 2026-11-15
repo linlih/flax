@@ -2,10 +2,11 @@
 // 1. 立刻做：读文件、算哈希、查重、抽文字、存文件、先用 PDF 里的信息建一条记录
 // 2. 排队做：联网查元数据（arXiv 有限速），查完再更新记录
 // 不依赖平台：读文件、算哈希、存文件、读 PDF 里的文字都由平台传进来（桌面用 node:fs、node:crypto 和 pdf.js）。
-import { findIdentifiers, guessFromPdf, identifyPdf, identifyText, searchByTitle, type FetchText, type PdfFacts } from './metadata'
+import { findIdentifiers, guessFromPdf, identifyPdf, identifyText, idLabel, idsInText, searchByTitle, type FetchText, type PdfFacts } from './metadata'
 import { bibToPaper, parseBibTeX } from './cite'
 import type { Library } from './library'
 import type { FileRef, PaperMeta } from './model'
+import { BOOK_PAGES } from './pdfFacts'
 
 export interface Candidate extends PaperMeta {
   similarity: number
@@ -19,6 +20,8 @@ export type ImportNotice =
   | { kind: 'failed'; fileName: string; message: string }
   /** 拖进来的 PDF 直接配给了库里还没有文件的那条 */
   | { kind: 'attached'; paperId: string; title: string }
+  /** 不像论文（书、扫描件）又没查到详情：问用户要不要让 AI 看前几页来识别 */
+  | { kind: 'unidentified'; paperId: string; fileName: string }
   | { kind: 'download_failed'; paperId: string; title: string; message: string }
   /** 从 BibTeX（Zotero 等）导入完：新加几篇、库里已有几篇、找不到的 PDF 几个 */
   | { kind: 'bib_done'; added: number; existing: number; missingFiles: number }
@@ -68,6 +71,9 @@ export class Importer {
   private importing = new Set<string>()
   private downloading = new Map<string, Promise<void>>()
   private pending = new Map<string, PendingDuplicate>()
+  /** 攒着的"要不要让 AI 识别"：等这一批导入和联网查询都做完再一起问，免得对话框弹出来以后还在变 */
+  private held: ImportNotice[] = []
+  private batches = 0
   private now: () => string
 
   constructor(private d: ImporterDeps) {
@@ -101,15 +107,21 @@ export class Importer {
   }
 
   async importPaths(paths: string[]): Promise<void> {
-    for (const p of paths) {
-      try {
-        await this.importOne(p)
-      } catch (e) {
-        this.d.onNotice({ kind: 'failed', fileName: baseName(p), message: e instanceof Error ? e.message : String(e) })
+    this.batches++
+    try {
+      for (const p of paths) {
+        try {
+          await this.importOne(p)
+        } catch (e) {
+          this.d.onNotice({ kind: 'failed', fileName: baseName(p), message: e instanceof Error ? e.message : String(e) })
+        }
       }
+    } finally {
+      this.batches--
     }
     this.d.onChanged()
     this.kick()
+    this.flushHeld()
   }
 
   private async importOne(path: string): Promise<void> {
@@ -138,11 +150,11 @@ export class Importer {
     if (known) return this.askDuplicate(known.paper.id, file)
 
     const guess = guessFromPdf(facts)
-    const p = lib.addPaper({ ...guess, identifiers: { ...guess.identifiers, ...ids } }, { file, needsMatch: true, matchIssue: ids.arxiv || ids.doi ? 'lookup_failed' : 'no_id' })
-    if (ids.arxiv || ids.doi) {
+    const p = lib.addPaper({ ...guess, identifiers: { ...guess.identifiers, ...ids } }, { file, needsMatch: true, matchIssue: ids.arxiv || ids.doi || ids.isbn ? 'lookup_failed' : 'no_id' })
+    if (ids.arxiv || ids.doi || ids.isbn) {
       this.importing.add(p.id)
       this.queue.push({ id: p.id, facts })
-    }
+    } else this.offerAi(p.id, facts, guess)
   }
 
   /** 读入 BibTeX（Zotero、Better BibTeX、JabRef 导出的）：元数据直接用，file 字段里的 PDF 一起导进来 */
@@ -223,6 +235,7 @@ export class Importer {
         }
       }
       this.running = false
+      this.flushHeld()
     })()
   }
 
@@ -234,13 +247,52 @@ export class Importer {
     // 用户在查询期间已经手动改过，就不覆盖
     if (paper.metadataSource === 'user') return
     lib.applyMeta(id, r.meta, r.matchIssue ? { needsMatch: r.needsMatch, matchIssue: r.matchIssue } : { needsMatch: r.needsMatch })
-    if (r.needsMatch) return
+    if (r.needsMatch) {
+      // 联网失败的不问：重试就能查到，用不着 AI
+      if (r.matchIssue !== 'lookup_failed') this.offerAi(id, facts, r.meta)
+      return
+    }
     const dup = lib.findDuplicate({ ...r.meta.identifiers, title: r.meta.title }, id)
     if (dup) {
       // 查完才发现是库里已有的论文：撤回刚建的记录，问用户要不要作为另一个版本
       const file = paper.files[0]
       lib.removePaper(id)
       if (file) this.askDuplicate(dup.paper.id, file)
+    }
+  }
+
+  /**
+   * 没查到详情的书和扫描件：连标题都只能用文件名的，或者是书但 PDF 里没写作者的。
+   * 论文不问：按标题搜索更准，也不花钱。
+   */
+  private offerAi(paperId: string, facts: PdfFacts, guess: PaperMeta): void {
+    if (guess.source !== 'filename' && !(facts.pageCount >= BOOK_PAGES && guess.authors.length === 0)) return
+    this.held.push({ kind: 'unidentified', paperId, fileName: facts.fileName })
+    this.flushHeld()
+  }
+
+  private flushHeld(): void {
+    if (this.batches > 0 || this.running || this.queue.length) return
+    for (const n of this.held.splice(0)) this.d.onNotice(n)
+  }
+
+  /**
+   * 用上 AI 从前几页读出来的信息。AI 读到了 DOI 或 ISBN 就再联网查一次，查到的更可靠；查不到用 AI 读的。
+   * 等待期间用户自己改过就不动。
+   */
+  async applyIdentified(id: string, meta: PaperMeta): Promise<void> {
+    this.importing.add(id)
+    this.d.onChanged()
+    try {
+      const ids = meta.identifiers
+      const text = ids.doi ?? (ids.isbn ? `ISBN ${ids.isbn}` : '')
+      const found = text ? await identifyText(text, this.d.fetchText).catch(() => null) : null
+      const p = this.d.library.getPaper(id)
+      if (!p || p.metadataSource === 'user') return
+      this.d.library.applyMeta(id, found && !found.needsMatch ? found.meta : meta, { needsMatch: false })
+    } finally {
+      this.importing.delete(id)
+      this.d.onChanged()
     }
   }
 
@@ -269,18 +321,17 @@ export class Importer {
     this.d.onChanged()
   }
 
-  /** 粘贴 DOI 或 arXiv 链接：建一条没有 PDF 的记录 */
+  /** 粘贴 DOI、arXiv 链接或书的 ISBN：建一条没有 PDF 的记录 */
   async addFromText(text: string): Promise<boolean> {
-    const ids = findIdentifiers({ fileName: '', info: {}, text })
-    if (!ids.arxiv && !ids.doi) return false
+    const ids = idsInText(text)
+    if (!ids.arxiv && !ids.doi && !ids.isbn) return false
     const known = this.d.library.findDuplicate(ids)
     if (known) {
       this.d.onNotice({ kind: 'same_file', paperId: known.paper.id, title: known.paper.title })
       if (known.paper.files.length === 0) this.startDownload(known.paper.id)
       return true
     }
-    const label = ids.arxiv ? `arXiv:${ids.arxiv}` : ids.doi!
-    const p = this.d.library.addPaper({ title: label, authors: [], identifiers: ids, source: 'user' }, { needsMatch: true, matchIssue: 'lookup_failed' })
+    const p = this.d.library.addPaper({ title: idLabel(ids), authors: [], identifiers: ids, source: 'user' }, { needsMatch: true, matchIssue: 'lookup_failed' })
     this.importing.add(p.id)
     this.d.onChanged()
     try {
@@ -343,7 +394,7 @@ export class Importer {
   async retry(id: string): Promise<void> {
     const p = this.d.library.getPaper(id)
     if (!p) return
-    const text = [p.identifiers.arxiv && `arXiv:${p.identifiers.arxiv}`, p.identifiers.doi].filter(Boolean).join(' ')
+    const text = [p.identifiers.arxiv && `arXiv:${p.identifiers.arxiv}`, p.identifiers.doi].filter(Boolean).join(' ') || (p.identifiers.isbn ? `ISBN ${p.identifiers.isbn}` : '')
     if (!text) return
     this.importing.add(id)
     this.d.onChanged()

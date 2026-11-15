@@ -6,7 +6,7 @@ import { loadDocument } from './pdf'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import { EventBus, FindState, LinkTarget, PDFFindController, PDFLinkService, PDFViewer } from 'pdfjs-dist/web/pdf_viewer.mjs'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
-import { quoteBlock, type Annotation, type HighlightColor, type Paper, type ReadingPosition, type ReadingStatus, type Term } from '@flax/core'
+import { BOOK_PAGES, quoteBlock, type Annotation, type HighlightColor, type Paper, type ReadingPosition, type ReadingStatus, type Term } from '@flax/core'
 import type { NoteSummary } from '../../../shared/api'
 import { NoteEditor, type EditorHandle } from '../components/NoteEditor'
 import { Icon, Spinner } from '../components/Icon'
@@ -15,6 +15,8 @@ import { api } from '../lib/library'
 import { clientToPdf, hitTest, pageAt, rectToPercent, selectionParts, type PageViewLike, type SelectionPart } from './geometry'
 import { drawPage } from './overlay'
 import { Thumbnails } from './Thumbnails'
+import { Outline } from './Outline'
+import { loadOutline, type OutlineItem } from './toc'
 import { parseHash, renderPreview, resolveTarget } from './linkPreview'
 import { AiPanel } from './AiPanel'
 import { AnnoList } from './AnnoList'
@@ -27,8 +29,9 @@ import { nearEnd } from '../lib/status'
 
 
 /** 当前外观是不是深色；外观由整个应用统一切换（见 main/appearance.ts），这里只跟着变 */
-/** 缩略图栏的宽度（和 styles.css 的 .thumbs 一致）、论文那一块至少留多宽 */
+/** 左边栏的宽度：缩略图、目录（和 styles.css 的 .thumbs 一致），论文那一块至少留多宽 */
 const THUMBS_W = 148
+const TOC_W = 248
 const MIN_STAGE_W = 460
 
 function useWindowWidth(): number {
@@ -142,6 +145,25 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [trans, setTrans] = useState<{ at: Spot; text: string } | null>(null)
 
   const [showThumbs, setShowThumbs] = useState(() => pref.get('thumbs') !== '0')
+  /** PDF 自带的目录；没有就是空的，左边栏只有缩略图 */
+  const [outline, setOutline] = useState<OutlineItem[]>([])
+  useEffect(() => {
+    setOutline([])
+    if (!doc) return
+    let alive = true
+    void loadOutline(doc).then((o) => alive && setOutline(o))
+    return () => {
+      alive = false
+    }
+  }, [doc])
+  /** 左边栏看缩略图还是目录。没选过的时候：书看目录，论文看缩略图 */
+  const [side, setSide] = useState<'pages' | 'toc' | null>(() => pref.get('side') as 'pages' | 'toc' | null)
+  const toc = outline.length > 0 && (side ?? ((doc?.numPages ?? 0) >= BOOK_PAGES ? 'toc' : 'pages')) === 'toc'
+  const leftW = toc ? TOC_W : THUMBS_W
+  const pickSide = (v: 'pages' | 'toc') => {
+    setSide(v)
+    pref.set('side', v)
+  }
   const [showPanel, setShowPanel] = useState(() => pref.get('panel') !== '0')
   /** 当前工具（底部工具栏）：每次打开论文都从"选择文字"开始，跟 Figma 一样 */
   const [tool, setTool] = useState<Tool>('select')
@@ -652,6 +674,13 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     if (open) requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 } }))
   }
 
+  /** 点目录：跳到那一条指的位置（不只是那一页的开头） */
+  const goOutline = (it: OutlineItem) => {
+    const v = pdfViewer.current
+    if (!v || it.page === undefined) return
+    void v.linkService.goToDestination(it.dest as string | unknown[]).catch(() => goPage(it.page!))
+  }
+
   const goPage = (n: number) => {
     const v = pdfViewer.current
     if (!v || !Number.isFinite(n)) return
@@ -778,7 +807,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   // 只是这时候不显示，开关的设置不改，窗口拉宽了就都回来
   const [lastSide, setLastSide] = useState<'panel' | 'ai'>('panel')
   const winW = useWindowWidth()
-  const room = (thumbs: boolean, panel: boolean, ai: boolean) => winW - (thumbs ? THUMBS_W : 0) - (panel ? panelW : 0) - (ai ? aiW : 0)
+  const room = (thumbs: boolean, panel: boolean, ai: boolean) => winW - (thumbs ? leftW : 0) - (panel ? panelW : 0) - (ai ? aiW : 0)
   let seeThumbs = showThumbs
   let seePanel = showPanel
   let seeAi = showAi
@@ -787,7 +816,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     if (lastSide === 'ai') seePanel = false
     else seeAi = false
   }
-  const sideCap = Math.max(240, winW - MIN_STAGE_W - (seeThumbs ? THUMBS_W : 0) - (seePanel && seeAi ? Math.min(panelW, aiW) : 0))
+  const sideCap = Math.max(240, winW - MIN_STAGE_W - (seeThumbs ? leftW : 0) - (seePanel && seeAi ? Math.min(panelW, aiW) : 0))
   const paperNotes = useMemo(() => notes.filter((n) => n.paperId === paper.id), [notes, paper.id])
   const [noteId, setNoteId] = useState<string | null>(null)
   /** 正在写一篇还没存盘的新笔记 */
@@ -918,7 +947,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
       <header className="reader-bar drag">
         <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
-        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="显示缩略图" title={showThumbs ? kbd('隐藏缩略图（⌥⌘S）') : kbd('显示缩略图（⌥⌘S）')} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
+        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label={outline.length ? '显示缩略图和目录' : '显示缩略图'} title={kbd(`${showThumbs ? '隐藏' : '显示'}${outline.length ? '缩略图和目录' : '缩略图'}（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
         <div className="reader-title">
           <span className="reader-name" title={paper.title}>{paper.title}</span>
           {pageCount > 0 && (
@@ -964,7 +993,17 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       </header>
 
       <div className="reader-body">
-        {seeThumbs && !focus && (doc ? <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} /> : <nav className="thumbs tray" aria-label="页面缩略图" />)}
+        {seeThumbs && !focus && (
+          <nav className={toc ? 'thumbs tray toc' : 'thumbs tray'} aria-label={toc ? '目录' : '页面缩略图'}>
+            {outline.length > 0 && (
+              <div className="side-seg" role="group" aria-label="左边栏显示什么">
+                <button type="button" aria-pressed={!toc} onClick={() => pickSide('pages')}>页面</button>
+                <button type="button" aria-pressed={toc} onClick={() => pickSide('toc')}>目录</button>
+              </div>
+            )}
+            {doc && (toc ? <Outline items={outline} current={page} onGo={goOutline} /> : <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} />)}
+          </nav>
+        )}
 
         <div className="reader-stage">
           {find.open && (

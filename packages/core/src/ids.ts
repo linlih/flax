@@ -1,4 +1,4 @@
-// 从 PDF 文字、元数据或文件名里找出 DOI 和 arXiv 编号。
+// 从 PDF 文字、元数据或文件名里找出 DOI、arXiv 编号和书的 ISBN。
 
 /** 新式 arXiv 编号：YYMM.NNNNN，可带版本号 vN */
 const ARXIV_NEW = /(?:arxiv[:\s/]*|abs\/|pdf\/)?\b(\d{4}\.\d{4,5})(v\d+)?\b/i
@@ -43,4 +43,39 @@ export function extractDoi(text: string): string | null {
 
 function count(s: string, ch: string): number {
   return s.split(ch).length - 1
+}
+
+/** "ISBN" 后面跟着的一串数字；可以带连字符、空格，10 位的最后一位可以是 X */
+const ISBN = /ISBN(?:[-\s]?1[03])?[\s:：]*([0-9][0-9\-\s‐–]{8,18}[0-9Xx]?)/gi
+
+/**
+ * 找书的 ISBN，校验位对得上才算，统一成 13 位数字。
+ * 版权页常常印好几个（精装、平装、电子版），取第一个。bare 为 true 时整段文字就是一个 ISBN 也认（用户粘贴的）。
+ */
+export function extractIsbn(text: string, bare = false): string | null {
+  for (const m of text.matchAll(ISBN)) {
+    const v = validIsbn((m[1] ?? '').replace(/[^0-9Xx]/g, ''))
+    if (v) return v
+  }
+  if (bare && /^[\d\-\s‐–]{10,20}[\dXx]?$/.test(text.trim())) return validIsbn(text.replace(/[^0-9Xx]/g, ''))
+  return null
+}
+
+/** 一串数字开头的 13 位或 10 位是不是合法的 ISBN；是就返回 13 位的写法 */
+function validIsbn(d: string): string | null {
+  const a = d.slice(0, 13)
+  if (/^97[89]\d{10}$/.test(a)) {
+    const sum = [...a].reduce((n, c, i) => n + Number(c) * (i % 2 ? 3 : 1), 0)
+    if (sum % 10 === 0) return a
+  }
+  const b = d.slice(0, 10).toUpperCase()
+  if (/^\d{9}[\dX]$/.test(b)) {
+    const sum = [...b].reduce((n, c, i) => n + (c === 'X' ? 10 : Number(c)) * (10 - i), 0)
+    if (sum % 11 === 0) {
+      const body = '978' + b.slice(0, 9)
+      const check = (10 - ([...body].reduce((n, c, i) => n + Number(c) * (i % 2 ? 3 : 1), 0) % 10)) % 10
+      return body + check
+    }
+  }
+  return null
 }

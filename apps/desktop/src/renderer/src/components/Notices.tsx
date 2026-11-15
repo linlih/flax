@@ -14,15 +14,21 @@ export interface Toast {
 type Keyed = ImportNotice & { key: number }
 
 /** 底部的轻提示，几秒后自动消失；重复导入时弹出需要选择的对话框 */
-export function Notices({ notices, toasts, dismiss, dismissToast, onShowPaper }: {
+export function Notices({ notices, toasts, dismiss, dismissToast, onShowPaper, aiReady, onIdentify, onOpenSettings }: {
   notices: Keyed[]
   toasts: Toast[]
   dismiss: (key: number) => void
   dismissToast: (key: number) => void
   onShowPaper: (id: string) => void
+  /** 接入了 AI、选好了模型 */
+  aiReady: boolean
+  /** 用户同意让 AI 识别这几条 */
+  onIdentify: (paperIds: string[]) => void
+  onOpenSettings: () => void
 }) {
+  const unknown = notices.filter((n): n is Extract<Keyed, { kind: 'unidentified' }> => n.kind === 'unidentified')
   const ask = notices.find((n) => n.kind === 'same_paper') as Extract<Keyed, { kind: 'same_paper' }> | undefined
-  const light = notices.filter((n) => n.kind !== 'same_paper')
+  const light = notices.filter((n) => n.kind !== 'same_paper' && n.kind !== 'unidentified')
 
   return (
     <>
@@ -31,6 +37,15 @@ export function Notices({ notices, toasts, dismiss, dismissToast, onShowPaper }:
         {toasts.map((t) => <ToastView key={t.key} toast={t} onClose={() => dismissToast(t.key)} />)}
       </div>
       {ask && <DuplicateSheet n={ask} onClose={() => dismiss(ask.key)} />}
+      {!ask && unknown.length > 0 && (
+        <IdentifySheet
+          list={unknown}
+          aiReady={aiReady}
+          onClose={() => unknown.forEach((n) => dismiss(n.key))}
+          onIdentify={() => onIdentify(unknown.map((n) => n.paperId))}
+          onOpenSettings={onOpenSettings}
+        />
+      )}
     </>
   )
 }
@@ -98,6 +113,49 @@ function DuplicateSheet({ n, onClose }: { n: Extract<Keyed, { kind: 'same_paper'
         <div className="sheet-actions">
           <button type="button" className="btn" onClick={() => choose('skip')}>不导入</button>
           <button type="button" className="btn btn-p" autoFocus onClick={() => choose('add_version')}>加为另一个版本</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+/** 导入的 PDF 不像论文、又没查到详情：问要不要让 AI 看前几页。一次导入好几个时合成一个框 */
+function IdentifySheet({ list, aiReady, onClose, onIdentify, onOpenSettings }: {
+  list: Extract<Keyed, { kind: 'unidentified' }>[]
+  aiReady: boolean
+  onClose: () => void
+  onIdentify: () => void
+  onOpenSettings: () => void
+}) {
+  useEffect(() => {
+    const k = (e: KeyboardEvent) => e.key === 'Escape' && onClose()
+    window.addEventListener('keydown', k)
+    return () => window.removeEventListener('keydown', k)
+  })
+  const go = (f: () => void) => () => { onClose(); f() }
+  const shown = list.slice(0, 4)
+  return (
+    <div className="scrim">
+      <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="idf-h">
+        <div className="tray-h">
+          <span className="lbl">导入</span>
+          <h2 id="idf-h" className="sheet-h">{list.length > 1 ? `有 ${list.length} 个 PDF 没有识别出详情` : '这个 PDF 没有识别出详情'}</h2>
+        </div>
+        <div className="card">
+          {shown.map((n) => <div className="row" key={n.key}><span className="rt"><b>{n.fileName}</b></span></div>)}
+          {list.length > shown.length && <div className="row"><span className="rt"><small>还有 {list.length - shown.length} 个</small></span></div>}
+        </div>
+        <p className="hint" style={{ margin: '0 8px' }}>
+          {list.length > 1 ? '它们' : '它'}不像论文（可能是书或扫描件），没有查到书名和作者。
+          {aiReady
+            ? '可以让 AI 来识别：会把前几页的文字发给你接入的 AI，扫描版发的是页面图片，会用掉一点 AI 额度。'
+            : '接入 AI 以后可以让它看前几页来识别；现在还没有接入。也可以之后在详情里手动填写。'}
+        </p>
+        <div className="sheet-actions">
+          <button type="button" className="btn" onClick={onClose}>{aiReady ? '不用' : '以后再说'}</button>
+          {aiReady
+            ? <button type="button" className="btn btn-p" autoFocus onClick={go(onIdentify)}>用 AI 识别</button>
+            : <button type="button" className="btn btn-p" autoFocus onClick={go(onOpenSettings)}>去设置里接入 AI</button>}
         </div>
       </div>
     </div>

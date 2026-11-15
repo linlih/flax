@@ -30,6 +30,7 @@ const fetchText: FetchText = async (url) => {
   calls.push(url)
   if (!online) throw new Error('offline')
   const id = /id_list=([\d.]+)/.exec(url)?.[1]
+  if (url.includes('openlibrary.org')) return { status: 200, body: url.includes('9780306406157') ? JSON.stringify({ 'ISBN:9780306406157': { title: 'A Field Guide to Examples', authors: [{ name: 'Grace Hopper' }], publishers: [{ name: 'Example Press' }], publish_date: '2017' } }) : '{}' }
   if (id === '2101.01234') return { status: 200, body: feed(id, 'Sparse Mixtures for Long Documents') }
   return { status: 200, body: '<feed></feed>' }
 }
@@ -120,6 +121,64 @@ describe('Importer', () => {
     await importer.whenIdle()
     expect(lib.listPapers()[0]).toMatchObject({ title: 'Lecture Notes on Optimisation', needsMatch: true, matchIssue: 'no_id' })
     expect(calls).toEqual([])
+  })
+
+  it('finds the ISBN on the copyright page of a book and fills in the details', async () => {
+    const pages = Array.from({ length: 60 }, (_, i) => [{ text: i === 3 ? 'ISBN 978-0-306-40615-7' : `Chapter text ${i}`, size: 10, y: 700 }])
+    files['/in/book.pdf'] = makePdf(pages)
+    await importer.importPaths(['/in/book.pdf'])
+    await importer.whenIdle()
+    expect(lib.listPapers()[0]).toMatchObject({ title: 'A Field Guide to Examples', venue: 'Example Press', year: 2017, needsMatch: false, metadataSource: 'openlibrary', identifiers: { isbn: '9780306406157' } })
+    // 同一本书的另一个文件：认出来是库里已有的
+    files['/in/book2.pdf'] = makePdf([...pages, [{ text: 'extra', size: 10, y: 700 }]])
+    await importer.importPaths(['/in/book2.pdf'])
+    expect(lib.listPapers()).toHaveLength(1)
+    expect(notices.at(-1)?.kind).toBe('same_paper')
+  })
+
+  it('does not treat a short paper that prints an ISBN as a book', async () => {
+    files['/in/p.pdf'] = makePdf([[{ text: 'A Paper in Some Proceedings', size: 18, y: 700 }, { text: 'ISBN 978-0-306-40615-7', size: 8, y: 100 }]])
+    await importer.importPaths(['/in/p.pdf'])
+    await importer.whenIdle()
+    expect(lib.listPapers()[0]).toMatchObject({ matchIssue: 'no_id', identifiers: {} })
+    expect(calls).toEqual([])
+  })
+
+  it('offers AI for a book it could not identify, but not for a paper or when the lookup only failed', async () => {
+    const book = (isbn: string) => Array.from({ length: 60 }, (_, i) => [{ text: i === 3 ? `ISBN ${isbn}` : `Chapter text ${i}`, size: 10, y: 700 }])
+    // 这个 ISBN 假的服务里没有
+    files['/in/unknown.pdf'] = makePdf(book('978-7-111-00000-6'))
+    files['/in/paper.pdf'] = makePdf([[{ text: 'A Short Paper Without Any Id', size: 18, y: 700 }]])
+    await importer.importPaths(['/in/unknown.pdf', '/in/paper.pdf'])
+    await importer.whenIdle()
+    expect(notices.filter((n) => n.kind === 'unidentified')).toEqual([{ kind: 'unidentified', paperId: lib.listPapers().find((p) => p.identifiers.isbn)!.id, fileName: 'unknown.pdf' }])
+    notices = []
+    online = false
+    files['/in/offline.pdf'] = makePdf(book('978-0-306-40615-7'))
+    await importer.importPaths(['/in/offline.pdf'])
+    await importer.whenIdle()
+    expect(notices).toEqual([])
+  })
+
+  it('asks about all unidentified files together, after the lookups of the batch are done', async () => {
+    files['/in/scan.pdf'] = makePdf([[]])
+    files['/in/unknown.pdf'] = makePdf(Array.from({ length: 60 }, (_, i) => [{ text: i === 3 ? 'ISBN 978-7-111-00000-6' : `Chapter text ${i}`, size: 10, y: 700 }]))
+    await importer.importPaths(['/in/scan.pdf', '/in/unknown.pdf'])
+    // 那本书还在按 ISBN 查：先不问，免得对话框弹出来以后又多一个
+    expect(notices.filter((n) => n.kind === 'unidentified')).toEqual([])
+    await importer.whenIdle()
+    expect(notices.filter((n) => n.kind === 'unidentified').map((n) => n.fileName)).toEqual(['scan.pdf', 'unknown.pdf'])
+  })
+
+  it('uses what AI read, or the lookup when AI found an ISBN that is known', async () => {
+    files['/in/scan.pdf'] = makePdf([[]])
+    await importer.importPaths(['/in/scan.pdf'])
+    const id = lib.listPapers()[0]!.id
+    expect(notices.at(-1)).toMatchObject({ kind: 'unidentified', paperId: id })
+    await importer.applyIdentified(id, { title: '深度学习', authors: [{ family: '张三' }], identifiers: {}, venue: '示例出版社', source: 'ai' })
+    expect(lib.getPaper(id)).toMatchObject({ title: '深度学习', venue: '示例出版社', metadataSource: 'ai', needsMatch: false })
+    await importer.applyIdentified(id, { title: 'Field Guide', authors: [], identifiers: { isbn: '9780306406157' }, source: 'ai' })
+    expect(lib.getPaper(id)).toMatchObject({ title: 'A Field Guide to Examples', metadataSource: 'openlibrary', identifiers: { isbn: '9780306406157' } })
   })
 
   it('reports files that are not PDFs or cannot be read, and keeps going', async () => {

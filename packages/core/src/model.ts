@@ -38,7 +38,7 @@ export interface FileRef {
   addedAt: string
 }
 
-export type MetadataSource = 'arxiv' | 'crossref' | 'openalex' | 'pdf' | 'filename' | 'user'
+export type MetadataSource = 'arxiv' | 'crossref' | 'openalex' | 'openlibrary' | 'ai' | 'pdf' | 'filename' | 'user'
 
 /** 识别不完整的原因，界面据此给出不同的提示 */
 export type MatchIssue = 'no_id' | 'lookup_failed' | 'not_found'

@@ -30,7 +30,7 @@ export function AddPaper({ open, setOpen }: { open: boolean; setOpen: (v: boolea
     setBusy(true)
     const ok = await api.library.addFromText(t).catch(() => false)
     setBusy(false)
-    if (!ok) return setError('没有找到 DOI 或 arXiv 编号。其他网站的论文请下载 PDF 后选择文件添加。')
+    if (!ok) return setError('没有找到 DOI、arXiv 编号或 ISBN。其他网站的论文请下载 PDF 后选择文件添加。')
     setText('')
     setOpen(false)
   }
@@ -42,7 +42,7 @@ export function AddPaper({ open, setOpen }: { open: boolean; setOpen: (v: boolea
       {open && (
         <div className="add-paper-pop" role="dialog" aria-label="添加论文">
           <form onSubmit={(e) => void submit(e)}>
-            <label className="field-l" htmlFor="add-paper-inp">粘贴 DOI、arXiv 编号或链接</label>
+            <label className="field-l" htmlFor="add-paper-inp">粘贴 DOI、arXiv 编号或链接，书可以贴 ISBN</label>
             <div className="add-paper-row">
               <input id="add-paper-inp" type="text" autoFocus placeholder="例如 https://arxiv.org/abs/1706.03762" value={text} onChange={(e) => { setText(e.target.value); setError('') }} />
               <button type="submit" className="btn btn-p" disabled={!text.trim() || busy}>{busy ? '添加中…' : '添加'}</button>
