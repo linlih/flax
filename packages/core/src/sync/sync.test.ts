@@ -470,8 +470,11 @@ describe('webdav', () => {
     const srv = await webdavServer('me@example.com', 'app-pass')
     try {
       const dav = webdav({ url: srv.url, username: 'me@example.com', password: 'app-pass', fetch: (u, i) => fetch(u, i as RequestInit) })
+      // 还没有 Flax 文件夹：服务器回 409（坚果云就是这样），也当成"没有"
       expect(await dav.list('log/')).toBeNull()
       expect(await dav.get('flax.json')).toBeNull()
+      await dav.del('log/x.flx')
+      expect(srv.dirs.has('/dav/Flax/')).toBe(false)
       await dav.put('log/dev 1/0000000001.flx', new Uint8Array([7]))
       expect(srv.dirs.has('/dav/Flax/log/dev 1/')).toBe(true)
       expect(await dav.list('log/')).toEqual(['dev 1/'])
@@ -482,6 +485,18 @@ describe('webdav', () => {
       const wrong = webdav({ url: srv.url, username: 'me@example.com', password: 'nope', fetch: (u, i) => fetch(u, i as RequestInit) })
       await expect(wrong.get('flax.json')).rejects.toMatchObject({ code: 'auth' })
       expect(SyncError).toBeTruthy()
+    } finally {
+      await srv.close()
+    }
+  })
+
+  it('keeps the library in the folder the user picked, nested folders included', async () => {
+    const srv = await webdavServer()
+    try {
+      const dav = webdav({ url: srv.url, username: 'u', password: 'p', folder: '/我的坚果云/论文/', fetch: (u, i) => fetch(u, i as RequestInit) })
+      expect(await dav.get('flax.json')).toBeNull()
+      await dav.put('flax.json', new Uint8Array([1]))
+      expect([...srv.files.keys()]).toEqual(['/dav/我的坚果云/论文/flax.json'])
     } finally {
       await srv.close()
     }

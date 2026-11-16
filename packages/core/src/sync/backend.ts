@@ -60,7 +60,10 @@ export function plainHttp(url: string): boolean {
 export const PLAIN_HTTP_HINT = '这个地址没有加密，账号密码会以明文发送。在家里的局域网里连 NAS 可以这样用；从外网连，请用 https:// 地址。'
 
 export function webdav(o: WebDavOptions): Backend {
-  const base = o.url.replace(/\/*$/, '/') + encodePath((o.folder ?? 'Flax').replace(/^\/+|\/+$/g, '')) + '/'
+  const root = o.url.replace(/\/*$/, '/')
+  /** 放同步库的文件夹，可以是好几层（例如 我的坚果云/论文） */
+  const folder = (o.folder ?? 'Flax').split('/').map((x) => x.trim()).filter(Boolean)
+  const base = root + encodePath(folder.join('/')) + '/'
   const auth = basic(o.username, o.password)
   const made = new Set<string>()
 
@@ -73,7 +76,7 @@ export function webdav(o: WebDavOptions): Backend {
   const req = async (method: string, path: string, extra: { headers?: Record<string, string>; body?: Uint8Array; timeoutMs?: number } = {}) => {
     let r: Awaited<ReturnType<HttpFetch>>
     try {
-      r = await o.fetch(base + encodePath(path), {
+      r = await o.fetch(path.startsWith(root) ? path : base + encodePath(path), {
         method,
         headers: { Authorization: auth, ...(extra.headers ?? {}) },
         ...(extra.body ? { body: extra.body } : {}),
@@ -88,13 +91,25 @@ export function webdav(o: WebDavOptions): Backend {
     if (r.status === 507) throw new SyncError('space', '同步服务器的空间满了。')
     return r
   }
+  /**
+   * 读的东西不存在。坚果云在上级文件夹不存在时回 409 而不是 404（比如第一次同步，还没有 Flax 文件夹），
+   * 读、列目录、删除时这也就是"没有"
+   */
+  const missing = (r: { status: number }) => r.status === 404 || r.status === 409
   const fail = (r: { status: number }, what: string): never => {
     throw new SyncError('server', `同步服务器出错（${what}：${r.status}）`)
   }
 
+  /** 同步库所在的文件夹一层层建好（坚果云的 MKCOL 不会自动建上级） */
+  const mkroot = async () => {
+    for (let i = 1; i < folder.length; i++) {
+      const r = await req('MKCOL', root + encodePath(folder.slice(0, i).join('/')) + '/')
+      if (r.status !== 201 && r.status !== 405 && r.status !== 301) fail(r, '建文件夹')
+    }
+  }
   const mkdirs = async (dir: string) => {
     const parts = dir.split('/').filter(Boolean)
-    // 根目录（Flax/）本身也要建
+    // 根目录（Flax/）本身也要建；它的上级不存在时（选了好几层的文件夹）先把上级建好
     for (let i = 0; i <= parts.length; i++) {
       const d = parts.slice(0, i).join('/')
       const key = d + '/'
@@ -102,7 +117,12 @@ export function webdav(o: WebDavOptions): Backend {
       const r = await req('MKCOL', d ? d + '/' : '')
       // 201 建好了；405 已经有了；其他情况交给后面的 PUT 报错
       if (r.status === 201 || r.status === 405 || r.status === 301) made.add(key)
-      else if (r.status === 409 && i === 0) fail(r, '建文件夹')
+      else if (r.status === 409 && i === 0) {
+        await mkroot()
+        const again = await req('MKCOL', '')
+        if (again.status === 201 || again.status === 405 || again.status === 301) made.add(key)
+        else fail(again, '建文件夹')
+      }
     }
   }
 
@@ -110,13 +130,13 @@ export function webdav(o: WebDavOptions): Backend {
     async list(dir) {
       const d = dir.replace(/\/*$/, '/').replace(/^\/+/, '')
       const r = await req('PROPFIND', d === '/' ? '' : d, { headers: { Depth: '1', 'Content-Type': 'application/xml' }, body: new TextEncoder().encode('<?xml version="1.0"?><propfind xmlns="DAV:"><prop><resourcetype/></prop></propfind>') })
-      if (r.status === 404) return null
+      if (missing(r)) return null
       if (r.status !== 207) fail(r, '列目录')
       return parseMultistatus(await r.text(), base + encodePath(d === '/' ? '' : d))
     },
     async get(path) {
       const r = await req('GET', path, path.startsWith('files/') ? { timeoutMs: Math.max(baseTimeout, FILE_GET_MS) } : {})
-      if (r.status === 404) return null
+      if (missing(r)) return null
       if (r.status !== 200) fail(r, '下载')
       return new Uint8Array(await r.arrayBuffer())
     },
@@ -134,7 +154,7 @@ export function webdav(o: WebDavOptions): Backend {
     },
     async del(path) {
       const r = await req('DELETE', path)
-      if (r.status !== 404 && (r.status < 200 || r.status >= 300)) fail(r, '删除')
+      if (!missing(r) && (r.status < 200 || r.status >= 300)) fail(r, '删除')
     }
   }
 }

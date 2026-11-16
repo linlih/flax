@@ -24,7 +24,8 @@ function ago(iso: string, now = Date.now()): string {
 
 function where(c: NonNullable<SyncStatus['config']>): string {
   if (c.kind === 'folder') return c.path
-  return c.url.startsWith(JIANGUOYUN) ? `坚果云 · ${c.username}` : `${c.username} @ ${c.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+  const at = c.url.startsWith(JIANGUOYUN) ? `坚果云 · ${c.username}` : `${c.username} @ ${c.url.replace(/^https?:\/\//, '').replace(/\/$/, '')}`
+  return `${at} · ${c.folder}`
 }
 
 export function SyncSettings() {
@@ -108,6 +109,8 @@ function SyncForm({ canEncrypt, onDone }: { canEncrypt: boolean; onDone: () => v
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [path, setPath] = useState('')
+  /** 服务器上放同步库的文件夹，几台设备要填同一个 */
+  const [folder, setFolder] = useState('Flax')
   // 第二步：那里有没有同步库
   const [found, setFound] = useState<{ exists: boolean; encrypted: boolean } | null>(null)
   const [encrypt, setEncrypt] = useState(true)
@@ -116,8 +119,8 @@ function SyncForm({ canEncrypt, onDone }: { canEncrypt: boolean; onDone: () => v
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState('')
 
-  const conn = (): SyncConnect => (kind === 'folder' ? { kind: 'folder', path } : { kind: 'webdav', url: kind === 'jianguoyun' ? JIANGUOYUN : url.trim(), username: username.trim(), password })
-  const step1Ok = kind === 'folder' ? !!path : !!username.trim() && !!password && (kind === 'jianguoyun' || /^https?:\/\/.+/.test(url.trim()))
+  const conn = (): SyncConnect => (kind === 'folder' ? { kind: 'folder', path } : { kind: 'webdav', url: kind === 'jianguoyun' ? JIANGUOYUN : url.trim(), username: username.trim(), password, folder: cleanFolder(folder) })
+  const step1Ok = kind === 'folder' ? !!path : !!username.trim() && !!password && !!cleanFolder(folder) && (kind === 'jianguoyun' || /^https?:\/\/.+/.test(url.trim()))
 
   const step = async (fn: () => Promise<void>) => {
     setBusy(true)
@@ -237,6 +240,11 @@ function SyncForm({ canEncrypt, onDone }: { canEncrypt: boolean; onDone: () => v
           </div>
           {kind === 'jianguoyun' && <span className="hint svc-tip">应用密码不是登录密码：在坚果云网页版的“账户信息 › 安全选项 › 第三方应用管理”里添加一个应用，就会生成。</span>}
           <span className="hint svc-tip">密码只保存在这台电脑上，用{KEYCHAIN}加密。{!canEncrypt && <span className="ai-error"> {KEYCHAIN}不可用，暂时不能开启同步。</span>}</span>
+          <label className="field">
+            <span className="field-l">{kind === 'jianguoyun' ? '坚果云里的文件夹' : '服务器上的文件夹'}</span>
+            <input className="input" type="text" placeholder="Flax" value={folder} onChange={(e) => setFolder(e.target.value)} spellCheck={false} />
+            <span className="hint">几台设备要填同一个。没有的话会自动建；可以写好几层，例如 {kind === 'jianguoyun' ? '我的坚果云/Flax' : 'Documents/Flax'}。</span>
+          </label>
         </>
       )}
       <div className="field act-row">
@@ -246,4 +254,10 @@ function SyncForm({ canEncrypt, onDone }: { canEncrypt: boolean; onDone: () => v
       </div>
     </form>
   )
+}
+
+/** 文件夹名去掉多余的斜杠和空格；"." ".." 这种不认 */
+function cleanFolder(s: string): string {
+  const parts = s.split(/[\/\\]/).map((x) => x.trim()).filter(Boolean)
+  return parts.some((x) => x === '.' || x === '..') ? '' : parts.join('/')
 }

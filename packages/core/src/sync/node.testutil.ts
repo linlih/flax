@@ -64,7 +64,7 @@ export function memoryBackend(): Backend & { files: Map<string, Uint8Array>; req
 }
 
 /** 测试用的最小 WebDAV 服务器：PROPFIND（Depth 1）、GET、PUT、DELETE、MKCOL，带 Basic 认证。
- *  上级目录不存在时 PUT 返回 409，和坚果云一样 */
+ *  上级目录不存在时 PUT、GET、PROPFIND、DELETE 都返回 409，和坚果云一样 */
 export async function webdavServer(user = 'u', pass = 'p'): Promise<{ url: string; files: Map<string, Uint8Array>; dirs: Set<string>; close(): Promise<void>; log: string[] }> {
   const { createServer } = await import('node:http')
   const files = new Map<string, Uint8Array>()
@@ -89,15 +89,17 @@ export async function webdavServer(user = 'u', pass = 'p'): Promise<{ url: strin
           files.set(path, new Uint8Array(Buffer.concat(chunks)))
           return void res.writeHead(201).end()
         case 'GET': {
+          if (!dirs.has(parent)) return void res.writeHead(409).end()
           const f = files.get(path)
           return void (f ? res.writeHead(200).end(Buffer.from(f)) : res.writeHead(404).end())
         }
         case 'DELETE':
+          if (!dirs.has(parent)) return void res.writeHead(409).end()
           files.delete(path)
           return void res.writeHead(204).end()
         case 'PROPFIND': {
           const dir = path.replace(/\/?$/, '/')
-          if (!dirs.has(dir)) return void res.writeHead(404).end()
+          if (!dirs.has(dir)) return void res.writeHead(dirs.has(parent) ? 404 : 409).end()
           const kids = new Set<string>()
           for (const d of dirs) if (d !== dir && d.startsWith(dir) && !d.slice(dir.length, -1).includes('/')) kids.add(d)
           for (const f of files.keys()) if (f.startsWith(dir) && !f.slice(dir.length).includes('/')) kids.add(f)
