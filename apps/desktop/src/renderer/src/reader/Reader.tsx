@@ -24,7 +24,7 @@ import { COLORS } from './colors'
 import { TranslateCard } from './TranslateCard'
 import { ReaderToolbar, type Tool } from './ReaderToolbar'
 import { useAiStatus } from '../lib/ai'
-import { composing, FOCUS_KEY, isMac, kbd, mod } from '../lib/platform'
+import { composing, FILES_APP, FOCUS_KEY, isMac, kbd, mod, TRASH } from '../lib/platform'
 import { nearEnd } from '../lib/status'
 
 
@@ -32,6 +32,9 @@ import { nearEnd } from '../lib/status'
 /** 左边栏的宽度：缩略图、目录（和 styles.css 的 .thumbs 一致），论文那一块至少留多宽 */
 const THUMBS_W = 148
 const TOC_W = 248
+const ANNOS_W = 280
+const LEFT_MIN = 200
+const LEFT_MAX = 480
 const MIN_STAGE_W = 460
 
 function useWindowWidth(): number {
@@ -156,15 +159,24 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       alive = false
     }
   }, [doc])
-  /** 左边栏看缩略图还是目录。没选过的时候：书看目录，论文看缩略图 */
-  const [side, setSide] = useState<'pages' | 'toc' | null>(() => pref.get('side') as 'pages' | 'toc' | null)
-  const toc = outline.length > 0 && (side ?? ((doc?.numPages ?? 0) >= BOOK_PAGES ? 'toc' : 'pages')) === 'toc'
-  const leftW = toc ? TOC_W : THUMBS_W
-  const pickSide = (v: 'pages' | 'toc') => {
+  /**
+   * 左边栏是用来在论文里找位置的：缩略图、目录、批注三选一。
+   * 没选过的时候：书看目录，论文看缩略图；以前右栏停在"批注"上的，接着看批注
+   */
+  type Left = 'pages' | 'toc' | 'annos'
+  const [side, setSide] = useState<Left | null>(() => (pref.get('side') as Left | null) ?? (pref.get('tab') === 'annos' ? 'annos' : null))
+  const wanted: Left = side ?? ((doc?.numPages ?? 0) >= BOOK_PAGES ? 'toc' : 'pages')
+  const left: Left = wanted === 'toc' && !outline.length ? 'pages' : wanted
+  /** 目录和批注可以拖宽（缩略图是固定大小的图，不用拖），各记各的 */
+  const [tocW, setTocW] = useState(() => Math.min(LEFT_MAX, Math.max(LEFT_MIN, Number(pref.get('tocW')) || TOC_W)))
+  const [annosW, setAnnosW] = useState(() => Math.min(LEFT_MAX, Math.max(LEFT_MIN, Number(pref.get('annosW')) || ANNOS_W)))
+  const leftW = left === 'toc' ? tocW : left === 'annos' ? annosW : THUMBS_W
+  const pickSide = (v: Left) => {
     setSide(v)
     pref.set('side', v)
   }
-  const [showPanel, setShowPanel] = useState(() => pref.get('panel') !== '0')
+  /** 右边的笔记栏。以前它和批注是一栏：那时停在"批注"上的，笔记先收着 */
+  const [showPanel, setShowPanel] = useState(() => (pref.get('notes') ?? (pref.get('panel') === '0' || pref.get('tab') === 'annos' ? '0' : '1')) !== '0')
   /** 当前工具（底部工具栏）：每次打开论文都从"选择文字"开始，跟 Figma 一样 */
   const [tool, setTool] = useState<Tool>('select')
   /** 按住空格：临时变抓手 */
@@ -795,8 +807,6 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     window.addEventListener('reader-cmd', on)
     return () => window.removeEventListener('reader-cmd', on)
   })
-  type Tab = 'annos' | 'note'
-  const [tab, setTab] = useState<Tab>(() => { const t = pref.get('tab'); return t === 'note' || t === 'both' ? 'note' : 'annos' })
   // 以前 AI 是右栏里的一个标签页，用过的人直接给他开着 AI 栏
   const [showAi, setShowAi] = useState(() => pref.get('ai') === '1' || (pref.get('ai') === null && (pref.get('tab') === 'ai' || pref.get('tab') === 'both')))
   /** 选中拿来问 AI 的文字 */
@@ -826,10 +836,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [focusNote, setFocusNote] = useState(false)
   const currentNote = drafting ? undefined : paperNotes.find((n) => n.id === noteId) ?? paperNotes[0]
   const editor = useRef<EditorHandle | null>(null)
-  const switchTab = (t: Tab) => {
-    setTab(t)
-    pref.set('tab', t)
-    setFocusNote(t === 'note')
+  /** 打开笔记栏（已经开着就只是把光标放进去） */
+  const openNotes = () => {
+    setFocusNote(true)
     setLastSide('panel')
     if (!showPanel) togglePref('panel', true, setShowPanel)
   }
@@ -858,27 +867,27 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const appendToNote = async (block: string) => {
     if (editor.current) {
       // 笔记栏开着（草稿也算）：直接写进编辑器
-      switchTab('note')
+      openNotes()
       editor.current.append(block)
     } else if (!currentNote) {
       const n = await api.notes.create({ paperId: paper.id, title: paper.title, body: block + '\n' })
       setNoteId(n.id)
-      switchTab('note')
+      openNotes()
     } else {
       const r = await api.notes.read(currentNote.id)
       const body = r?.body ?? ''
       await api.notes.save(currentNote.id, body + (body.endsWith('\n\n') || !body ? '' : body.endsWith('\n') ? '\n' : '\n\n') + block + '\n')
-      switchTab('note')
+      openNotes()
     }
     toast({ text: '已摘到笔记' })
   }
-  /** 拖栏的左边缘改宽度；两栏各记各的 */
-  const startResize = (e: React.PointerEvent, startW: number, set: (w: number) => void, key: 'panelW' | 'aiW', min: number) => {
+  /** 拖栏靠论文那一边的边缘改宽度（右边两栏拖左边缘，左边栏拖右边缘）；各记各的 */
+  const startResize = (e: React.PointerEvent, startW: number, set: (w: number) => void, key: 'panelW' | 'aiW' | 'tocW' | 'annosW', min: number, max = 640, dir: 1 | -1 = 1) => {
     e.preventDefault()
     const startX = e.clientX
     let w = startW
     const move = (ev: PointerEvent) => {
-      w = Math.min(640, Math.max(min, startW + (startX - ev.clientX)))
+      w = Math.min(max, Math.max(min, startW + dir * (startX - ev.clientX)))
       set(w)
     }
     const up = () => {
@@ -904,7 +913,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   const togglePref = (k: 'thumbs' | 'panel' | 'ai', v: boolean, set: (v: boolean) => void) => {
     set(v)
-    pref.set(k, v ? '1' : '0')
+    pref.set(k === 'panel' ? 'notes' : k, v ? '1' : '0')
     if (v && k !== 'thumbs') setLastSide(k)
   }
 
@@ -913,18 +922,37 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const pageCount = doc?.numPages ?? file.pageCount ?? 0
   const scaleLabel = scale.preset === 'auto' ? '自动' : scale.preset === 'page-width' ? '适合宽度' : scale.preset === 'page-fit' ? '整页' : `${Math.round(scale.value * 100)}%`
 
+  const [noteMenu, setNoteMenu] = useState(false)
+  const pickNote = (id: string) => {
+    setNoteMenu(false)
+    setDrafting(false)
+    setNoteId(id)
+    setSlot((n) => n + 1)
+  }
+  /** 笔记栏标题右边：一个菜单（这篇的其他笔记、新笔记、在文件夹里显示、删除）和关闭按钮 */
+  const noteTools = (
+    <>
+      <div className="reader-more">
+        <button type="button" className="icon-btn" aria-haspopup="menu" aria-expanded={noteMenu} aria-label="笔记的更多操作" title={paperNotes.length > 1 ? `这篇论文有 ${paperNotes.length} 篇笔记` : '更多'} onClick={() => setNoteMenu((v) => !v)}><Icon name="more" size={16} /></button>
+        {noteMenu && (
+          <div className="menu" role="menu" onMouseLeave={() => setNoteMenu(false)}>
+            {paperNotes.length > 1 && (
+              <>
+                {paperNotes.map((n) => <button key={n.id} type="button" role="menuitemradio" aria-checked={n.id === currentNote?.id} onClick={() => pickNote(n.id)}><span className="menu-clip">{n.title}</span></button>)}
+                <div className="menu-sep" />
+              </>
+            )}
+            <button type="button" role="menuitem" disabled={!currentNote} onClick={() => { setNoteMenu(false); newPaperNote() }}>新笔记</button>
+            {currentNote && <button type="button" role="menuitem" onClick={() => { setNoteMenu(false); void api.notes.showInFinder(currentNote.id) }}>在{FILES_APP}中显示</button>}
+            {currentNote && <button type="button" role="menuitem" className="danger" onClick={() => { setNoteMenu(false); void api.notes.remove(currentNote.id).then(() => { setNoteId(null); setDrafting(false); setSlot((n) => n + 1) }) }}>移到{TRASH}</button>}
+          </div>
+        )}
+      </div>
+      <button type="button" className="icon-btn" aria-label="隐藏笔记" title={kbd('隐藏笔记（⌥⌘N）')} onClick={() => togglePref('panel', false, setShowPanel)}><Icon name="close" size={16} /></button>
+    </>
+  )
   const noteView = (
-    <div className="panel-note" role="tabpanel">
-      {(paperNotes.length > 1 || (drafting && paperNotes.length > 0)) && (
-        <label className="select panel-note-pick">
-          <span className="sr">选择笔记</span>
-          <select value={currentNote?.id ?? ''} onChange={(e) => { setDrafting(false); setNoteId(e.target.value); setSlot((n) => n + 1) }}>
-            {!currentNote && <option value="">新笔记</option>}
-            {paperNotes.map((n) => <option key={n.id} value={n.id}>{n.title}</option>)}
-          </select>
-          <Icon name="down" size={14} />
-        </label>
-      )}
+    <div className="panel-note">
       <NoteEditor
         key={`${paper.id}:${slot}`}
         noteId={currentNote?.id ?? null}
@@ -932,6 +960,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
         onCreated={(id) => { setDrafting(false); setNoteId(id) }}
         notes={notes}
         compact
+        tools={noteTools}
         autoFocus={focusNote}
         handle={editor}
         onOpenNote={onOpenNoteTitle}
@@ -947,7 +976,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
       <header className="reader-bar drag">
         <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
-        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label={outline.length ? '显示缩略图和目录' : '显示缩略图'} title={kbd(`${showThumbs ? '隐藏' : '显示'}${outline.length ? '缩略图和目录' : '缩略图'}（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
+        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="左边栏：页面、目录和批注" title={kbd(`${showThumbs ? '隐藏' : '显示'}左边栏：页面、目录和批注（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
         <div className="reader-title">
           <span className="reader-name" title={paper.title}>{paper.title}</span>
           {pageCount > 0 && (
@@ -987,21 +1016,37 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
             )}
           </div>
           <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : kbd(kbd(`全屏阅读：只留论文（${FOCUS_KEY}）`))} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seePanel} aria-label="批注和笔记" title={seePanel ? kbd('隐藏批注和笔记（⌥⌘N）') : kbd('显示批注和笔记（⌥⌘N）')} onClick={() => toggleSide('panel')}><Icon name="panel" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seePanel} aria-label="笔记" title={seePanel ? kbd('隐藏笔记（⌥⌘N）') : kbd('显示笔记（⌥⌘N）')} onClick={() => toggleSide('panel')}><Icon name="notes" /></button>}
           {!focus && <button type="button" className="icon-btn tool" aria-pressed={seeAi} aria-label="AI" title={seeAi ? kbd('隐藏 AI（⌥⌘A）') : kbd('显示 AI（⌥⌘A）：可以和笔记并排')} onClick={() => toggleSide('ai')}><Icon name="sparkle" /></button>}
         </div>
       </header>
 
       <div className="reader-body">
         {seeThumbs && !focus && (
-          <nav className={toc ? 'thumbs tray toc' : 'thumbs tray'} aria-label={toc ? '目录' : '页面缩略图'}>
-            {outline.length > 0 && (
-              <div className="side-seg" role="group" aria-label="左边栏显示什么">
-                <button type="button" aria-pressed={!toc} onClick={() => pickSide('pages')}>页面</button>
-                <button type="button" aria-pressed={toc} onClick={() => pickSide('toc')}>目录</button>
-              </div>
-            )}
-            {doc && (toc ? <Outline items={outline} current={page} onGo={goOutline} /> : <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} />)}
+          <nav className={`thumbs tray ${left}`} style={left === 'pages' ? undefined : { flexBasis: Math.min(leftW, Math.max(LEFT_MIN, winW - MIN_STAGE_W)) }} aria-label={left === 'toc' ? '目录' : left === 'annos' ? '批注' : '页面缩略图'}>
+            {left !== 'pages' && <div className="panel-resize right" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => (left === 'toc' ? startResize(e, tocW, setTocW, 'tocW', LEFT_MIN, LEFT_MAX, -1) : startResize(e, annosW, setAnnosW, 'annosW', LEFT_MIN, LEFT_MAX, -1))} />}
+            <div className="side-seg" role="group" aria-label="左边栏显示什么">
+              <button type="button" aria-pressed={left === 'pages'} onClick={() => pickSide('pages')}>页面</button>
+              {outline.length > 0 && <button type="button" aria-pressed={left === 'toc'} onClick={() => pickSide('toc')}>目录</button>}
+              <button type="button" aria-pressed={left === 'annos'} onClick={() => pickSide('annos')}>批注{annos.length ? ` · ${annos.length}` : ''}</button>
+            </div>
+            {left === 'annos' ? (
+              <AnnoList
+                annos={annos}
+                activeId={active?.id ?? null}
+                expandedId={active?.from === 'list' ? active.id : null}
+                onSelect={(a) => {
+                  jumpTo(a, false)
+                  requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 }, from: 'list' }))
+                }}
+                onCollapse={() => setActive(null)}
+                onComment={(a, text) => void update(a.id, { comment: text })}
+                onColor={recolor}
+                onRemove={(a) => void remove(a)}
+                onToNote={(a) => void toNote(a)}
+                onCopy={(a) => { void navigator.clipboard.writeText(a.target.quote.exact); toast({ text: '已复制' }) }}
+              />
+            ) : doc && (left === 'toc' ? <Outline items={outline} current={page} onGo={goOutline} /> : <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} />)}
           </nav>
         )}
 
@@ -1098,31 +1143,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
         </div>
 
         {seePanel && !focus && (
-          <aside className="reader-panel" style={{ flexBasis: Math.min(panelW, sideCap) } as CSSProperties} aria-label="批注和笔记">
+          <aside className="reader-panel notes" style={{ flexBasis: Math.min(panelW, sideCap) } as CSSProperties} aria-label="笔记">
             <div className="panel-resize" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => startResize(e, panelW, setPanelW, 'panelW', 260)} />
-            <div className="panel-tabs" role="tablist">
-              <button type="button" role="tab" aria-selected={tab === 'annos'} onClick={() => switchTab('annos')}>批注 · {annos.length}</button>
-              <button type="button" role="tab" aria-selected={tab === 'note'} onClick={() => switchTab('note')}>笔记{paperNotes.length ? ` · ${paperNotes.length}` : ''}</button>
-            </div>
-            {tab === 'annos' ? (
-              <AnnoList
-                annos={annos}
-                activeId={active?.id ?? null}
-                expandedId={active?.from === 'list' ? active.id : null}
-                onSelect={(a) => {
-                  jumpTo(a, false)
-                  requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 }, from: 'list' }))
-                }}
-                onCollapse={() => setActive(null)}
-                onComment={(a, text) => void update(a.id, { comment: text })}
-                onColor={recolor}
-                onRemove={(a) => void remove(a)}
-                onToNote={(a) => void toNote(a)}
-                onCopy={(a) => { void navigator.clipboard.writeText(a.target.quote.exact); toast({ text: '已复制' }) }}
-              />
-            ) : (
-              noteView
-            )}
+            {noteView}
           </aside>
         )}
 

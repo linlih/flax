@@ -702,7 +702,7 @@ function setMenu(): void {
           }))
         },
         { type: 'separator' as const },
-        { label: '批注和笔记', accelerator: 'Alt+CmdOrCtrl+N', click: cmd('toggleNotes') },
+        { label: '笔记', accelerator: 'Alt+CmdOrCtrl+N', click: cmd('toggleNotes') },
         { label: 'AI', accelerator: 'Alt+CmdOrCtrl+A', click: cmd('toggleAi') },
         { type: 'separator' as const },
         { role: 'togglefullscreen' as const, label: '进入全屏幕' },

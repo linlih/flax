@@ -8,6 +8,14 @@ button:disabled { opacity: .55; cursor: default; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 .num { font-variant-numeric: tabular-nums; }
 
+/* 滚动条：全应用一个样子。细、没有轨道，鼠标移到那块区域上才出现，移到滚动条上再加深。
+   不用 scrollbar-width / scrollbar-color：设了它们 Chromium 就不理下面这些了 */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { min-height: 44px; min-width: 44px; border: 3px solid transparent; border-radius: 5px; background-color: transparent; background-clip: content-box; }
+:hover::-webkit-scrollbar-thumb { background-color: color-mix(in srgb, var(--text) 22%, transparent); }
+::-webkit-scrollbar-thumb:hover, ::-webkit-scrollbar-thumb:active { border-width: 2px; background-color: color-mix(in srgb, var(--text) 42%, transparent); }
+
 .app { display: flex; height: 100%; }
 .drag { -webkit-app-region: drag; }
 .no-drag { -webkit-app-region: no-drag; }
@@ -263,8 +271,10 @@ textarea.inp { min-height: 0; }
 .anno-card-note textarea::placeholder { color: var(--placeholder); }
 
 /* 缩略图栏 */
-.thumbs { flex: 0 0 148px; padding: 8px 0; display: flex; flex-direction: column; min-height: 0; }
+.thumbs { position: relative; flex: 0 0 148px; padding: 8px 0; display: flex; flex-direction: column; min-height: 0; }
 .thumbs.toc { flex-basis: 248px; }
+.thumbs.annos { flex-basis: 280px; }
+.thumbs.annos .anno-list { padding: 0 8px 8px; }
 .thumbs-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 4px 0 8px; }
 .thumb-item { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 4px; border: 0; border-radius: 8px; background: transparent; cursor: pointer; }
 .thumb-item:hover { background: var(--hover); }
@@ -298,16 +308,12 @@ textarea.inp { min-height: 0; }
 /* 批注列表 */
 .reader-panel { position: relative; flex: 0 0 320px; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 8px; padding: 8px; background: var(--tray); }
 .panel-resize { position: absolute; z-index: 5; top: 0; bottom: 0; left: -4px; width: 8px; cursor: col-resize; }
+.panel-resize.right { left: auto; right: -4px; }
 .panel-resize:hover, .panel-resize:active { background: linear-gradient(to right, transparent 3px, var(--accent-top) 3px, var(--accent-top) 5px, transparent 5px); }
-.panel-tabs { flex: none; display: flex; gap: 2px; padding: 2px; border-radius: var(--r-control); background: var(--segmented); }
-.panel-tabs button { flex: 1; white-space: nowrap; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--text-2); font-size: 13px; font-weight: 500; cursor: pointer; }
-.panel-tabs button[aria-selected="true"] { background: var(--card); color: var(--text); box-shadow: var(--shadow-card); }
 .panel-note { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 8px; }
 .panel-head { flex: none; display: flex; align-items: center; justify-content: space-between; height: 32px; padding: 0 2px 0 8px; }
 .panel-title { margin: 0; font-size: 13px; font-weight: 600; color: var(--text); }
-.panel-note-pick select { width: 100%; height: 32px; }
-.panel-note-pick { display: flex; }
-.anno-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 0 0 8px; scrollbar-width: thin; }
+.anno-list { flex: 1; min-height: 0; overflow: auto; display: flex; flex-direction: column; gap: 2px; padding: 0 0 8px; }
 .anno-empty { margin: 4px 8px; }
 .anno-page { margin: 10px 8px 4px; font-size: 12px; font-weight: 500; color: var(--text-2); }
 .anno-entry:first-child .anno-page, .anno-filter + .anno-entry .anno-page { margin-top: 2px; }
@@ -346,6 +352,7 @@ textarea.inp { min-height: 0; }
   .reader-panel { flex-basis: 260px; }
   .thumbs { flex-basis: 128px; }
   .thumbs.toc { flex-basis: 228px; }
+  .thumbs.annos { flex-basis: 260px; }
 }
 
 /* —— 列表右边的详情栏（点一下论文显示） —— */
@@ -447,12 +454,17 @@ textarea.inp { min-height: 0; }
 .backlink small { font-size: 12px; color: var(--text-2); }
 
 /* 阅读器右栏里的笔记：窄一点 */
-.note-ed.compact { border-radius: var(--r-card); background: var(--card); border: 1px solid var(--border); box-shadow: var(--shadow-card); overflow: hidden; }
-.note-ed.compact .note-ed-head { padding: 10px 8px 4px 16px; }
+/* 阅读器右边的笔记栏：整栏就是一张纸，不再套一层卡片；标题那一行同时是这一栏的顶 */
+.reader-panel.notes { padding: 0; gap: 0; background: var(--card); }
+.note-ed.compact .note-ed-head { padding: 8px 8px 4px 20px; gap: 4px; }
 .note-ed.compact .note-title { font-size: 16px; }
+.note-ed.compact .note-tools .icon-btn { width: 28px; height: 28px; }
+.note-ed.compact .reader-more .menu { top: 32px; min-width: 180px; max-width: 280px; white-space: nowrap; color: var(--text); font-size: 13px; }
+.menu .menu-clip { overflow: hidden; text-overflow: ellipsis; }
+.menu button:disabled { color: var(--text-3, var(--placeholder)); cursor: default; background: transparent; }
 .note-ed.compact .note-cm .cm-editor { font-size: 14px; }
-.note-ed.compact .note-cm .cm-scroller { padding: 0 16px 24px; }
-.note-ed.compact .note-foot { padding: 6px 16px 8px; }
+.note-ed.compact .note-cm .cm-scroller { padding: 0 20px 32px; }
+.note-ed.compact .note-foot { padding: 6px 20px 8px; }
 
 /* —— AI —— */
 .input { width: 100%; height: 34px; padding: 0 10px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); outline: none; }
@@ -656,7 +668,6 @@ kbd { font-family: inherit; font-size: 12px; color: var(--text-2); white-space: 
   /* 滚动区铺到窗口右边和底边：滚动条贴着窗口边，内容滚到底而不是在半空被切掉；顶上淡出，不和标题硬切 */
   margin: -16px -24px -24px -12px; padding: 16px 24px 40px 12px;
   mask-image: linear-gradient(to bottom, transparent, #000 16px);
-  scrollbar-width: thin; scrollbar-color: color-mix(in srgb, var(--text) 22%, transparent) transparent;
 }
 .settings-page > .settings { overflow: visible; flex: none; }
 .settings-row { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 10px 14px; }

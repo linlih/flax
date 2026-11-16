@@ -1,7 +1,7 @@
 // 笔记编辑器：所见即所得的 Markdown（见 livePreview.ts），停手半秒自动存盘。
 // 还没有文件时也能直接写：第一次输入时才建文件，不留空笔记。
 // [[ 补全笔记标题；⌘ 点击 [[链接]] 打开那篇笔记，⌘ 点击引用块里的"第 N 页"跳回原文。
-import { useEffect, useMemo, useRef, useState, type MutableRefObject } from 'react'
+import { useEffect, useMemo, useRef, useState, type MutableRefObject, type ReactNode } from 'react'
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
@@ -33,6 +33,8 @@ interface Props {
   onCreated?: (id: string) => void
   notes: NoteSummary[]
   compact?: boolean
+  /** 标题右边放什么；给了就不显示自带的那几个按钮（阅读器的笔记栏把它们收进一个菜单） */
+  tools?: ReactNode
   onOpenNote: (title: string) => void
   onOpenAnnotation: (id: string) => void
   onDeleted?: () => void
@@ -45,7 +47,7 @@ interface Props {
 
 const SAVE_DELAY = 500
 
-export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact, onOpenNote, onOpenAnnotation, onDeleted, handle, autoFocus, onNew }: Props) {
+export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact, tools, onOpenNote, onOpenAnnotation, onDeleted, handle, autoFocus, onNew }: Props) {
   const host = useRef<HTMLDivElement>(null)
   const view = useRef<EditorView | null>(null)
   const [title, setTitle] = useState('')
@@ -259,11 +261,11 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
           }}
         />
         <div className="note-tools">
-          {noteId && <>
+          {tools ?? (noteId && <>
           {onNew && <button type="button" className="icon-btn" aria-label="新笔记" title="新笔记" onClick={onNew}><Icon name="plus" size={16} /></button>}
           <button type="button" className="icon-btn" aria-label={`在${FILES_APP}中显示文件`} title={`在${FILES_APP}中显示（笔记就是普通的 .md 文件）`} onClick={() => void api.notes.showInFinder(noteId)}><Icon name="open" size={16} /></button>
           <button type="button" className="icon-btn" aria-label="删除笔记" title={`移到${TRASH}`} onClick={() => { void api.notes.remove(noteId).then(() => onDeleted?.()) }}><Icon name="trash" size={16} /></button>
-          </>}
+          </>)}
         </div>
       </div>
       <div ref={host} className="note-cm" />
