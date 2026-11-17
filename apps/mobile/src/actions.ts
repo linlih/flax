@@ -130,6 +130,8 @@ interface Prefs {
   appearance?: Look
   /** 阅读器里页面深色显示；没设过就跟着系统 */
   pageDark?: boolean
+  /** 有 arXiv 网页版的论文默认用网页版看；选过"看 PDF 原版"就记住 */
+  readerMode?: 'html' | 'pdf'
 }
 
 // 和桌面一样放在资料文件夹的 prefs.json
@@ -175,4 +177,12 @@ export function pageDark(systemDark: boolean): boolean {
 
 export function setPageDark(on: boolean): void {
   writePrefs({ ...readPrefs(), pageDark: on })
+}
+
+export function readerMode(): 'html' | 'pdf' {
+  return readPrefs().readerMode ?? 'html'
+}
+
+export function setReaderMode(m: 'html' | 'pdf'): void {
+  writePrefs({ ...readPrefs(), readerMode: m })
 }

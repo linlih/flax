@@ -56,11 +56,12 @@ export class AiError extends Error {
 export type FetchLike = (input: string | URL | Request, init?: RequestInit) => Promise<Response>
 
 /** 翻译选中的一段。glossary：这段里出现的术语和用户定的译法 */
-export function translateSystem(glossary: { term: string; translation: string }[]): string {
+export function translateSystem(glossary: { term: string; translation: string }[], withContext = false): string {
   return [
     '你是学术论文翻译。把用户发来的文字译成准确、通顺、符合学术习惯的简体中文；如果原文是中文，就译成英文。',
     '只输出译文本身，不加引号、前言或解释。公式、变量名、引用编号（如 [12]）、代码保持原样。PDF 复制出来的断行和连字符要接上。',
     '如果只是一个词或短语：第一行只写最贴切的译法，第二行用一句话说明它在这类论文里的意思。',
+    ...(withContext ? ['用户会在括号里附上这个词所在的句子：按它在那句话里的意思翻译这个词，不要翻译整句；第二行说明它在这句里指什么。'] : []),
     ...(glossary.length ? ['下面这些术语必须按给定的译法翻译：', ...glossary.map((g) => `- ${g.term} → ${g.translation}`)] : [])
   ].join('\n')
 }

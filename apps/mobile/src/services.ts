@@ -5,6 +5,7 @@ import { AppState, Platform } from 'react-native'
 import { File } from 'expo-file-system'
 import { Importer, Library, LibraryTooNewError, type ImportNotice } from '@flax/core'
 import { AiService, AiSettings } from '@flax/core/ai/runtime'
+import { systemTranslate } from './systemTranslate'
 import type { AiEvent, AiStatus } from '@flax/core'
 import { openLibraryDb } from './platform/db'
 import { deletePdf, putPdf } from './platform/files'
@@ -127,8 +128,11 @@ function setup() {
     },
     onStatus: (_s: AiStatus) => bump('ai'),
     fetch: fetchLike,
-    mtCrypto
+    mtCrypto,
+    // 手机自带的翻译（iOS 的 Translation 框架、Android 的 ML Kit），免费、不用 Key
+    ...(systemTranslate ? { apple: systemTranslate } : {})
   })
+  void ai.checkApple()
 
   // 永久删除后没人用的 PDF：本机那份删掉，云端那份也删掉
   const cleanFiles = async () => {

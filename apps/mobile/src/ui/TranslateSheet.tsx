@@ -1,5 +1,6 @@
 // 阅读时选中文字点"翻译"：只把这段文字（和其中出现的术语译法）发给选的翻译服务，译文流式显示。
 // 选的是一个词或短语时，可以加进术语表（已有就改译法）。和桌面的 TranslateCard 对应。
+// 双击查词也用它：带上词所在的句子（AI 按上下文翻），可以换成翻整句、直接高亮这个词。
 import { useEffect, useRef, useState } from 'react'
 import { ActivityIndicator, Text, View } from 'react-native'
 import { router } from 'expo-router'
@@ -14,9 +15,13 @@ import { useTheme } from './theme'
 /** 多长以内算"词或短语"，可以加进术语表 */
 const TERM_MAX = 60
 
-export function TranslateSheet({ text, paperId, onClose }: { text: string; paperId: string; onClose: () => void }) {
+export function TranslateSheet({ text: word, context, paperId, onClose, onHighlight }: { text: string; context?: string; paperId: string; onClose: () => void; onHighlight?: () => void }) {
   const t = useTheme()
   const s = app()
+  /** 查词时点了"整句"就换成翻那句话 */
+  const [whole, setWhole] = useState(false)
+  const text = whole && context ? context : word
+  const lookup = !!context && !whole
   const [out, setOut] = useState('')
   const [state, setState] = useState<'busy' | 'done' | { error: string; noKey: boolean }>('busy')
   const [adding, setAdding] = useState<{ term: string; translation: string } | null>(null)
@@ -29,6 +34,8 @@ export function TranslateSheet({ text, paperId, onClose }: { text: string; paper
 
   useEffect(() => {
     rid.current = null
+    setOut('')
+    setState('busy')
     let all = ''
     const handle = (e: AiEvent) => {
       if (e.type === 'delta') setOut((all += e.text))
@@ -44,7 +51,7 @@ export function TranslateSheet({ text, paperId, onClose }: { text: string; paper
       else if (e.requestId === rid.current) handle(e)
     })
     try {
-      rid.current = s.ai.translate(text, glossary.map((g) => ({ term: g.term, translation: g.translation })))
+      rid.current = s.ai.translate(text, glossary.map((g) => ({ term: g.term, translation: g.translation })), lookup ? context : undefined)
       for (const e of early) if (e.requestId === rid.current) handle(e)
     } catch (e) {
       setState({ error: e instanceof Error ? e.message : String(e), noKey: false })
@@ -53,7 +60,7 @@ export function TranslateSheet({ text, paperId, onClose }: { text: string; paper
       off()
       if (rid.current) s.ai.cancel(rid.current)
     }
-  }, [text])
+  }, [text, lookup])
 
   const firstLine =
     out
@@ -64,11 +71,17 @@ export function TranslateSheet({ text, paperId, onClose }: { text: string; paper
 
   return (
     <>
-      <BottomSheet open={!adding} onClose={onClose} title="翻译">
+      <BottomSheet open={!adding} onClose={onClose} title={lookup ? undefined : '翻译'}>
         <View style={{ paddingHorizontal: 20, gap: 12 }}>
-          <Text style={{ color: t.sub, fontSize: 14, lineHeight: 20 }} numberOfLines={4}>
-            {clean}
-          </Text>
+          {lookup ? (
+            <Text style={{ color: t.text, fontSize: 22, fontWeight: '600' }} selectable>
+              {clean}
+            </Text>
+          ) : (
+            <Text style={{ color: t.sub, fontSize: 14, lineHeight: 20 }} numberOfLines={4}>
+              {clean}
+            </Text>
+          )}
           {known ? (
             <Text style={{ color: t.text, fontSize: 15 }}>
               <Text style={{ color: t.accentText, fontWeight: '600' }}>术语表 </Text>
@@ -95,7 +108,9 @@ export function TranslateSheet({ text, paperId, onClose }: { text: string; paper
           <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             {state === 'busy' && rid.current ? <Button title="停止" kind="tonal" onPress={() => rid.current && s.ai.cancel(rid.current)} /> : null}
             {state === 'done' ? <Button title="复制译文" kind="tonal" onPress={() => void copyText(out.trim())} /> : null}
-            {state === 'done' && short ? <Button title={known ? '改译法' : '加入术语表'} kind="tonal" onPress={() => setAdding({ term: clean, translation: known?.translation ?? firstLine })} /> : null}
+            {lookup && context ? <Button title="整句" kind="tonal" onPress={() => setWhole(true)} /> : null}
+            {lookup && onHighlight ? <Button title="高亮" kind="tonal" onPress={onHighlight} /> : null}
+            {(state === 'done' || (lookup && typeof state === 'object')) && short ? <Button title={known ? '改译法' : '加入术语表'} kind="tonal" onPress={() => setAdding({ term: clean, translation: known?.translation ?? firstLine })} /> : null}
             {typeof state === 'object' && state.noKey ? (
               <Button
                 title="去设置"

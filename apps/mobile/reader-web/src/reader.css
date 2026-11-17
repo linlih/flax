@@ -10,3 +10,13 @@ html, body { margin: 0; height: 100%; background: var(--desk); -webkit-tap-highl
 /* 手机上没有悬停：评论的气泡不显示，点标记打开批注 */
 .hl-mark::after { display: none; }
 .hl-mark { width: 26px; height: 26px; margin-top: -13px; }
+/* 网页版（arXiv HTML）：铺满宽度，排版在桌面的 html.css */
+#html { position: absolute; inset: 0; overflow: auto; -webkit-overflow-scrolling: touch; background: var(--desk); }
+#html[hidden], #scroll[hidden] { display: none; }
+#htmlhost { min-height: 100%; }
+#htmlhost .flax-html-article { padding: 72px 18px 140px; }
+
+/* 双击查的词 */
+::highlight(fx-lookup) { background-color: rgba(59, 130, 246, .32); }
+/* 双击别被当成缩放 */
+#scroll, #html { touch-action: manipulation; }

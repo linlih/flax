@@ -38,6 +38,7 @@ const library = {
   restoreAnnotation: invoke('restoreAnnotation'),
   showInFinder: invoke('showInFinder'),
   fileMissing: invoke('fileMissing'),
+  arxivHtml: invoke('arxivHtml'),
   relink: invoke('relink'),
   createFolder: invoke('createFolder'),
   renameFolder: invoke('renameFolder'),

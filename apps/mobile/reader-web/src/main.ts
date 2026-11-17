@@ -2,7 +2,8 @@
 // 只负责显示和收集操作；批注的增删改都发给 React Native，由那边的 Library 写数据库（只有一个地方写数据）。
 //
 // RN → 网页：window.flaxReader.receive(消息)
-//   { type: 'open', url, annotations, position, jump, dark }   打开文档
+//   { type: 'open', url, annotations, position, jump, dark, html?, topInset? }   打开文档；html 是 arXiv 编号：先试网页版
+//   { type: 'html', ok, base?, reason?, message? }             回复 needHtml：网页版存在哪个文件夹（file://）
 //   { type: 'annotations', annotations, active }               批注变了
 //   { type: 'goto', page, anno? }                              跳到某页 / 某条批注
 //   { type: 'goto', page, quote }                             跳到某页并找到那句话（AI 回答里的引用）
@@ -15,26 +16,32 @@
 //   ready / loaded { pages } / error { message } / page { page, total } / position { page, left, top, scale }
 //   selection { parts, text } 或 { parts: null } / tapAnno { id } / tap
 //   find { current, total, pending } / link { url }（外部链接） / facts { id, facts } 或 { id, error, notPdf }
+//   网页版：needHtml { version } / htmlFailed { reason, message? }（接着显示 PDF） / missing { ids }（网页里找不到的批注） / font { scale }
+//   网页版的 selection 带 text，parts 可能是空的（PDF 里找不到这段，只能复制、翻译）
 import * as pdfjsLib from 'pdfjs-dist'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import PdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?worker&inline'
 import { pdfFactsFromDoc, type Annotation } from '@flax/core'
+import { makeTapper, markLookup, pdfTextOf, quietSelection, selectionQuiet, sentenceAround, wordAt } from './lookup'
 import { clientToPdf, hitTest, pageAt, selectionParts, type PageViewLike } from '../../../desktop/src/renderer/src/reader/geometry'
 import { drawPage } from '../../../desktop/src/renderer/src/reader/overlay'
 import 'pdfjs-dist/web/pdf_viewer.css'
 import '@flax/ui/tokens.css'
 import '@flax/ui/highlights.css'
 import './reader.css'
+import { htmlReply, startHtml, type HtmlReply } from './html'
 
 // pdf_viewer.mjs 在加载时读 globalThis.pdfjsLib，要先设好再动态加载
 ;(globalThis as unknown as { pdfjsLib: typeof pdfjsLib }).pdfjsLib = pdfjsLib
 GlobalWorkerOptions.workerPort = new PdfWorker()
 
 type Msg =
-  | { type: 'open'; url: string; annotations: Annotation[]; position: { page: number; left: number; top: number; scale: string } | null; jump: { page: number; anno?: string } | null; dark: boolean }
+  | { type: 'open'; url: string; annotations: Annotation[]; position: { page: number; left: number; top: number; scale: string } | null; jump: { page: number; anno?: string } | null; dark: boolean; html?: string | null; topInset?: number }
+  | ({ type: 'html' } & HtmlReply)
   | { type: 'annotations'; annotations: Annotation[]; active: string | null }
   | { type: 'goto'; page: number; anno?: string; quote?: string }
   | { type: 'clearSelection' }
+  | { type: 'clearLookup' }
   | { type: 'find'; query: string; again?: boolean; previous?: boolean }
   | { type: 'closeFind' }
   | { type: 'zoom'; dir: 1 | -1 | 0 }
@@ -43,6 +50,8 @@ type Msg =
 
 const post = (m: Record<string, unknown>) => (window as unknown as { ReactNativeWebView?: { postMessage(s: string): void } }).ReactNativeWebView?.postMessage(JSON.stringify(m))
 
+// 长按菜单（系统的"复制、全选"）不要：操作面板在 RN 那边
+document.addEventListener('contextmenu', (e) => e.preventDefault())
 window.addEventListener('error', (e) => post({ type: 'error', message: String(e.message) }))
 window.addEventListener('unhandledrejection', (e) => post({ type: 'error', message: String((e.reason as Error)?.message ?? e.reason) }))
 
@@ -90,6 +99,24 @@ const setDark = (on: boolean) => {
 async function open(m: Extract<Msg, { type: 'open' }>) {
   setDark(m.dark)
   annos = m.annotations
+  let preloaded: Awaited<ReturnType<typeof getDocument>['promise']> | null = null
+  if (m.html) {
+    try {
+      preloaded = await getDocument(docOptions(m.url)).promise
+    } catch (e) {
+      post({ type: 'error', message: e instanceof Error ? e.message : String(e) })
+      return
+    }
+    const r = await startHtml({ doc: preloaded, arxiv: m.html, post, annotations: annos, position: m.position, jump: m.jump, topInset: m.topInset ?? 0 })
+    if ('view' in r) {
+      redraw = () => r.setAnnotations(annos, active)
+      goto = r.goto
+      find = (f) => r.find(f ? f.query : null, f?.again, f?.previous)
+      zoom = r.zoom
+      return
+    }
+    post({ type: 'htmlFailed', reason: r.fail, ...(r.message ? { message: r.message } : {}) })
+  }
   const { EventBus, PDFLinkService, PDFViewer, LinkTarget, PDFFindController } = await import('pdfjs-dist/web/pdf_viewer.mjs')
   const container = document.getElementById('scroll') as HTMLDivElement
   const eventBus = new EventBus()
@@ -192,6 +219,7 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
   document.addEventListener('selectionchange', () => {
     clearTimeout(selTimer)
     selTimer = setTimeout(() => {
+      if (selectionQuiet()) return
       const sel = document.getSelection()
       const range = sel && !sel.isCollapsed && sel.rangeCount ? sel.getRangeAt(0) : null
       const parts = range ? selectionParts(range, views()) : []
@@ -201,28 +229,40 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
       post(parts.length ? { type: 'selection', parts, text: parts.map((p) => p.quote.exact).join(' ') } : { type: 'selection', parts: null })
     }, 350)
   })
-  // 长按菜单（系统的"复制、全选"）不要：操作面板在 RN 那边
-  document.addEventListener('contextmenu', (e) => e.preventDefault())
 
   // —— 点一下：点在高亮上就选中那条批注，点空白处切换工具栏 ——
   let down: { x: number; y: number; t: number } | null = null
   container.addEventListener('pointerdown', (e) => {
     down = e.isPrimary ? { x: e.clientX, y: e.clientY, t: Date.now() } : null
   })
+  const tapper = makeTapper(
+    (e) => {
+      const mark = (e.target as HTMLElement).closest<HTMLElement>('.hl-mark')
+      if (mark?.dataset['anno']) return post({ type: 'tapAnno', id: mark.dataset['anno'] })
+      const v = pageAt(views(), e.clientX, e.clientY)
+      if (v) {
+        const [x, y] = clientToPdf(v, e.clientX, e.clientY)
+        const hit = annos.filter((a) => a.page === v.id - 1 && hitTest(a.target.rects, x, y)).pop()
+        if (hit) return post({ type: 'tapAnno', id: hit.id })
+      }
+      post({ type: 'tap' })
+    },
+    (e) => {
+      // 双击查词：只认文字层里的字
+      const layer = (e.target as HTMLElement).closest('.textLayer') ?? document.elementsFromPoint(e.clientX, e.clientY).find((el) => el.classList.contains('textLayer')) ?? null
+      const word = layer && wordAt(e.clientX, e.clientY, layer)
+      if (!layer || !word) return
+      quietSelection()
+      markLookup(word)
+      post({ type: 'lookup', word: pdfTextOf(word).trim(), sentence: sentenceAround(word, layer, pdfTextOf), parts: selectionParts(word, views()) })
+    }
+  )
   container.addEventListener('pointerup', (e) => {
     if (!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 10 || Date.now() - down.t > 400) return
     down = null
     if (!document.getSelection()?.isCollapsed) return
     if ((e.target as HTMLElement).closest('a')) return
-    const mark = (e.target as HTMLElement).closest<HTMLElement>('.hl-mark')
-    if (mark?.dataset['anno']) return post({ type: 'tapAnno', id: mark.dataset['anno'] })
-    const v = pageAt(views(), e.clientX, e.clientY)
-    if (v) {
-      const [x, y] = clientToPdf(v, e.clientX, e.clientY)
-      const hit = annos.filter((a) => a.page === v.id - 1 && hitTest(a.target.rects, x, y)).pop()
-      if (hit) return post({ type: 'tapAnno', id: hit.id })
-    }
-    post({ type: 'tap' })
+    tapper(e)
   })
 
   // —— 双指缩放：手势中用 CSS 缩放预览，松手后按新比例重新渲染 ——
@@ -264,7 +304,7 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
   container.addEventListener('touchcancel', endPinch)
 
   try {
-    const doc = await getDocument(docOptions(m.url)).promise
+    const doc = preloaded ?? (await getDocument(docOptions(m.url)).promise)
     viewer.setDocument(doc)
     linkService.setDocument(doc)
   } catch (e) {
@@ -301,8 +341,14 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
       case 'facts':
         void facts(m)
         break
+      case 'html':
+        htmlReply(m)
+        break
       case 'clearSelection':
         document.getSelection()?.removeAllRanges()
+        break
+      case 'clearLookup':
+        markLookup(null)
         break
     }
   }

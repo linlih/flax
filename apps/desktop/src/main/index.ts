@@ -19,6 +19,7 @@ import { Updater, realUpdater } from './updater'
 import { FileStore } from './store'
 import { SyncService } from './sync'
 import { deviceName } from './device'
+import { createArxivHtml } from './arxivHtml'
 
 app.setName('Flax')
 
@@ -142,7 +143,10 @@ function setup(): void {
   })
   const changed = () => send('library:changed')
   let sync: SyncService | null = null
+  const arxivRoot = join(app.getPath('userData'), 'arxiv-html')
+  const arxivHtml = createArxivHtml(arxivRoot, (url, init) => net.fetch(url, init))
   protocol.handle(SCHEME, createHandler({
+    arxivRoot,
     fetchMissing: (hash) => sync?.download(hash) ?? Promise.resolve(false),
     fileFor: (hash) => {
       try {
@@ -584,6 +588,7 @@ function setup(): void {
   handle('ai:openTranslateLanguages', () => shell.openExternal('x-apple.systempreferences:com.apple.Localization-Settings.extension'))
   handle('ai:cancel', (requestId) => ai.cancel(str(requestId, 'requestId')))
 
+  handle('library:arxivHtml', (id, version) => arxivHtml(str(id, 'id'), version === null || version === undefined ? null : str(version, 'version')))
   handle('library:showInFinder', (id) => {
     const p = mainFile(str(id, 'id'))
     if (p) shell.showItemInFolder(p)

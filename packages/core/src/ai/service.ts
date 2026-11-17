@@ -245,14 +245,18 @@ export class AiService {
     }, { effort })
   }
 
-  /** 翻译选中的一段：只发这段文字和其中出现的术语译法，不记进对话 */
-  translate(text: string, glossary: { term: string; translation: string }[] = []): string {
-    const t = text.replace(/-\s*\n\s*/g, '').replace(/\s+/g, ' ').trim().slice(0, 6000)
+  /** 翻译选中的一段：只发这段文字和其中出现的术语译法，不记进对话。context 是查词时词所在的句子 */
+  translate(text: string, glossary: { term: string; translation: string }[] = [], context?: string): string {
+    const clean = (x: string) => unligature(x).replace(/-\s*\n\s*/g, '').replace(/\s+/g, ' ').trim()
+    const t = clean(text).slice(0, 6000)
     if (!t) throw new Error('没有要翻译的文字')
     const engine = this.translateEngine()
     if (engine === 'apple') return this.startApple(t)
     if (engine !== 'ai') return this.startMt(engine, t)
-    return this.start([{ role: 'user', text: t }], {}, { system: translateSystem(glossary.slice(0, 50)), quick: true })
+    // 查词时附上所在的句子：只有 AI 用得上，按上下文选译法
+    const ctx = context ? clean(context).slice(0, 1000) : ''
+    const withCtx = !!ctx && ctx !== t
+    return this.start([{ role: 'user', text: withCtx ? `${t}\n\n（所在的句子：${ctx}）` : t }], {}, { system: translateSystem(glossary.slice(0, 50), withCtx), quick: true })
   }
 
   /** 用户选的深度落到当前模型上：模型不支持那档就用最近的浅一档，不能调就不发 */
@@ -391,3 +395,6 @@ function safeId(id: string): string {
   if (!/^[\w-]{1,80}$/.test(id)) throw new Error('bad paper id')
   return id
 }
+
+/** PDF 里的连字（ﬁ、ﬂ…）拆回普通字母：机器翻译认不出带连字的词 */
+const unligature = (s: string) => s.replace(/[\uFB00-\uFB06]/g, (c) => c.normalize('NFKC'))

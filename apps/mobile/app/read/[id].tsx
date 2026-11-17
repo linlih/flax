@@ -1,6 +1,8 @@
 // 阅读器：WebView 里跑 PDF.js（reader-web），这边负责数据：读批注、写批注、存阅读位置。
 // 长按选字 → 底部操作面板（五种颜色、下划线、摘录、评论、翻译、问 AI、复制）；点批注 → 改颜色、写评论、翻译、摘录、删除。
 // 顶栏：查找、问 AI、更多（跳页、缩放、页面深色、批注列表、笔记、详情）。读到最后一页提示"标为读过"。和桌面的 Reader 对应。
+// 有 arXiv 编号的论文默认看网页版（arXiv HTML，手机上排版好读）：批注仍按 PDF 存，网页里换算位置；
+// 没有网页版、没联网、版本对不上就自动显示 PDF。更多菜单里可以来回切换（WebView 重新打开）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { BackHandler, Linking, Pressable, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
@@ -11,7 +13,8 @@ import { quoteBlock } from '@flax/core'
 import { app, bump, showNotice } from '../../src/services'
 import { pdfFile } from '../../src/platform/files'
 import { readerProps } from '../../src/reader'
-import { appendToPaperNote, copyText, pageDark, setPageDark, setStatus } from '../../src/actions'
+import { appendToPaperNote, copyText, pageDark, readerMode, setPageDark, setReaderMode, setStatus } from '../../src/actions'
+import { arxivHtml } from '../../src/arxivHtml'
 import { Button, Chip, Empty, Field, IconButton } from '../../src/ui/kit'
 import { ActionSheet, BottomSheet, Prompt } from '../../src/ui/sheets'
 import { SWATCH, useTheme } from '../../src/ui/theme'
@@ -40,6 +43,20 @@ interface Part {
   rects: PdfRect[]
   quote: TextQuote
 }
+/** 选中的文字；网页版里 PDF 找不到的那段 parts 是空的（只能复制、翻译、问 AI） */
+interface Selected {
+  parts: Part[]
+  text: string
+}
+const HTML_FAIL: Record<string, string> = {
+  none: 'arXiv 上没有这篇的网页版，显示 PDF',
+  offline: '网页版下载不了（没联网？），先显示 PDF',
+  mismatch: '网页版和这份 PDF 对不上（可能不是同一版），显示 PDF',
+  error: '网页版打不开，显示 PDF'
+}
+/** 顶栏的高度：网页版跳转时留出来 */
+const TOP_BAR = 56
+
 interface FindState {
   current: number
   total: number
@@ -59,7 +76,17 @@ export default function ReadScreen() {
   const reader = useMemo(readerProps, [])
   const [chrome, setChrome] = useState(true)
   const [page, setPage] = useState<{ page: number; total: number } | null>(null)
-  const [selection, setSelection] = useState<Part[] | null>(null)
+  const [selected, setSelected] = useState<Selected | null>(null)
+  const selection = selected && selected.parts.length ? selected.parts : null
+  const arxiv = paper?.identifiers.arxiv ?? null
+  /** 想用哪种方式看；shown 是实际显示的（网页版打不开会退回 PDF） */
+  const [mode, setMode] = useState<'html' | 'pdf'>(() => (arxiv && readerMode() === 'html' ? 'html' : 'pdf'))
+  const [shown, setShown] = useState<'html' | 'pdf' | null>(null)
+  /** 换一种方式看时 WebView 重新打开 */
+  const [webKey, setWebKey] = useState(0)
+  /** 网页版里找不到位置的批注 */
+  const [missing, setMissing] = useState<Set<string>>(new Set())
+  const nextJump = useRef<{ page: number; anno?: string } | null>(null)
   const [active, setActive] = useState<Annotation | null>(null)
   /** 写评论：改已有批注的评论，或者给选中的文字新建一条评论批注 */
   const [comment, setComment] = useState<{ anno: Annotation } | { parts: Part[] } | null>(null)
@@ -74,6 +101,8 @@ export default function ReadScreen() {
   const [found, setFound] = useState<FindState | null>(null)
   const [dark, setDark] = useState(() => pageDark(systemDark))
   const [translating, setTranslating] = useState<string | null>(null)
+  /** 双击查的词：词、所在的句子、在 PDF 上的位置（网页版里 PDF 对不上时是空的，不能高亮） */
+  const [lookup, setLookup] = useState<{ word: string; sentence: string; parts: Part[] } | null>(null)
   /** 问 AI 面板：null 关着；字符串是带上的选中文字（空串是不带） */
   const [asking, setAsking] = useState<string | null>(null)
   /** 别的设备上读得更晚：提示一下，点了才跳，不自己跳（和桌面一样） */
@@ -103,8 +132,12 @@ export default function ReadScreen() {
   }, [paper?.id])
 
   const clearSelection = () => {
-    setSelection(null)
+    setSelected(null)
     send({ type: 'clearSelection' })
+  }
+  const closeLookup = () => {
+    setLookup(null)
+    send({ type: 'clearLookup' })
   }
   const closeFind = () => {
     setFinding(false)
@@ -115,7 +148,7 @@ export default function ReadScreen() {
   // 返回键：先收起选中、批注面板、查找，再退出阅读器
   useEffect(() => {
     const sub = BackHandler.addEventListener('hardwareBackPress', () => {
-      if (selection) return clearSelection(), true
+      if (selected) return clearSelection(), true
       if (active) {
         setActive(null)
         pushAnnotations(null)
@@ -125,7 +158,7 @@ export default function ReadScreen() {
       return false
     })
     return () => sub.remove()
-  }, [selection, active, finding])
+  }, [selected, active, finding])
 
   if (!paper || !file) return <Empty title="打不开这篇论文" sub="没有 PDF。" />
   const uri = pdfFile(file.hash).uri
@@ -139,19 +172,41 @@ export default function ReadScreen() {
     }
     switch (m['type']) {
       case 'ready': {
-        const pos = paper.readingPosition?.fileHash === file.hash ? paper.readingPosition : null
+        const saved = s.library.getPaper(paper.id)?.readingPosition
+        const pos = lastPos.current ?? (saved?.fileHash === file.hash ? saved : null)
+        const jump = nextJump.current ?? (jumpPage && webKey === 0 ? { page: Number(jumpPage), ...(jumpAnno ? { anno: jumpAnno } : {}) } : null)
+        nextJump.current = null
         send({
           type: 'open',
           url: uri,
           annotations: annotations(),
           position: pos ? { page: pos.page, left: pos.left, top: pos.top, scale: pos.scale } : null,
-          jump: jumpPage ? { page: Number(jumpPage), ...(jumpAnno ? { anno: jumpAnno } : {}) } : null,
-          dark
+          jump,
+          dark,
+          html: mode === 'html' ? arxiv : null,
+          topInset: TOP_BAR
         })
         break
       }
+      case 'needHtml': {
+        if (!arxiv) return send({ type: 'html', ok: false, reason: 'none' })
+        const version = typeof m['version'] === 'string' ? m['version'] : null
+        arxivHtml(arxiv, version).then(
+          (r) => send(r.ok ? { type: 'html', ok: true, base: r.base } : { type: 'html', ok: false, reason: r.reason, ...(r.message ? { message: r.message } : {}) }),
+          (e: unknown) => send({ type: 'html', ok: false, reason: 'offline', message: e instanceof Error ? e.message : String(e) })
+        )
+        break
+      }
+      case 'htmlFailed':
+        setShown('pdf')
+        showNotice(HTML_FAIL[String(m['reason'])] ?? HTML_FAIL['error']!)
+        break
+      case 'missing':
+        setMissing(new Set((m['ids'] as string[]) ?? []))
+        break
       case 'loaded': {
         const total = Number(m['pages'])
+        setShown(m['mode'] === 'html' ? 'html' : 'pdf')
         const o = s.library.positionElsewhere(paper.id)
         const mine = paper.readingPosition?.fileHash === file.hash ? paper.readingPosition.page : 1
         if (!jumpPage && o && o.fileHash === file.hash && o.page !== mine && o.page <= total) {
@@ -196,14 +251,24 @@ export default function ReadScreen() {
         bump('library')
         break
       }
-      case 'selection':
+      case 'selection': {
         setActive(null)
-        setSelection((m['parts'] as Part[] | null) ?? null)
+        const parts = (m['parts'] as Part[] | null) ?? null
+        setSelected(parts ? { parts, text: typeof m['text'] === 'string' ? m['text'] : parts.map((p) => p.quote.exact).join(' ') } : null)
         break
+      }
+      case 'lookup': {
+        const word = String(m['word'] ?? '').trim()
+        if (!word) break
+        setActive(null)
+        setSelected(null)
+        setLookup({ word, sentence: String(m['sentence'] ?? ''), parts: (m['parts'] as Part[] | null) ?? [] })
+        break
+      }
       case 'tapAnno': {
         const a = s.library.getAnnotation(String(m['id']))
         if (a) {
-          setSelection(null)
+          setSelected(null)
           setActive(a)
           pushAnnotations(a.id)
         }
@@ -270,7 +335,30 @@ export default function ReadScreen() {
     })
   }
 
-  const selText = selection ? selection.map((p) => p.quote.exact).join(' ') : ''
+  const selText = selected?.text ?? ''
+
+  /** 换一种方式看：WebView 重新打开，从现在读到的地方接着读；jump 是打开后要跳去的批注 */
+  const switchTo = (m: 'html' | 'pdf', jump?: { page: number; anno?: string }) => {
+    setReaderMode(m)
+    setMode(m)
+    setShown(null)
+    setSelected(null)
+    setActive(null)
+    setMissing(new Set())
+    setFound(null)
+    setFinding(false)
+    setPage(null)
+    nextJump.current = jump ?? null
+    setWebKey((k) => k + 1)
+  }
+  /** 跳到一条批注：网页版里找不到它就切到 PDF 再跳 */
+  const gotoAnno = (a: Annotation) => {
+    if (shown === 'html' && missing.has(a.id)) {
+      showNotice('这条批注在网页版里找不到，切到 PDF 看')
+      switchTo('pdf', { page: a.page + 1, anno: a.id })
+    } else send({ type: 'goto', page: a.page + 1, anno: a.id })
+  }
+  const inHtml = shown === 'html'
   const all = list ? annotations().sort((a, b) => a.page - b.page || (b.target.rects[0]?.[1] ?? 0) - (a.target.rects[0]?.[1] ?? 0)) : []
   const shownList = listFilter === 'all' ? all : listFilter === 'note' ? all.filter((a) => a.type === 'note' || !!a.comment) : all.filter((a) => a.type === listFilter)
   const annotatedPages = jumping ? [...new Set(annotations().map((a) => a.page + 1))].sort((a, b) => a - b) : []
@@ -278,6 +366,7 @@ export default function ReadScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: t.desk }}>
       <Web
+        key={webKey}
         ref={web}
         {...reader}
         domStorageEnabled
@@ -327,7 +416,8 @@ export default function ReadScreen() {
           )}
         </View>
       ) : null}
-      {page && !selection && !active ? (
+      {/* 页码不常驻（抢视线）：和顶栏一起，点一下页面才出来，可以点它跳页 */}
+      {page && chrome && !finding && !selected && !active ? (
         <Pressable accessibilityRole="button" accessibilityLabel={`第 ${page.page} 页，共 ${page.total} 页，点一下跳页`} onPress={() => setJumping(true)} style={[styles.pill, { bottom: insets.bottom + 20 }]}>
           <Text style={{ color: '#fff', fontSize: 13 }}>
             第 {page.page} / {page.total} 页
@@ -362,6 +452,28 @@ export default function ReadScreen() {
         </View>
       ) : null}
 
+      {selected && !selection ? (
+        <Sheet bottom={insets.bottom}>
+          <Text style={{ color: t.sub, fontSize: 13, paddingHorizontal: 4 }}>这段在 PDF 里没找到，不能标注（多是图表里的字）</Text>
+          <View style={styles.actions}>
+            <Action
+              label="翻译"
+              onPress={() => {
+                setTranslating(selText)
+                clearSelection()
+              }}
+            />
+            <Action
+              label="问 AI"
+              onPress={() => {
+                setAsking(selText)
+                clearSelection()
+              }}
+            />
+            <Action label="复制" onPress={() => copy(selText)} />
+          </View>
+        </Sheet>
+      ) : null}
       {selection ? (
         <Sheet bottom={insets.bottom}>
           <View style={styles.swatches}>
@@ -439,6 +551,23 @@ export default function ReadScreen() {
       />
 
       {translating !== null ? <TranslateSheet text={translating} paperId={paper.id} onClose={() => setTranslating(null)} /> : null}
+      {lookup ? (
+        <TranslateSheet
+          key={`${lookup.word}|${lookup.sentence}`}
+          text={lookup.word}
+          context={lookup.sentence || undefined}
+          paperId={paper.id}
+          onClose={closeLookup}
+          {...(lookup.parts.length
+            ? {
+                onHighlight: () => {
+                  addFromSelection('yellow', 'highlight', undefined, lookup.parts)
+                  closeLookup()
+                }
+              }
+            : {})}
+        />
+      ) : null}
 
       {asking !== null ? (
         <AiChat
@@ -458,9 +587,10 @@ export default function ReadScreen() {
         actions={[
           { label: '跳到第几页', icon: 'page', onPress: () => setJumping(true) },
           { label: '批注列表', icon: 'list', onPress: () => setList(true) },
-          { label: '放大', icon: 'plus', onPress: () => send({ type: 'zoom', dir: 1 }) },
-          { label: '缩小', icon: 'minus', onPress: () => send({ type: 'zoom', dir: -1 }) },
-          { label: '适合宽度', icon: 'fit', onPress: () => send({ type: 'zoom', dir: 0 }) },
+          ...(arxiv && shown ? [inHtml ? { label: '看 PDF 原版', icon: 'file' as const, onPress: () => switchTo('pdf') } : { label: '看网页版', icon: 'paper' as const, onPress: () => switchTo('html') }] : []),
+          { label: inHtml ? '字大一点' : '放大', icon: 'plus', onPress: () => send({ type: 'zoom', dir: 1 }) },
+          { label: inHtml ? '字小一点' : '缩小', icon: 'minus', onPress: () => send({ type: 'zoom', dir: -1 }) },
+          { label: inHtml ? '默认字号' : '适合宽度', icon: 'fit', onPress: () => send({ type: 'zoom', dir: 0 }) },
           {
             label: '页面深色显示',
             icon: 'moon',
@@ -509,7 +639,7 @@ export default function ReadScreen() {
             accessibilityHint="长按有更多操作"
             onPress={() => {
               setList(false)
-              send({ type: 'goto', page: a.page + 1, anno: a.id })
+              gotoAnno(a)
             }}
             onLongPress={() => setAnnoMenu(a)}
             android_ripple={{ color: t.line }}
@@ -523,6 +653,7 @@ export default function ReadScreen() {
               <Text style={{ color: t.sub, fontSize: 13 }}>
                 第 {a.page + 1} 页{a.comment ? ` · ${a.comment}` : ''}
               </Text>
+              {inHtml && missing.has(a.id) ? <Text style={{ color: t.sub, fontSize: 12 }}>网页版里没有 · 点了看 PDF</Text> : null}
             </View>
             <IconButton icon="more" label="批注操作" onPress={() => setAnnoMenu(a)} color={t.sub} />
           </Pressable>
@@ -541,7 +672,7 @@ export default function ReadScreen() {
                   icon: 'page',
                   onPress: () => {
                     setList(false)
-                    send({ type: 'goto', page: annoMenu.page + 1, anno: annoMenu.id })
+                    gotoAnno(annoMenu)
                   }
                 },
                 { label: annoMenu.comment ? '改评论' : '写评论', icon: 'edit', onPress: () => setComment({ anno: annoMenu }) },

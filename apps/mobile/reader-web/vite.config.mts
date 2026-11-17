@@ -44,6 +44,7 @@ export default defineConfig({
 </head>
 <body>
 <div id="scroll"><div id="viewer" class="pdfViewer"></div></div>
+<div id="html" hidden><div id="htmlhost"></div></div>
 <script src="reader.js"></script>
 </body>
 </html>

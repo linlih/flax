@@ -11,8 +11,10 @@ import { kbd, mod } from '../lib/platform'
 /** 超过这么多条才显示筛选 */
 const FILTER_MIN = 8
 
-export function AnnoList({ annos, activeId, expandedId, onSelect, onCollapse, onComment, onColor, onRemove, onToNote, onCopy }: {
+export function AnnoList({ annos, activeId, expandedId, missing, onSelect, onCollapse, onComment, onColor, onRemove, onToNote, onCopy }: {
   annos: Annotation[]
+  /** 网页版里找不到位置的那几条（点了在 PDF 里看） */
+  missing?: Set<string>
   /** 选中的那条（列表里点的，或页面上点的） */
   activeId: string | null
   /** 在列表里点的那条：展开编辑 */
@@ -90,6 +92,7 @@ export function AnnoList({ annos, activeId, expandedId, onSelect, onCollapse, on
           <AnnoRow
             a={a}
             on={activeId === a.id}
+            missing={!!missing?.has(a.id)}
             menuOn={menu?.a.id === a.id}
             open={expandedId === a.id}
             onSelect={() => onSelect(a)}
@@ -116,9 +119,10 @@ export function AnnoList({ annos, activeId, expandedId, onSelect, onCollapse, on
   )
 }
 
-function AnnoRow({ a, on, menuOn, open, onSelect, onCollapse, onComment, onColor, onRemove, onToNote, onCopy, onMenu }: {
+function AnnoRow({ a, on, missing, menuOn, open, onSelect, onCollapse, onComment, onColor, onRemove, onToNote, onCopy, onMenu }: {
   a: Annotation
   on: boolean
+  missing: boolean
   /** 右键菜单开着的那条 */
   menuOn: boolean
   open: boolean
@@ -154,6 +158,7 @@ function AnnoRow({ a, on, menuOn, open, onSelect, onCollapse, onComment, onColor
         <button type="button" className="anno-main" onClick={onSelect} aria-expanded={open}>
           <span className={'anno-quote' + (a.type === 'underline' ? ' ul' : '')}>{a.target.quote.exact}</span>
           {comment && !open && <span className="anno-comment"><Icon name="comment" size={13} />{comment}</span>}
+          {missing && <span className="anno-missing" title="网页版里找不到这段，点一下在 PDF 里看">网页版里没有 · 在 PDF 里看</span>}
         </button>
         {open && (
           <div className="anno-edit">

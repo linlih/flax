@@ -1,6 +1,6 @@
 // 阅读器：PDF.js 的 PDFViewer 负责渲染、文字层、链接、查找；
 // 我们在上面加高亮层、选中文字的工具条、批注卡片、缩略图和批注列表。
-import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent } from 'react'
 // 必须在 pdf_viewer.mjs 之前：它加载时要用 globalThis.pdfjsLib
 import { loadDocument } from './pdf'
 import 'pdfjs-dist/web/pdf_viewer.css'
@@ -26,6 +26,9 @@ import { ReaderToolbar, type Tool } from './ReaderToolbar'
 import { useAiStatus } from '../lib/ai'
 import { composing, FILES_APP, FOCUS_KEY, isMac, kbd, mod, TRASH } from '../lib/platform'
 import { nearEnd } from '../lib/status'
+import type { HtmlView } from './html/htmlView'
+import { FAIL_TEXT, openHtml } from './html/open'
+import './html/html.css'
 
 
 /** 当前外观是不是深色；外观由整个应用统一切换（见 main/appearance.ts），这里只跟着变 */
@@ -110,7 +113,11 @@ const pref = {
 export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, onOpenNoteTitle, onOpenAnnotation, onOpenSettings, terms, onReloadFile, onStatus }: Props) {
   const file = paper.files.find((f) => f.role === 'main') ?? paper.files[0]!
   const hash = file.hash
-  const scrollRef = useRef<HTMLDivElement>(null)
+  /** 现在显示的那个滚动区域：PDF 的或网页版的（浮层、拖动、坐标换算都用它） */
+  const scrollRef = useRef<HTMLDivElement | null>(null)
+  const pdfScrollRef = useRef<HTMLDivElement>(null)
+  const htmlScrollRef = useRef<HTMLDivElement>(null)
+  const htmlHostRef = useRef<HTMLDivElement>(null)
   const viewerRef = useRef<HTMLDivElement>(null)
   const pdfViewer = useRef<PDFViewer | null>(null)
   const bus = useRef<EventBus | null>(null)
@@ -120,6 +127,25 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [ready, setReady] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [page, setPage] = useState(1)
+  /** arXiv 上的论文可以换成网页版读：排版跟着窗口走，批注照样存在 PDF 上 */
+  const arxivId = paper.identifiers.arxiv
+  const [mode, setMode] = useState<'pdf' | 'html'>(() => (arxivId && pref.get('mode') === 'html' ? 'html' : 'pdf'))
+  const modeRef = useRef(mode)
+  modeRef.current = mode
+  const html = useRef<HtmlView | null>(null)
+  const [htmlReady, setHtmlReady] = useState(false)
+  const [htmlBusy, setHtmlBusy] = useState(false)
+  /** 网页版里找不到位置的批注 */
+  const [missing, setMissing] = useState<Set<string>>(() => new Set())
+  const [htmlOutline, setHtmlOutline] = useState<OutlineItem[]>([])
+  const [fontScale, setFontScale] = useState(1)
+  /** PDF 上读到的位置（切到网页版时从这里接着读） */
+  const pdfLoc = useRef<{ page: number; top: number | null }>(paper.readingPosition?.fileHash === file.hash ? { page: paper.readingPosition.page, top: paper.readingPosition.top } : { page: 1, top: null })
+  /** 切到 PDF 后要跳过去的批注（网页版里找不到的那几条） */
+  const pendingJump = useRef<Annotation | null>(null)
+  useLayoutEffect(() => {
+    scrollRef.current = mode === 'html' ? htmlScrollRef.current : pdfScrollRef.current
+  })
   // 未读、待读的论文真读起来了就变成在读（不弹提示，这是自动的）
   const notStarted = paper.readingStatus === 'inbox' || paper.readingStatus === 'to_read'
   useEffect(() => {
@@ -166,7 +192,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   type Left = 'pages' | 'toc' | 'annos'
   const [side, setSide] = useState<Left | null>(() => (pref.get('side') as Left | null) ?? (pref.get('tab') === 'annos' ? 'annos' : null))
   const wanted: Left = side ?? ((doc?.numPages ?? 0) >= BOOK_PAGES ? 'toc' : 'pages')
-  const left: Left = wanted === 'toc' && !outline.length ? 'pages' : wanted
+  /** 网页版的目录是网页里的各级标题 */
+  const toc = mode === 'html' ? htmlOutline : outline
+  const left: Left = wanted === 'toc' && !toc.length ? 'pages' : wanted
   /** 目录和批注可以拖宽（缩略图是固定大小的图，不用拖），各记各的 */
   const [tocW, setTocW] = useState(() => Math.min(LEFT_MAX, Math.max(LEFT_MIN, Number(pref.get('tocW')) || TOC_W)))
   const [annosW, setAnnosW] = useState(() => Math.min(LEFT_MAX, Math.max(LEFT_MIN, Number(pref.get('annosW')) || ANNOS_W)))
@@ -235,7 +263,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   // —— 打开文档 ——
   useEffect(() => {
-    const container = scrollRef.current!
+    const container = pdfScrollRef.current!
     const t0 = performance.now()
     let firstPaint = false
     const eventBus = new EventBus()
@@ -275,6 +303,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       })
     })
     eventBus.on('pagechanging', ({ pageNumber }: { pageNumber: number }) => {
+      if (modeRef.current === 'html') return
       setPage(pageNumber)
       setPageInput(String(pageNumber))
     })
@@ -291,7 +320,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       }
     })
     eventBus.on('updateviewarea', ({ location }: { location: { pageNumber: number; scale: number | string; left: number; top: number } }) => {
-      if (!restored || closed) return
+      if (!restored || closed || modeRef.current === 'html') return
+      pdfLoc.current = { page: location.pageNumber, top: Math.round(location.top) }
       const sc = typeof location.scale === 'number' ? String(location.scale / 100) : location.scale
       pending = { fileHash: hash, page: location.pageNumber, left: Math.round(location.left), top: Math.round(location.top), scale: sc, updatedAt: new Date().toISOString() }
       last = pending
@@ -303,6 +333,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
     // 窗口或两边栏宽度变了：预设缩放（自动、适合宽度）重新算
     const ro = new ResizeObserver(() => {
+      // 网页版显示时 PDF 藏着，宽度是 0
+      if (!container.clientWidth) return
       const cur = viewer.currentScaleValue
       if (viewer.pagesCount && (cur === 'auto' || cur === 'page-width' || cur === 'page-fit')) viewer.currentScaleValue = cur
     })
@@ -366,10 +398,119 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [hash])
 
-  // 批注或选中的批注变了：重画已经渲染的页面
+  // 批注或选中的批注变了：重画已经渲染的页面（网页版重新涂一遍）
   useEffect(() => {
+    if (mode === 'html') {
+      if (html.current) setMissing(new Set(html.current.paint(annos, active?.id ?? null).map((a) => a.id)))
+      return
+    }
     for (const v of views()) drawPage(v, annos, active?.id ?? null)
-  }, [annos, active?.id, views])
+  }, [annos, active?.id, views, mode, htmlReady])
+
+  // —— 网页版：打开、阅读位置 ——
+  useEffect(() => {
+    if (mode !== 'html' || !doc || !arxivId) return
+    let alive = true
+    let pending: ReadingPosition | null = null
+    let timer: ReturnType<typeof setTimeout> | undefined
+    const save = (final = false) => {
+      clearTimeout(timer)
+      if (pending) void api.library.savePosition(paper.id, pending, final)
+      pending = null
+    }
+    const toPos = (p: { page: number; top: number | null }): ReadingPosition => ({
+      fileHash: hash,
+      page: p.page,
+      left: 0,
+      top: p.top ?? 0,
+      scale: String(pdfViewer.current?.currentScaleValue ?? 'auto'),
+      updatedAt: new Date().toISOString()
+    })
+    setHtmlBusy(true)
+    const from = pdfLoc.current
+    void openHtml({
+      doc,
+      arxiv: arxivId,
+      scroller: htmlScrollRef.current!,
+      host: htmlHostRef.current!,
+      fetchHtml: async (version) => {
+        const r = await api.library.arxivHtml(arxivId, version)
+        if (!r.ok) return { fail: r.reason, ...(r.message ? { message: r.message } : {}) }
+        const base = `flax://arxiv/${encodeURIComponent(r.key)}/`
+        const res = await fetch(`${base}index.html`)
+        if (!res.ok) return { fail: 'offline' }
+        return { raw: await res.text(), base }
+      },
+      onPage: (p) => {
+        setPage(p)
+        setPageInput(String(p))
+      },
+      onPosition: (p) => {
+        pending = toPos(p)
+        clearTimeout(timer)
+        timer = setTimeout(() => save(), 800)
+      }
+    }).then((r) => {
+      if (!alive) {
+        if ('view' in r) r.view.destroy()
+        return
+      }
+      setHtmlBusy(false)
+      if ('fail' in r) {
+        toast({ text: FAIL_TEXT[r.fail] })
+        setMode('pdf')
+        return
+      }
+      html.current = r.view
+      setHtmlOutline(r.view.outline())
+      setFontScale(r.view.fontScale)
+      setMissing(new Set(r.view.paint(annosRef.current, activeRef.current).map((a) => a.id)))
+      r.view.gotoPage(from.page, from.top)
+      htmlScrollRef.current?.focus({ preventScroll: true })
+      setHtmlReady(true)
+    })
+    return () => {
+      alive = false
+      setHtmlBusy(false)
+      const v = html.current
+      if (v) {
+        // 切回 PDF：从网页版读到的地方接着读
+        const at = v.position()
+        pdfLoc.current = at
+        pending ??= toPos(at)
+        setTimeout(() => {
+          const pv = pdfViewer.current
+          if (pv?.pagesCount) pv.scrollPageIntoView({ pageNumber: Math.min(at.page, pv.pagesCount), destArray: [null, { name: 'XYZ' }, null, at.top, null], allowNegativeOffset: true })
+        }, 60)
+        v.destroy()
+      }
+      save(true)
+      html.current = null
+      setHtmlReady(false)
+      setMissing(new Set())
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode, doc, arxivId, hash])
+
+  // 网页版里找不到的批注：切到 PDF 后再跳过去
+  useEffect(() => {
+    const a = pendingJump.current
+    if (mode !== 'pdf' || !a || !ready) return
+    pendingJump.current = null
+    setTimeout(() => jumpTo(a), 250)
+  })
+
+  const switchMode = (m: 'pdf' | 'html') => {
+    if (m === mode) return
+    pref.set('mode', m)
+    window.getSelection()?.removeAllRanges()
+    setSelBar(null)
+    setCtx(null)
+    setActive(null)
+    setTrans(null)
+    if (find.open) closeFind()
+    setMode(m)
+  }
 
   // —— 浮层位置 ——
   // —— 引用悬停预览：停 300ms 才出现，移开就消失 ——
@@ -414,6 +555,10 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   }
   /** 批注最后一行的下边缘，浮层放在这里 */
   const spotFor = (a: Annotation): Spot | null => {
+    if (modeRef.current === 'html') {
+      const r = html.current?.anchorRect(a.id)
+      return r ? toSpot(r.left + r.width / 2, r.bottom) : null
+    }
     const v = views().find((x) => x.id === a.page + 1)
     const last = a.target.rects[a.target.rects.length - 1]
     if (!v || !last) return null
@@ -425,6 +570,10 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   // —— 选中文字、点击高亮 ——
   /** 这个位置上的批注（后画的在上面） */
   const annoAt = (clientX: number, clientY: number): Annotation | undefined => {
+    if (modeRef.current === 'html') {
+      const id = html.current?.annoAtPoint(clientX, clientY)
+      return id ? annosRef.current.find((a) => a.id === id) : undefined
+    }
     const v = pageAt(views(), clientX, clientY)
     if (!v) return undefined
     const [x, y] = clientToPdf(v, clientX, clientY)
@@ -435,7 +584,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     if ((e.target as HTMLElement).closest('.reader-float, .reader-toolbar') || e.button !== 0) return
     setCtx(null)
     // 页边的评论标记：打开这条批注
-    const mark = (e.target as HTMLElement).closest<HTMLElement>('.hl-mark')
+    const mark = (e.target as HTMLElement).closest<HTMLElement>('.hl-mark, .fx-note-mark')
     const marked = mark && annosRef.current.find((a) => a.id === mark.dataset['anno'])
     if (marked && !dragged.current) {
       setSelBar(null)
@@ -454,12 +603,14 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       const sel = window.getSelection()
       if (sel && !sel.isCollapsed && sel.rangeCount && scrollRef.current?.contains(sel.anchorNode)) {
         const range = sel.getRangeAt(0)
-        const parts = selectionParts(range, views())
+        const inHtml = modeRef.current === 'html'
+        const parts = inHtml ? (html.current?.selectionParts(range) ?? []) : selectionParts(range, views())
         const rects = range.getClientRects()
         const last = rects[rects.length - 1]
+        if (inHtml && !parts.length && last && (tool === 'highlight' || tool === 'underline')) toast({ text: '这段文字在 PDF 里找不到，标不了。可以切到 PDF 再标。', group: 'html-miss' })
         if (parts.length && last) {
           setActive(null)
-          const bar = { at: toSpot(last.right, last.bottom), parts, text: sel.toString() }
+          const bar = { at: toSpot(last.right, last.bottom), parts, text: inHtml ? html.current!.selectedText(range) : sel.toString() }
           // 高亮、下划线工具：选中就直接标上；选择工具只是选中，要做什么在右键菜单里
           if (tool === 'highlight' || tool === 'underline') return void create(tool, lastColor, false, bar)
           setSelBar(bar)
@@ -625,10 +776,12 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const onContextMenu = (e: React.MouseEvent) => {
     const at = toSpot(e.clientX, e.clientY)
     const sel = window.getSelection()
-    const text = sel && !sel.isCollapsed && sel.rangeCount && scrollRef.current?.contains(sel.anchorNode) ? sel.toString().trim() : ''
+    const inHtml = modeRef.current === 'html'
+    const live = sel && !sel.isCollapsed && sel.rangeCount && scrollRef.current?.contains(sel.anchorNode)
+    const text = live ? (inHtml ? html.current?.selectedText(sel.getRangeAt(0)) ?? '' : sel.toString().trim()) : ''
     if (text) {
       e.preventDefault()
-      const parts = selectionParts(sel!.getRangeAt(0), views())
+      const parts = inHtml ? (html.current?.selectionParts(sel!.getRangeAt(0)) ?? []) : selectionParts(sel!.getRangeAt(0), views())
       setCtx({ at, text, bar: parts.length ? { at, parts, text } : undefined })
       return
     }
@@ -641,6 +794,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   /** 跳到原文：先翻到那一页，再用 PDF.js 的查找把那句话找出来高亮（从当前页开始找） */
   const citeJump = (pageNumber: number, quote: string) => {
+    if (modeRef.current === 'html') return html.current?.gotoQuote(quote, pageNumber)
     const v = pdfViewer.current
     if (!v) return
     v.currentPageNumber = Math.min(Math.max(1, pageNumber), v.pagesCount)
@@ -679,6 +833,16 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   }
 
   const jumpTo = (a: Annotation, open = true) => {
+    if (modeRef.current === 'html') {
+      // 网页版里找不到的：切到 PDF 再跳
+      if (!html.current?.scrollToAnno(a.id)) {
+        pendingJump.current = a
+        switchMode('pdf')
+        return
+      }
+      if (open) requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 } }))
+      return
+    }
     const v = pdfViewer.current
     const r = a.target.rects[0]
     if (!v || !r) return
@@ -688,12 +852,14 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   /** 点目录：跳到那一条指的位置（不只是那一页的开头） */
   const goOutline = (it: OutlineItem) => {
+    if (modeRef.current === 'html') return html.current?.gotoOutline(it)
     const v = pdfViewer.current
     if (!v || it.page === undefined) return
     void v.linkService.goToDestination(it.dest as string | unknown[]).catch(() => goPage(it.page!))
   }
 
   const goPage = (n: number) => {
+    if (modeRef.current === 'html') return html.current?.gotoPage(Math.round(n))
     const v = pdfViewer.current
     if (!v || !Number.isFinite(n)) return
     v.currentPageNumber = Math.min(Math.max(1, Math.round(n)), v.pagesCount)
@@ -701,6 +867,11 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   // —— 查找 ——
   const runFind = (query: string, again = false, previous = false) => {
+    if (modeRef.current === 'html') {
+      const r = html.current?.find(query, again, previous) ?? { current: 0, total: 0 }
+      setFind((f) => ({ ...f, ...r, state: !query.trim() ? null : r.total ? FindState.FOUND : FindState.NOT_FOUND }))
+      return
+    }
     bus.current?.dispatch('find', { source: null, type: again ? 'again' : '', query, caseSensitive: false, entireWord: false, highlightAll: true, findPrevious: previous, matchDiacritics: false })
   }
   const openFind = () => {
@@ -708,6 +879,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     requestAnimationFrame(() => findInput.current?.select())
   }
   const closeFind = () => {
+    html.current?.clearFind()
     bus.current?.dispatch('findbarclose', { source: null })
     setFind((f) => ({ ...f, open: false, current: 0, total: 0, state: null }))
     scrollRef.current?.focus({ preventScroll: true })
@@ -715,6 +887,10 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   // —— 缩放 ——
   const zoom = (dir: 1 | -1 | 0) => {
+    if (modeRef.current === 'html') {
+      if (html.current) setFontScale(html.current.zoom(dir))
+      return
+    }
     const v = pdfViewer.current
     if (!v) return
     if (dir === 0) v.currentScaleValue = 'auto'
@@ -920,7 +1096,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const activeAnno = active ? annos.find((a) => a.id === active.id) : undefined
   const pagesWithNotes = useMemo(() => new Set(annos.map((a) => a.page + 1)), [annos])
   const pageCount = doc?.numPages ?? file.pageCount ?? 0
-  const scaleLabel = scale.preset === 'auto' ? '自动' : scale.preset === 'page-width' ? '适合宽度' : scale.preset === 'page-fit' ? '整页' : `${Math.round(scale.value * 100)}%`
+  const scaleLabel = mode === 'html' ? `${Math.round(fontScale * 100)}%` : scale.preset === 'auto' ? '自动' : scale.preset === 'page-width' ? '适合宽度' : scale.preset === 'page-fit' ? '整页' : `${Math.round(scale.value * 100)}%`
 
   const [noteMenu, setNoteMenu] = useState(false)
   const pickNote = (id: string) => {
@@ -972,128 +1148,9 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   )
   const aiView = <AiPanel paperId={paper.id} status={aiStatus} quote={aiQuote} onCite={citeJump} onOpenSettings={onOpenSettings} onToNote={(md) => void appendToNote(md)} onHide={() => togglePref('ai', false, setShowAi)} />
 
-  return (
-    <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
-      <header className="reader-bar drag">
-        <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
-        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="左边栏：页面、目录和批注" title={kbd(`${showThumbs ? '隐藏' : '显示'}左边栏：页面、目录和批注（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
-        <div className="reader-title">
-          <span className="reader-name" title={paper.title}>{paper.title}</span>
-          {pageCount > 0 && (
-            <label className="reader-page no-drag">
-              <span>第</span>
-              <input
-                className="num"
-                aria-label="页码"
-                value={pageInput}
-                inputMode="numeric"
-                onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ''))}
-                onKeyDown={(e) => { if (e.key === 'Enter') { goPage(Number(pageInput)); (e.target as HTMLInputElement).blur() } }}
-                onBlur={() => setPageInput(String(page))}
-                style={{ width: `${Math.max(2, String(pageCount).length) + 1.2}ch` }}
-              />
-              <span>页，共 {pageCount} 页</span>
-            </label>
-          )}
-        </div>
-        {doc && paper.readingStatus !== 'done' && nearEnd(page, doc.numPages) && (
-          <button type="button" className="btn btn-s mark-done no-drag" onClick={() => onStatus('done')}><Icon name="done" size={14} />标为读过</button>
-        )}
-        <div className="reader-tools no-drag">
-          <div className="zoom" role="group" aria-label="缩放">
-            <button type="button" className="icon-btn tool" aria-label="缩小" title={kbd('缩小（⌘-，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(-1)}><Icon name="minus" size={16} /></button>
-            <button type="button" className="zoom-l num" title={kbd('自动大小（⌘0）')} onClick={() => zoom(0)}>{scaleLabel}</button>
-            <button type="button" className="icon-btn tool" aria-label="放大" title={kbd('放大（⌘+，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(1)}><Icon name="plus" size={16} /></button>
-          </div>
-          <button type="button" className="icon-btn tool" aria-pressed={find.open} aria-label="在文中查找" title={kbd('在文中查找（⌘F）')} onClick={() => (find.open ? closeFind() : openFind())}><Icon name="search" /></button>
-          <div className="reader-more">
-            <button type="button" className="icon-btn tool" aria-haspopup="menu" aria-expanded={more} aria-label="更多" title="更多：论文详情、深色 / 浅色" onClick={() => setMore((v) => !v)}><Icon name="more" /></button>
-            {more && (
-              <div className="menu" role="menu" onMouseLeave={() => setMore(false)}>
-                <button type="button" role="menuitem" onClick={() => { setMore(false); onInfo() }}>论文详情</button>
-                <button type="button" role="menuitem" onClick={() => { setMore(false); void api.setAppearance(dark ? 'light' : 'dark') }}>{dark ? '换成浅色外观' : '换成深色外观'}</button>
-              </div>
-            )}
-          </div>
-          <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : kbd(kbd(`全屏阅读：只留论文（${FOCUS_KEY}）`))} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seePanel} aria-label="笔记" title={seePanel ? kbd('隐藏笔记（⌥⌘N）') : kbd('显示笔记（⌥⌘N）')} onClick={() => toggleSide('panel')}><Icon name="notes" /></button>}
-          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seeAi} aria-label="AI" title={seeAi ? kbd('隐藏 AI（⌥⌘A）') : kbd('显示 AI（⌥⌘A）：可以和笔记并排')} onClick={() => toggleSide('ai')}><Icon name="sparkle" /></button>}
-        </div>
-      </header>
-
-      <div className="reader-body">
-        {seeThumbs && !focus && (
-          <nav className={`thumbs tray ${left}`} style={left === 'pages' ? undefined : { flexBasis: Math.min(leftW, Math.max(LEFT_MIN, winW - MIN_STAGE_W)) }} aria-label={left === 'toc' ? '目录' : left === 'annos' ? '批注' : '页面缩略图'}>
-            {left !== 'pages' && <div className="panel-resize right" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => (left === 'toc' ? startResize(e, tocW, setTocW, 'tocW', LEFT_MIN, LEFT_MAX, -1) : startResize(e, annosW, setAnnosW, 'annosW', LEFT_MIN, LEFT_MAX, -1))} />}
-            <div className="side-seg" role="group" aria-label="左边栏显示什么">
-              <button type="button" aria-pressed={left === 'pages'} onClick={() => pickSide('pages')}>页面</button>
-              {outline.length > 0 && <button type="button" aria-pressed={left === 'toc'} onClick={() => pickSide('toc')}>目录</button>}
-              <button type="button" aria-pressed={left === 'annos'} onClick={() => pickSide('annos')}>批注{annos.length ? ` · ${annos.length}` : ''}</button>
-            </div>
-            {left === 'annos' ? (
-              <AnnoList
-                annos={annos}
-                activeId={active?.id ?? null}
-                expandedId={active?.from === 'list' ? active.id : null}
-                onSelect={(a) => {
-                  jumpTo(a, false)
-                  requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 }, from: 'list' }))
-                }}
-                onCollapse={() => setActive(null)}
-                onComment={(a, text) => void update(a.id, { comment: text })}
-                onColor={recolor}
-                onRemove={(a) => void remove(a)}
-                onToNote={(a) => void toNote(a)}
-                onCopy={(a) => { void navigator.clipboard.writeText(a.target.quote.exact); toast({ text: '已复制' }) }}
-              />
-            ) : doc && (left === 'toc' ? <Outline items={outline} current={page} onGo={goOutline} /> : <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} />)}
-          </nav>
-        )}
-
-        <div className="reader-stage">
-          {find.open && (
-            <div className="findbar" role="search">
-              <label className="filter">
-                <Icon name="search" size={16} />
-                <span className="sr">在文中查找</span>
-                <input
-                  ref={findInput}
-                  type="text"
-                  placeholder="在文中查找"
-                  value={find.query}
-                  onChange={(e) => { setFind((f) => ({ ...f, query: e.target.value })); runFind(e.target.value) }}
-                  onKeyDown={(e: ReactKeyboardEvent) => {
-                    if (composing(e)) return
-                    if (e.key === 'Enter') runFind(find.query, true, e.shiftKey)
-                    if (e.key === 'Escape') { e.stopPropagation(); closeFind() }
-                  }}
-                />
-              </label>
-              <span className="find-count num" aria-live="polite">
-                {!find.query ? '' : find.state === FindState.PENDING ? '查找中…' : find.total ? `${find.current} / ${find.total}` : find.state === FindState.NOT_FOUND ? '没有找到' : ''}
-              </span>
-              <button type="button" className="icon-btn tool" aria-label="上一个" title={kbd('上一个（⇧↩）')} disabled={!find.total} onClick={() => runFind(find.query, true, true)}><Icon name="up" size={16} /></button>
-              <button type="button" className="icon-btn tool" aria-label="下一个" title={kbd('下一个（↩）')} disabled={!find.total} onClick={() => runFind(find.query, true)}><Icon name="down" size={16} /></button>
-              <button type="button" className="icon-btn tool" aria-label="关闭查找" onClick={closeFind}><Icon name="close" size={16} /></button>
-            </div>
-          )}
-          {error && (
-            <div className="reader-error card">
-              <b>{error}</b>
-              {error === MISSING ? (
-                <>
-                  <p className="hint">批注和笔记都还在。选回同一个文件，批注会照原样显示。</p>
-                  <button type="button" className="btn btn-p" onClick={() => void relink()}>重新选择 PDF…</button>
-                </>
-              ) : (
-                <button type="button" className="btn" onClick={() => void api.library.openFile(paper.id)}><Icon name="open" size={16} />用其他程序打开</button>
-              )}
-            </div>
-          )}
-          {!doc && !error && <div className="reader-loading" aria-live="polite"><Spinner />正在打开</div>}
-          {doc && <ReaderToolbar tool={hand ? 'hand' : tool} color={activeAnno?.color ?? lastColor} colorFor={activeAnno ? '这条批注' : null} onTool={chooseTool} onColor={(c) => { pickColor(c); if (activeAnno) recolor(activeAnno, c) }} />}
-          <div ref={scrollRef} className={`reader-scroll${hand ? ' hand' : ''}${panning ? ' panning' : ''}${tool === 'highlight' || tool === 'underline' ? ' marking' : ''}`} tabIndex={0} aria-label="论文页面" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} onMouseOver={onLinkOver} onMouseOut={onLinkOut} onScroll={() => { if (ctx) setCtx(null); if (peek) setPeek(null) }}>
-            <div ref={viewerRef} className="pdfViewer" />
+  /** 页面上的浮层（右键菜单、翻译、链接预览、批注卡片）：放在现在显示的那个滚动区域里，跟着内容滚 */
+  const floats = (
+    <>
 
 
             {ctx && (
@@ -1139,7 +1196,147 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
                 onClose={() => setActive(null)}
               />
             )}
+    </>
+  )
+
+  return (
+    <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
+      <header className="reader-bar drag">
+        <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
+        {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="左边栏：页面、目录和批注" title={kbd(`${showThumbs ? '隐藏' : '显示'}左边栏：页面、目录和批注（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
+        <div className="reader-title">
+          <span className="reader-name" title={paper.title}>{paper.title}</span>
+          {pageCount > 0 && (
+            <label className="reader-page no-drag">
+              <span>第</span>
+              <input
+                className="num"
+                aria-label="页码"
+                value={pageInput}
+                inputMode="numeric"
+                onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ''))}
+                onKeyDown={(e) => { if (e.key === 'Enter') { goPage(Number(pageInput)); (e.target as HTMLInputElement).blur() } }}
+                onBlur={() => setPageInput(String(page))}
+                style={{ width: `${Math.max(2, String(pageCount).length) + 1.2}ch` }}
+              />
+              <span>页，共 {pageCount} 页</span>
+            </label>
+          )}
+        </div>
+        {doc && paper.readingStatus !== 'done' && nearEnd(page, doc.numPages) && (
+          <button type="button" className="btn btn-s mark-done no-drag" onClick={() => onStatus('done')}><Icon name="done" size={14} />标为读过</button>
+        )}
+        <div className="reader-tools no-drag">
+          {arxivId && (
+            <div className="seg reader-mode" role="group" aria-label="怎么显示论文">
+              <button type="button" aria-pressed={mode === 'pdf'} title="PDF 原版：和印出来的一样" onClick={() => switchMode('pdf')}>PDF</button>
+              <button type="button" aria-pressed={mode === 'html'} title="arXiv 网页版：排版跟着窗口走，字号可调。批注和 PDF 是同一份" onClick={() => switchMode('html')}>网页版</button>
+            </div>
+          )}
+          <div className="zoom" role="group" aria-label={mode === 'html' ? '字号' : '缩放'}>
+            <button type="button" className="icon-btn tool" aria-label="缩小" title={kbd('缩小（⌘-，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(-1)}><Icon name="minus" size={16} /></button>
+            <button type="button" className="zoom-l num" title={kbd('自动大小（⌘0）')} onClick={() => zoom(0)}>{scaleLabel}</button>
+            <button type="button" className="icon-btn tool" aria-label="放大" title={kbd('放大（⌘+，或按住 Ctrl 滚动滚轮）')} onClick={() => zoom(1)}><Icon name="plus" size={16} /></button>
           </div>
+          <button type="button" className="icon-btn tool" aria-pressed={find.open} aria-label="在文中查找" title={kbd('在文中查找（⌘F）')} onClick={() => (find.open ? closeFind() : openFind())}><Icon name="search" /></button>
+          <div className="reader-more">
+            <button type="button" className="icon-btn tool" aria-haspopup="menu" aria-expanded={more} aria-label="更多" title="更多：论文详情、深色 / 浅色" onClick={() => setMore((v) => !v)}><Icon name="more" /></button>
+            {more && (
+              <div className="menu" role="menu" onMouseLeave={() => setMore(false)}>
+                <button type="button" role="menuitem" onClick={() => { setMore(false); onInfo() }}>论文详情</button>
+                <button type="button" role="menuitem" onClick={() => { setMore(false); void api.setAppearance(dark ? 'light' : 'dark') }}>{dark ? '换成浅色外观' : '换成深色外观'}</button>
+              </div>
+            )}
+          </div>
+          <button type="button" className="icon-btn tool" aria-pressed={focus} aria-label={focus ? '退出全屏阅读' : '全屏阅读'} title={focus ? '退出全屏阅读（Esc）' : kbd(kbd(`全屏阅读：只留论文（${FOCUS_KEY}）`))} onClick={toggleFocus}><Icon name={focus ? 'shrink' : 'fit'} /></button>
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seePanel} aria-label="笔记" title={seePanel ? kbd('隐藏笔记（⌥⌘N）') : kbd('显示笔记（⌥⌘N）')} onClick={() => toggleSide('panel')}><Icon name="notes" /></button>}
+          {!focus && <button type="button" className="icon-btn tool" aria-pressed={seeAi} aria-label="AI" title={seeAi ? kbd('隐藏 AI（⌥⌘A）') : kbd('显示 AI（⌥⌘A）：可以和笔记并排')} onClick={() => toggleSide('ai')}><Icon name="sparkle" /></button>}
+        </div>
+      </header>
+
+      <div className="reader-body">
+        {seeThumbs && !focus && (
+          <nav className={`thumbs tray ${left}`} style={left === 'pages' ? undefined : { flexBasis: Math.min(leftW, Math.max(LEFT_MIN, winW - MIN_STAGE_W)) }} aria-label={left === 'toc' ? '目录' : left === 'annos' ? '批注' : '页面缩略图'}>
+            {left !== 'pages' && <div className="panel-resize right" role="separator" aria-orientation="vertical" aria-label="拖动调整宽度" onPointerDown={(e) => (left === 'toc' ? startResize(e, tocW, setTocW, 'tocW', LEFT_MIN, LEFT_MAX, -1) : startResize(e, annosW, setAnnosW, 'annosW', LEFT_MIN, LEFT_MAX, -1))} />}
+            <div className="side-seg" role="group" aria-label="左边栏显示什么">
+              <button type="button" aria-pressed={left === 'pages'} onClick={() => pickSide('pages')}>页面</button>
+              {toc.length > 0 && <button type="button" aria-pressed={left === 'toc'} onClick={() => pickSide('toc')}>目录</button>}
+              <button type="button" aria-pressed={left === 'annos'} onClick={() => pickSide('annos')}>批注{annos.length ? ` · ${annos.length}` : ''}</button>
+            </div>
+            {left === 'annos' ? (
+              <AnnoList
+                annos={annos}
+                missing={mode === 'html' ? missing : undefined}
+                activeId={active?.id ?? null}
+                expandedId={active?.from === 'list' ? active.id : null}
+                onSelect={(a) => {
+                  jumpTo(a, false)
+                  requestAnimationFrame(() => setActive({ id: a.id, at: spotFor(a) ?? { x: 0, y: 0 }, from: 'list' }))
+                }}
+                onCollapse={() => setActive(null)}
+                onComment={(a, text) => void update(a.id, { comment: text })}
+                onColor={recolor}
+                onRemove={(a) => void remove(a)}
+                onToNote={(a) => void toNote(a)}
+                onCopy={(a) => { void navigator.clipboard.writeText(a.target.quote.exact); toast({ text: '已复制' }) }}
+              />
+            ) : doc && (left === 'toc' ? <Outline key={mode} items={toc} current={page} onGo={goOutline} /> : <Thumbnails doc={doc} current={page} marked={pagesWithNotes} onGo={goPage} />)}
+          </nav>
+        )}
+
+        <div className="reader-stage">
+          {find.open && (
+            <div className="findbar" role="search">
+              <label className="filter">
+                <Icon name="search" size={16} />
+                <span className="sr">在文中查找</span>
+                <input
+                  ref={findInput}
+                  type="text"
+                  placeholder="在文中查找"
+                  value={find.query}
+                  onChange={(e) => { setFind((f) => ({ ...f, query: e.target.value })); runFind(e.target.value) }}
+                  onKeyDown={(e: ReactKeyboardEvent) => {
+                    if (composing(e)) return
+                    if (e.key === 'Enter') runFind(find.query, true, e.shiftKey)
+                    if (e.key === 'Escape') { e.stopPropagation(); closeFind() }
+                  }}
+                />
+              </label>
+              <span className="find-count num" aria-live="polite">
+                {!find.query ? '' : find.state === FindState.PENDING ? '查找中…' : find.total ? `${find.current} / ${find.total}` : find.state === FindState.NOT_FOUND ? '没有找到' : ''}
+              </span>
+              <button type="button" className="icon-btn tool" aria-label="上一个" title={kbd('上一个（⇧↩）')} disabled={!find.total} onClick={() => runFind(find.query, true, true)}><Icon name="up" size={16} /></button>
+              <button type="button" className="icon-btn tool" aria-label="下一个" title={kbd('下一个（↩）')} disabled={!find.total} onClick={() => runFind(find.query, true)}><Icon name="down" size={16} /></button>
+              <button type="button" className="icon-btn tool" aria-label="关闭查找" onClick={closeFind}><Icon name="close" size={16} /></button>
+            </div>
+          )}
+          {error && (
+            <div className="reader-error card">
+              <b>{error}</b>
+              {error === MISSING ? (
+                <>
+                  <p className="hint">批注和笔记都还在。选回同一个文件，批注会照原样显示。</p>
+                  <button type="button" className="btn btn-p" onClick={() => void relink()}>重新选择 PDF…</button>
+                </>
+              ) : (
+                <button type="button" className="btn" onClick={() => void api.library.openFile(paper.id)}><Icon name="open" size={16} />用其他程序打开</button>
+              )}
+            </div>
+          )}
+          {!doc && !error && <div className="reader-loading" aria-live="polite"><Spinner />正在打开</div>}
+          {doc && <ReaderToolbar tool={hand ? 'hand' : tool} color={activeAnno?.color ?? lastColor} colorFor={activeAnno ? '这条批注' : null} onTool={chooseTool} onColor={(c) => { pickColor(c); if (activeAnno) recolor(activeAnno, c) }} />}
+          <div ref={pdfScrollRef} className={`reader-scroll${hand ? ' hand' : ''}${panning ? ' panning' : ''}${tool === 'highlight' || tool === 'underline' ? ' marking' : ''}`} style={mode === 'html' ? { display: 'none' } : undefined} tabIndex={0} aria-label="论文页面" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} onMouseOver={onLinkOver} onMouseOut={onLinkOut} onScroll={() => { if (ctx) setCtx(null); if (peek) setPeek(null) }}>
+            <div ref={viewerRef} className="pdfViewer" />
+            {mode === 'pdf' && floats}
+          </div>
+          {arxivId && (
+            <div ref={htmlScrollRef} className={`reader-scroll${hand ? ' hand' : ''}${panning ? ' panning' : ''}${tool === 'highlight' || tool === 'underline' ? ' marking' : ''}` + ' reader-html'} style={mode === 'pdf' ? { display: 'none' } : undefined} tabIndex={0} aria-label="论文网页版" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onDoubleClick={onDoubleClick} onContextMenu={onContextMenu} onScroll={() => { if (ctx) setCtx(null) }}>
+              <div ref={htmlHostRef} />
+              {mode === 'html' && floats}
+              {mode === 'html' && htmlBusy && <div className="reader-loading" aria-live="polite"><Spinner />正在打开网页版</div>}
+            </div>
+          )}
         </div>
 
         {seePanel && !focus && (
@@ -1167,7 +1364,7 @@ function selectWordAt(x: number, y: number, root: HTMLElement | null): boolean {
   const pos = document.caretPositionFromPoint(x, y)
   root?.classList.remove('hit-text')
   const node = pos?.offsetNode
-  if (!root || !pos || !node || node.nodeType !== Node.TEXT_NODE || !node.parentElement?.closest('.textLayer') || !root.contains(node)) return false
+  if (!root || !pos || !node || node.nodeType !== Node.TEXT_NODE || !node.parentElement?.closest('.textLayer, .flax-html') || !root.contains(node)) return false
   const text = node.textContent ?? ''
   const seg = new Intl.Segmenter(undefined, { granularity: 'word' })
   // 落在一个词的后半时 offset 可能正好在词尾，往前看一个字

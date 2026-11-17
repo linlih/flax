@@ -48,7 +48,20 @@
       ],
       "./plugins/withReaderAssets",
       "./plugins/withReleaseSigning",
-      "expo-status-bar"
+      "expo-status-bar",
+      [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-light.png",
+          "imageWidth": 120,
+          "resizeMode": "contain",
+          "backgroundColor": "#FFFFFF",
+          "dark": {
+            "image": "./assets/splash-dark.png",
+            "backgroundColor": "#121212"
+          }
+        }
+      ]
     ]
   }
 }

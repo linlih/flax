@@ -1,9 +1,10 @@
-// 设置 → 翻译：用 AI 模型，或者某家翻译服务的官方 API（自己申请的 Key，大多每月有免费额度）。
-// 选了一家还没填 Key 的，先填好再换过去；填好的打开时试译一下。和桌面的 TranslateSettings 对应（手机上没有系统翻译）。
+// 设置 → 翻译：手机自带的系统翻译（免费、不用 Key，要先下载语言包）、AI 模型，或者某家翻译服务的官方 API。
+// 选了一家还没填 Key 的，先填好再换过去；填好的打开时试译一下。和桌面的 TranslateSettings 对应。
 import { useEffect, useState } from 'react'
-import { Linking, ScrollView, Text, View } from 'react-native'
+import { Linking, Platform, ScrollView, Text, View } from 'react-native'
 import { Stack } from 'expo-router'
-import { MT_ENGINES, mtEngineOf, type MtAccountInfo, type MtEngine, type TranslateEngine } from '@flax/core'
+import { MT_ENGINES, mtEngineOf, type AppleTranslateStatus, type MtAccountInfo, type MtEngine, type TranslateEngine } from '@flax/core'
+import { prepareSystemTranslate, systemTranslate } from '../../src/systemTranslate'
 import { app, useVersion } from '../../src/services'
 import { Button, Field } from '../../src/ui/kit'
 import { OptionRow } from '../../src/ui/sheets'
@@ -23,8 +24,12 @@ export default function TranslateSettings() {
   const info = shown === 'ai' || shown === 'apple' ? undefined : mtEngineOf(shown)
   const account = tr.accounts.find((a) => a.engine === shown)
 
+  useEffect(() => {
+    void s.ai.checkApple()
+  }, [])
+
   const choose = (e: TranslateEngine) => {
-    if (e !== 'ai' && !tr.accounts.some((a) => a.engine === e && a.hasSecret)) return setPicked(e as MtEngine)
+    if (e !== 'ai' && e !== 'apple' && !tr.accounts.some((a) => a.engine === e && a.hasSecret)) return setPicked(e as MtEngine)
     setPicked(null)
     s.ai.setTranslateEngine(e)
     force((x) => x + 1)
@@ -34,6 +39,9 @@ export default function TranslateSettings() {
     <ScrollView style={{ backgroundColor: t.bg }} contentContainerStyle={{ paddingBottom: 48 }} keyboardShouldPersistTaps="handled">
       <Stack.Screen options={{ title: '翻译' }} />
       <Text style={{ color: t.sub, fontSize: 14, lineHeight: 20, paddingHorizontal: 16, paddingBottom: 8 }}>阅读时选中文字点"翻译"。只发你要翻译的那段，按术语表的译法翻。</Text>
+      {tr.apple !== 'unavailable' ? <OptionRow label="系统翻译" sub={SYSTEM_SUB[tr.apple]} checked={shown === 'apple'} onPress={() => choose('apple')} /> : null}
+      {shown === 'apple' && tr.apple === 'supported' ? <SystemDownload /> : null}
+      {shown === 'apple' && tr.apple === 'installed' ? <SystemTest /> : null}
       <OptionRow label="AI 模型" sub={st.ready ? '问 AI 里选的模型' : '还没有连接 AI 服务：在"设置 → AI 服务"里添加一个，或者用下面的翻译服务'} checked={shown === 'ai'} onPress={() => choose('ai')} />
       {MT_ENGINES.map((m) => {
         const a = tr.accounts.find((x) => x.engine === m.id)
@@ -41,6 +49,63 @@ export default function TranslateSettings() {
       })}
       {info ? <MtForm key={info.id} engine={info.id} account={account} picked={!!picked} onDone={() => setPicked(null)} /> : null}
     </ScrollView>
+  )
+}
+
+const SYSTEM_SUB: Record<AppleTranslateStatus, string> = {
+  installed: '手机自带，免费、不用 Key，在手机上翻',
+  supported: '手机自带，免费、不用 Key；要先下载英语和中文',
+  unsupported: Platform.OS === 'ios' && parseInt(String(Platform.Version), 10) < 18 ? '这台手机的系统太旧，要 iOS 18 或更新' : '这台设备用不了系统翻译（模拟器上也用不了）',
+  unavailable: ''
+}
+
+/** 系统翻译能用了：试译一句，看到结果才放心 */
+function SystemTest() {
+  const t = useTheme()
+  const [test, setTest] = useState<Test>({ state: 'busy' })
+  useEffect(() => {
+    const ctl = new AbortController()
+    systemTranslate
+      ?.translate('Attention is all you need.', false, ctl.signal)
+      .then((text) => setTest({ state: 'ok', text }))
+      .catch((e: unknown) => setTest({ state: 'error', message: e instanceof Error ? e.message : String(e) }))
+    return () => ctl.abort()
+  }, [])
+  return (
+    <Text accessibilityLiveRegion="polite" style={{ marginHorizontal: 20, marginBottom: 8, color: test.state === 'error' ? t.danger : test.state === 'ok' ? t.accentText : t.sub, fontSize: 14 }}>
+      {test.state === 'busy' ? '正在试译…' : test.state === 'ok' ? `可以用 · 试译：Attention is all you need. → ${test.text}` : test.message}
+    </Text>
+  )
+}
+
+/** 系统翻译的语言包还没下载：点一下下载（iOS 弹出系统的确认面板；Android 从 Google 下载，各约 30 MB） */
+function SystemDownload() {
+  const t = useTheme()
+  const s = app()
+  const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const download = async () => {
+    setBusy(true)
+    setError(null)
+    try {
+      await prepareSystemTranslate()
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e))
+    } finally {
+      setBusy(false)
+      void s.ai.checkApple()
+    }
+  }
+  return (
+    <View style={{ marginHorizontal: 16, marginTop: 4, marginBottom: 8, padding: 16, borderRadius: 16, backgroundColor: t.surface, gap: 12 }}>
+      <Text style={{ color: t.body, fontSize: 14, lineHeight: 20 }}>
+        {Platform.OS === 'ios'
+          ? '下载英语和中文的语言包后就能翻译，之后不用联网。也可以在系统的"设置 → App → 翻译 → 已下载的语言"里管理。'
+          : '英语和中文的语言包各约 30 MB，从 Google 下载，建议连上 Wi-Fi。下载好之后不用联网。'}
+      </Text>
+      {error ? <Text style={{ color: t.danger, fontSize: 14 }}>{error}</Text> : null}
+      <Button title={busy ? '正在下载…' : '下载英语和中文'} onPress={() => void download()} busy={busy} disabled={busy} />
+    </View>
   )
 }
 

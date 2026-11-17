@@ -1,0 +1,21 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'app.flax'
+version = '1.0.0'
+
+android {
+  namespace "app.flax.translate"
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+    consumerProguardFiles 'proguard-rules.pro'
+  }
+}
+
+dependencies {
+  // Google ML Kit 的离线翻译：语言包第一次用时下载（每种约 30 MB），之后不联网
+  implementation 'com.google.mlkit:translate:17.0.3'
+}
