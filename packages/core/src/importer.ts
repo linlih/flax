@@ -42,6 +42,38 @@ export function baseName(path: string): string {
   return path.replace(/[\\/]+$/, '').split(/[\\/]/).pop() ?? path
 }
 
+/** 文字里的第一个 http(s) 链接 */
+export function urlIn(text: string): string | null {
+  const m = /https?:\/\/[^\s<>"'）】]+/i.exec(text)
+  if (!m) return null
+  const url = m[0].replace(/[.,;:!?)\]，。；：！？]+$/, '')
+  try {
+    new URL(url)
+    return url
+  } catch {
+    return null
+  }
+}
+
+/** 链接里的文件名，当作导入文件的原名；看不出来就用 download.pdf */
+export function fileNameFromUrl(url: string): string {
+  let name = ''
+  try {
+    name = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '')
+  } catch {
+    // 编码不对就不要了
+  }
+  name = name.replace(/[\\/:*?"<>|]+/g, '_').trim()
+  if (!name) return 'download.pdf'
+  return /\.pdf$/i.test(name) ? name : name + '.pdf'
+}
+
+/** PDF 文件头（%PDF-）在开头 1 KB 里就算是 PDF */
+function isPdf(b: Uint8Array): boolean {
+  const head = String.fromCharCode(...b.subarray(0, 1024))
+  return head.includes('%PDF-')
+}
+
 interface PendingDuplicate {
   existingId: string
   file: FileRef
@@ -111,7 +143,7 @@ export class Importer {
     try {
       for (const p of paths) {
         try {
-          await this.importOne(p)
+          await this.importOne(baseName(p), await this.read(p))
         } catch (e) {
           this.d.onNotice({ kind: 'failed', fileName: baseName(p), message: e instanceof Error ? e.message : String(e) })
         }
@@ -124,9 +156,7 @@ export class Importer {
     this.flushHeld()
   }
 
-  private async importOne(path: string): Promise<void> {
-    const fileName = baseName(path)
-    const data = await this.read(path)
+  private async importOne(fileName: string, data: Uint8Array): Promise<void> {
     const hash = await this.sha256(data)
     const lib = this.d.library
 
@@ -321,10 +351,18 @@ export class Importer {
     this.d.onChanged()
   }
 
-  /** 粘贴 DOI、arXiv 链接或书的 ISBN：建一条没有 PDF 的记录 */
+  /**
+   * 粘贴 DOI、arXiv 链接或书的 ISBN：建一条没有 PDF 的记录。
+   * 都没有但贴的是链接：当作 PDF 下载下来导入。什么都没认出来返回 false
+   */
   async addFromText(text: string): Promise<boolean> {
     const ids = idsInText(text)
-    if (!ids.arxiv && !ids.doi && !ids.isbn) return false
+    if (!ids.arxiv && !ids.doi && !ids.isbn) {
+      const url = urlIn(text)
+      if (!url) return false
+      await this.addFromUrl(url)
+      return true
+    }
     const known = this.d.library.findDuplicate(ids)
     if (known) {
       this.d.onNotice({ kind: 'same_file', paperId: known.paper.id, title: known.paper.title })
@@ -346,6 +384,32 @@ export class Importer {
     // 元数据先到，PDF 在后台下，不让调用方等
     this.startDownload(p.id)
     return true
+  }
+
+  /** 下载链接指向的 PDF，和选文件导入一样处理（查重、联网查详情）。出错用通知告诉用户 */
+  private async addFromUrl(url: string): Promise<void> {
+    const fileName = fileNameFromUrl(url)
+    const fail = (message: string) => this.d.onNotice({ kind: 'failed', fileName, message })
+    if (!this.d.fetchBytes) return fail('这里不能从链接下载，请下载后选择文件添加。')
+    let res: Awaited<ReturnType<FetchBytes>>
+    try {
+      res = await this.d.fetchBytes(url)
+    } catch (e) {
+      return fail(e instanceof Error && e.message === '文件太大' ? '文件超过 200 MB，请下载后选择文件添加。' : '下载失败，请检查链接和网络。')
+    }
+    if (res.status !== 200) return fail(res.status === 404 ? '链接打不开（404）。' : `下载失败（服务器返回 ${res.status}）。`)
+    if (!isPdf(res.body)) return fail('链接打开的不是 PDF。网页上的论文请找到 PDF 链接，或下载后选择文件添加。')
+    this.batches++
+    try {
+      await this.importOne(fileName, res.body)
+    } catch (e) {
+      fail(e instanceof Error ? e.message : String(e))
+    } finally {
+      this.batches--
+    }
+    this.d.onChanged()
+    this.kick()
+    this.flushHeld()
   }
 
   /** arXiv 上的论文都能免费下载 PDF。没有 arXiv 编号、已有 PDF 或正在下载时什么都不做 */

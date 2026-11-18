@@ -1,4 +1,4 @@
-// 文献库标题栏的"添加论文"：一个按钮，弹出来先是粘贴 DOI / arXiv 链接的输入框，下面是选 PDF 和从 Zotero 导入。
+// 文献库标题栏的"添加论文"：一个按钮，弹出来先是粘贴 DOI / arXiv / PDF 链接的输入框，下面是选 PDF 和从 Zotero 导入。
 // （⌘O 仍然直接选 PDF；在空白处 ⌘V 粘贴链接、把 PDF 拖进窗口也都能加。）
 import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Icon } from './Icon'
@@ -30,7 +30,7 @@ export function AddPaper({ open, setOpen }: { open: boolean; setOpen: (v: boolea
     setBusy(true)
     const ok = await api.library.addFromText(t).catch(() => false)
     setBusy(false)
-    if (!ok) return setError('没有找到 DOI、arXiv 编号或 ISBN。其他网站的论文请下载 PDF 后选择文件添加。')
+    if (!ok) return setError('没有找到 DOI、arXiv 编号、ISBN 或链接。')
     setText('')
     setOpen(false)
   }
@@ -42,7 +42,7 @@ export function AddPaper({ open, setOpen }: { open: boolean; setOpen: (v: boolea
       {open && (
         <div className="add-paper-pop" role="dialog" aria-label="添加论文">
           <form onSubmit={(e) => void submit(e)}>
-            <label className="field-l" htmlFor="add-paper-inp">粘贴 DOI、arXiv 编号或链接，书可以贴 ISBN</label>
+            <label className="field-l" htmlFor="add-paper-inp">粘贴 DOI、arXiv 编号或 PDF 链接，书可以贴 ISBN</label>
             <div className="add-paper-row">
               <input id="add-paper-inp" type="text" autoFocus placeholder="例如 https://arxiv.org/abs/1706.03762" value={text} onChange={(e) => { setText(e.target.value); setError('') }} />
               <button type="submit" className="btn btn-p" disabled={!text.trim() || busy}>{busy ? '添加中…' : '添加'}</button>

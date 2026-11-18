@@ -243,8 +243,12 @@ export function App() {
       if (t.closest('input, textarea, [contenteditable]')) return
       const text = e.clipboardData?.getData('text/plain')?.trim()
       if (!text) return
-      const ok = await api.library.addFromText(text)
-      if (!ok) toast({ text: '粘贴的内容里没有找到 DOI、arXiv 编号或 ISBN' })
+      // 贴的是 PDF 链接时要下载一会儿：超过一下下就说一声，做完撤掉
+      const wait = setTimeout(() => toast({ text: '正在添加…', group: 'paste', sticky: true }), 600)
+      const ok = await api.library.addFromText(text).catch(() => false)
+      clearTimeout(wait)
+      setToasts((l) => l.filter((o) => o.group !== 'paste'))
+      if (!ok) toast({ text: '粘贴的内容里没有找到 DOI、arXiv 编号、ISBN 或链接' })
     }
     window.addEventListener('paste', onPaste)
     return () => window.removeEventListener('paste', onPaste)

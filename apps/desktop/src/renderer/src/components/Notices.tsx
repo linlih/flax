@@ -9,6 +9,8 @@ export interface Toast {
   action?: { label: string; run: () => void }
   /** 同一组的新提示顶掉旧的（比如连着改几次阅读状态，只留最后一条） */
   group?: string
+  /** 不自动消失，等做完的人撤掉（比如下载中） */
+  sticky?: boolean
 }
 
 type Keyed = ImportNotice & { key: number }
@@ -75,9 +77,10 @@ function ToastView({ toast, onClose }: { toast: Toast; onClose: () => void }) {
   const close = useRef(onClose)
   close.current = onClose
   useEffect(() => {
+    if (toast.sticky) return
     const t = setTimeout(() => close.current(), toast.action ? 8000 : 5000)
     return () => clearTimeout(t)
-  }, [toast.key, Boolean(toast.action)])
+  }, [toast.key, Boolean(toast.action), toast.sticky])
   return (
     <div className="toast" role="status">
       <span className="toast-t">{toast.text}</span>

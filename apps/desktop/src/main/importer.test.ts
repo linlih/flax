@@ -22,6 +22,8 @@ let notices: ImportNotice[]
 let calls: string[]
 let online: boolean
 let pdfs: Record<string, Uint8Array>
+/** 其他网站的链接能下到什么 */
+let web: Record<string, Uint8Array>
 let lib: Library
 let store: FileStore
 let importer: Importer
@@ -40,7 +42,7 @@ const fetchBytes: FetchBytes = async (url) => {
   calls.push(url)
   if (!online) throw new Error('offline')
   const id = /arxiv\.org\/pdf\/(.+)$/.exec(url)?.[1] ?? ''
-  const body = pdfs[id]
+  const body = pdfs[id] ?? web[url]
   return body ? { status: 200, body } : { status: 404, body: new Uint8Array() }
 }
 
@@ -51,6 +53,7 @@ beforeEach(() => {
   calls = []
   online = true
   pdfs = { '2101.01234': arxivPdf('2101.01234', 'from arXiv') }
+  web = {}
   lib = new Library(new DatabaseSync(':memory:'))
   store = new FileStore(dir)
   importer = new Importer({
@@ -201,6 +204,33 @@ describe('Importer', () => {
     expect(await importer.addFromText('see https://arxiv.org/abs/2101.01234')).toBe(true)
     expect(lib.listPapers()[0]).toMatchObject({ title: 'Sparse Mixtures for Long Documents' })
     expect(await importer.addFromText('no id here')).toBe(false)
+  })
+
+  it('downloads and imports a pasted link to a PDF on any site', async () => {
+    const url = 'https://example.org/book/se%20handbook.pdf'
+    web[url] = makePdf([[{ text: 'A Handbook of Examples', size: 20, y: 700 }]])
+    expect(await importer.addFromText(`看看这个 ${url}。`)).toBe(true)
+    const [p] = lib.listPapers()
+    expect(p?.files).toMatchObject([{ role: 'main', originalName: 'se handbook.pdf', hash: sha256(web[url]!) }])
+    expect(calls).toContain(url)
+    // 再贴一次：同一个文件，不重复加
+    await importer.addFromText(url)
+    expect(lib.listPapers()).toHaveLength(1)
+    expect(notices).toContainEqual(expect.objectContaining({ kind: 'same_file', paperId: p!.id }))
+  })
+
+  it('tells why a pasted link could not be imported', async () => {
+    web['https://example.org/page'] = new TextEncoder().encode('<html>not a pdf</html>')
+    expect(await importer.addFromText('https://example.org/page')).toBe(true)
+    expect(await importer.addFromText('https://example.org/missing.pdf')).toBe(true)
+    online = false
+    expect(await importer.addFromText('https://example.org/x.pdf')).toBe(true)
+    expect(lib.listPapers()).toEqual([])
+    expect(notices.map((n) => n.kind === 'failed' && `${n.fileName}: ${n.message}`)).toEqual([
+      expect.stringMatching(/^page\.pdf: 链接打开的不是 PDF/),
+      'missing.pdf: 链接打不开（404）。',
+      'x.pdf: 下载失败，请检查链接和网络。'
+    ])
   })
 
   it('downloads the PDF from arXiv after a pasted link', async () => {
