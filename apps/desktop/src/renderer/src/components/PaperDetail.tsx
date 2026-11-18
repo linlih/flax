@@ -64,29 +64,10 @@ export function PaperDetail({ paper: p, folders, allTags, busy, downloading, onC
 
         {(p.needsMatch || busy) && <MatchCard paper={p} busy={busy} onManual={() => { setEditing(true); requestAnimationFrame(() => titleRef.current?.focus()) }} />}
 
-        <section className="tray" aria-labelledby="h-org">
-          <div className="tray-h"><h3 id="h-org" className="lbl" style={{ margin: 0 }}>整理</h3></div>
-          <div className="card fields">
-            <div className="field">
-              <span className="field-l" id="l-folders">文件夹</span>
-              {folders.length === 0 ? (
-                <span className="hint">还没有文件夹。在侧边栏"文件夹"旁边点 + 新建。</span>
-              ) : (
-                <div className="chips" role="group" aria-labelledby="l-folders">
-                  {folders.map((f) => {
-                    const on = p.folderIds.includes(f.id)
-                    return (
-                      <button key={f.id} type="button" className="chip toggle" aria-pressed={on} onClick={() => update({ folderIds: on ? p.folderIds.filter((x) => x !== f.id) : [...p.folderIds, f.id] })}>
-                        <Icon name="folder" size={14} />{f.name}
-                      </button>
-                    )
-                  })}
-                </div>
-              )}
-            </div>
-            <TagEditor tags={p.tags} all={allTags} onChange={(tags) => update({ tags })} />
-          </div>
-        </section>
+        <div className="card fields">
+          <FolderPicker folders={folders} selected={p.folderIds} onChange={(folderIds) => update({ folderIds })} />
+          <TagEditor tags={p.tags} all={allTags} onChange={(tags) => update({ tags })} />
+        </div>
 
         {p.abstract && !editing && (
           <section className="tray" aria-labelledby="h-abs">
@@ -396,6 +377,94 @@ function TagEditor({ tags, all, onChange }: { tags: string[]; all: { tag: string
           {suggestions.map((t) => <option key={t.tag} value={t.tag}>{`${t.count} 篇`}</option>)}
         </datalist>
       </div>
+    </div>
+  )
+}
+
+/** 文件夹：只列这篇所在的，"加到文件夹"打开一个能搜索的列表（文件夹多了也不乱） */
+function FolderPicker({ folders, selected, onChange }: { folders: Folder[]; selected: string[]; onChange: (ids: string[]) => void }) {
+  const [open, setOpen] = useState<{ x: number; y: number } | null>(null)
+  const [q, setQ] = useState('')
+  const btn = useRef<HTMLButtonElement>(null)
+  const mine = folders.filter((f) => selected.includes(f.id))
+  const close = () => {
+    setOpen(null)
+    setQ('')
+    btn.current?.focus()
+  }
+  useEffect(() => {
+    if (!open) return
+    const down = (e: MouseEvent) => !(e.target as HTMLElement).closest('.folder-pick, .folder-add') && (setOpen(null), setQ(''))
+    window.addEventListener('mousedown', down)
+    return () => window.removeEventListener('mousedown', down)
+  }, [open])
+  const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
+  const name = q.trim()
+  const lower = name.toLowerCase()
+  const shown = folders.filter((f) => f.name.toLowerCase().includes(lower))
+  // 大小写不同也算已经有了（RAG 和 rag），不再提议新建
+  const exact = folders.find((f) => f.name.toLowerCase() === lower)
+  const canCreate = name !== '' && !exact
+  const create = async () => {
+    const f = await api.library.createFolder(name)
+    onChange([...selected, f.id])
+    setQ('')
+  }
+  const toggleOpen = () => {
+    if (open) return close()
+    const r = btn.current!.getBoundingClientRect()
+    setOpen({ x: Math.min(r.left, window.innerWidth - 236), y: Math.min(r.bottom + 4, window.innerHeight - 320) })
+  }
+  return (
+    <div className="field">
+      <span className="field-l" id="l-folders">文件夹</span>
+      <div className="chips" role="group" aria-labelledby="l-folders">
+        {mine.map((f) => (
+          <span key={f.id} className="chip" title={f.name}>
+            <Icon name="folder" size={14} />
+            <span className="chip-t">{f.name}</span>
+            <button type="button" className="chip-x" aria-label={`从文件夹 ${f.name} 里拿出来`} onClick={() => toggle(f.id)}><Icon name="close" size={12} /></button>
+          </span>
+        ))}
+        <button ref={btn} type="button" className="folder-add" aria-haspopup="dialog" aria-expanded={!!open} onClick={toggleOpen}>
+          <Icon name="plus" size={14} />加到文件夹
+        </button>
+      </div>
+      {open && (
+        <div className="menu row-menu folder-pick" role="dialog" aria-label="加到文件夹" style={{ left: open.x, top: open.y }}>
+          <input
+            className="folder-q"
+            autoFocus
+            value={q}
+            placeholder={folders.length ? '找文件夹，或输入新名字' : '新文件夹的名字'}
+            aria-label={folders.length ? '找文件夹' : '新文件夹的名字'}
+            onChange={(e) => setQ(e.target.value)}
+            onKeyDown={(e) => {
+              if (composing(e)) return
+              if (e.key === 'Escape') { e.stopPropagation(); close() }
+              if (e.key === 'Enter') {
+                e.preventDefault()
+                if (exact) toggle(exact.id)
+                else if (shown.length === 1 && name) toggle(shown[0]!.id)
+                else if (canCreate) void create()
+              }
+            }}
+          />
+          <div className="folder-list">
+            {shown.map((f) => (
+              <button key={f.id} type="button" role="menuitemcheckbox" aria-checked={selected.includes(f.id)} title={f.name} onClick={() => toggle(f.id)}>
+                <span className="menu-clip">{f.name}</span>
+              </button>
+            ))}
+          </div>
+          {canCreate && (
+            <button type="button" className="folder-new" onClick={() => void create()}>
+              <Icon name="plus" size={14} /><span className="menu-clip">新建文件夹"{name}"</span>
+            </button>
+          )}
+          {!folders.length && !name && <p className="menu-hint">还没有文件夹。输入名字新建一个，这篇会放进去。</p>}
+        </div>
+      )}
     </div>
   )
 }
