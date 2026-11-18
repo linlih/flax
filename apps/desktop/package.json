@@ -1,6 +1,6 @@
 {
   "name": "@flax/desktop",
-  "version": "0.1.11",
+  "version": "0.1.13",
   "private": true,
   "license": "AGPL-3.0-only",
   "main": "out/main/index.js",
@@ -57,14 +57,6 @@
       "package.json"
     ],
     "afterPack": "build/sign.cjs",
-    "protocols": [
-      {
-        "name": "Flax",
-        "schemes": [
-          "flax"
-        ]
-      }
-    ],
     "electronDist": ".electron-dist",
     "asarUnpack": [
       "**/*.node"
