@@ -1,4 +1,4 @@
-import { useRef, useState, type DragEvent, type KeyboardEvent } from 'react'
+import { useRef, useState, type CSSProperties, type DragEvent, type KeyboardEvent, type PointerEvent as ReactPointerEvent } from 'react'
 import type { Folder } from '@flax/core'
 import { Icon, type IconName } from './Icon'
 import type { View } from '../lib/library'
@@ -32,7 +32,21 @@ interface Props {
   syncNote?: { text: string; error: boolean } | null
 }
 
+const SIDE_MIN = 200
+const SIDE_MAX = 400
+const SIDE_KEY = 'sidebar.w'
+
+function savedWidth(): number {
+  try {
+    const n = Number(localStorage.getItem(SIDE_KEY))
+    return n >= SIDE_MIN && n <= SIDE_MAX ? n : 264
+  } catch {
+    return 264
+  }
+}
+
 export function Sidebar(p: Props) {
+  const [width, setWidth] = useState(savedWidth)
   const [adding, setAdding] = useState(false)
   const [editing, setEditing] = useState<string | null>(null)
   const [menu, setMenu] = useState<string | null>(null)
@@ -53,8 +67,32 @@ export function Sidebar(p: Props) {
     if (ids) p.onDropToFolder(folderId, ids.split(','))
   }
 
+  /** 拖右边缘改宽度，松手时记下来 */
+  const startResize = (e: ReactPointerEvent) => {
+    e.preventDefault()
+    const startX = e.clientX
+    const startW = width
+    let w = startW
+    const move = (ev: PointerEvent) => {
+      w = Math.min(SIDE_MAX, Math.max(SIDE_MIN, startW + ev.clientX - startX))
+      setWidth(w)
+    }
+    const up = () => {
+      window.removeEventListener('pointermove', move)
+      window.removeEventListener('pointerup', up)
+      try {
+        localStorage.setItem(SIDE_KEY, String(Math.round(w)))
+      } catch {
+        // 存不下就只在这次有效
+      }
+    }
+    window.addEventListener('pointermove', move)
+    window.addEventListener('pointerup', up)
+  }
+
   return (
-    <nav className="app-sidebar drag" aria-label="侧边栏">
+    <nav className="app-sidebar drag" aria-label="侧边栏" style={{ '--side-w': `${width}px` } as CSSProperties}>
+      <div className="panel-resize right no-drag" role="separator" aria-orientation="vertical" aria-label="拖动调整侧边栏宽度" onPointerDown={startResize} />
       {!isMac && (
         <button
           type="button"
@@ -104,7 +142,7 @@ export function Sidebar(p: Props) {
                   onDrop={(e) => onDrop(e, f.id)}
                 >
                   <Icon name="folder" />
-                  <span className="side-l">{f.name}</span>
+                  <span className="side-l" title={f.name}>{f.name}</span>
                   <span className="count num">{p.counts[id] ?? 0}</span>
                 </button>
                 <button type="button" className="icon-btn side-more" aria-label={`${f.name}的更多操作`} onClick={() => setMenu(menu === f.id ? null : f.id)}><Icon name="more" size={14} /></button>
