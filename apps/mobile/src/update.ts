@@ -1,8 +1,9 @@
 // 检查更新：看 GitHub 上最新发布的版本（和桌面的自动更新同一个仓库），里面有这个系统的安装包（Android .apk、iOS .ipa）就给下载链接。
-// 不在应用里自己装：交给浏览器下载。Android 点开安装（会问一次"允许安装未知应用"）；
+// Android 在应用里下载、交给系统安装（第一次会问"允许安装未知应用"）；
 // iOS 的 .ipa 没有签名，用 AltStore 或 Sideloadly 拿自己的 Apple ID 签好再装。
 import { Platform } from 'react-native'
 import Constants from 'expo-constants'
+import { requireOptionalNativeModule } from 'expo'
 
 /** 这个系统的安装包后缀 */
 export const PACKAGE_EXT = Platform.OS === 'ios' ? '.ipa' : '.apk'
@@ -40,3 +41,15 @@ export async function checkUpdate(): Promise<UpdateCheck> {
     return { kind: 'error', message: '连不上 GitHub，检查网络后再试。' }
   }
 }
+
+// —— Android：在应用里下载、安装（原生部分在 modules/flax-update）——
+interface UpdateNative {
+  download(url: string, name: string): Promise<string>
+  cancel(): void
+  install(path: string): Promise<'started' | 'permission'>
+  canInstall(): boolean
+  addListener(event: 'progress', cb: (p: { done: number; total: number }) => void): { remove(): void }
+}
+
+/** Android 上能在应用里下载安装；iOS 和没有原生模块时是 null（用浏览器下载） */
+export const inAppUpdate: UpdateNative | null = Platform.OS === 'android' ? requireOptionalNativeModule<UpdateNative>('FlaxUpdate') : null

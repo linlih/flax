@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 在应用里装自己的新版本：Android 8 起第一次会让用户允许"安装未知应用" -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <application>
+        <provider
+            android:name="app.flax.update.UpdateFileProvider"
+            android:authorities="${applicationId}.flax.update"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/flax_update_paths" />
+        </provider>
+    </application>
+</manifest>
