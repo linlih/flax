@@ -9,9 +9,15 @@ import com.google.mlkit.nl.translate.TranslateRemoteModel
 import com.google.mlkit.nl.translate.Translation
 import com.google.mlkit.nl.translate.Translator
 import com.google.mlkit.nl.translate.TranslatorOptions
+import android.os.Handler
+import android.os.Looper
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
+import java.util.concurrent.atomic.AtomicBoolean
+
+private const val DOWNLOAD_TIMEOUT_MS = 180_000L
+private const val NO_GOOGLE = "语言包下载不了：要能连上 Google 的服务器（国内网络一般要开代理），连上后再点一次下载"
 
 class FlaxTranslateModule : Module() {
   private var toZh: Translator? = null
@@ -47,9 +53,35 @@ class FlaxTranslateModule : Module() {
     }
 
     AsyncFunction("prepare") { promise: Promise ->
+      // 连不上 Google 时 ML Kit 不报错、一直挂着：等太久就当下载失败，告诉用户原因
+      val done = AtomicBoolean(false)
+      val main = Handler(Looper.getMainLooper())
+      val timeout = Runnable {
+        if (done.compareAndSet(false, true)) promise.reject("download", NO_GOOGLE, null)
+      }
+      main.postDelayed(timeout, DOWNLOAD_TIMEOUT_MS)
       translator(false).downloadModelIfNeeded(DownloadConditions.Builder().build())
-        .addOnSuccessListener { status({ promise.resolve(it) }, { promise.resolve("installed") }) }
-        .addOnFailureListener { promise.reject("download", "语言包下载不了：${it.message ?: "连不上 Google 的服务器"}", it) }
+        .addOnSuccessListener {
+          if (done.compareAndSet(false, true)) {
+            main.removeCallbacks(timeout)
+            status({ promise.resolve(it) }, { promise.resolve("installed") })
+          }
+        }
+        .addOnFailureListener {
+          if (done.compareAndSet(false, true)) {
+            main.removeCallbacks(timeout)
+            promise.reject("download", "$NO_GOOGLE（${it.message ?: "下载失败"}）", it)
+          }
+        }
+    }
+
+    /** 删掉下载的英语、中文语言包（省空间，或者重新下载）。返回删完的状态 */
+    AsyncFunction("remove") { promise: Promise ->
+      toZh?.close(); toEn?.close(); toZh = null; toEn = null
+      val mgr = RemoteModelManager.getInstance()
+      val zh = TranslateRemoteModel.Builder(TranslateLanguage.CHINESE).build()
+      mgr.deleteDownloadedModel(zh)
+        .addOnCompleteListener { status({ promise.resolve(it) }, { promise.resolve("supported") }) }
     }
 
     AsyncFunction("translate") { text: String, toEnglish: Boolean, promise: Promise ->

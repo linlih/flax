@@ -26,6 +26,8 @@ export interface HtmlViewOptions {
   onPosition?: (p: { page: number; top: number | null }) => void
   /** 外部链接；返回 true 表示宿主处理了（手机交给系统浏览器） */
   onLink?: (url: string) => boolean
+  /** 点论文里的链接跳走了（引用、图表、参考文献）/ 回来了：canBack 表示能不能回到跳之前读的地方 */
+  onJump?: (canBack: boolean) => void
 }
 
 interface Block {
@@ -69,6 +71,9 @@ export class HtmlView {
   private page = -1
   /** 最近一次看到的位置：视图被藏起来（切到 PDF 时）量不出位置，就用它 */
   private lastPos: { page: number; top: number | null } | null = null
+  /** 点内部链接之前读到的地方：那一段和它离视口顶的距离（按段记，改字号后也回得去）。
+   *  连着点好几个链接（引用 → 参考文献 → 另一处）只记第一次的，回去就回到正文读到的地方 */
+  private origin: { el: Element; dy: number } | null = null
   private scale: number
   private findQ = ''
   private finds: [number, number][] = []
@@ -173,6 +178,11 @@ export class HtmlView {
     const b = this.firstVisible()
     if (!b) return
     this.lastPos = this.posOf(b)
+    // 自己滚回了跳之前的地方：不用再提示"回去"
+    if (this.origin && Math.abs(this.offsetOf(this.origin.el) - this.origin.dy) < this.o.scroller.clientHeight * 0.3) {
+      this.origin = null
+      this.o.onJump?.(false)
+    }
     if (b.page !== this.page) {
       this.page = b.page
       this.o.onPage?.(b.page + 1, this.pageCount)
@@ -207,6 +217,20 @@ export class HtmlView {
     const inset = this.o.topInset ?? 0
     const y = center ? r.top - box.top - inset - (s.clientHeight - inset) / 2 + r.height / 2 : r.top - box.top - inset - 12
     s.scrollTop += y
+  }
+
+  private offsetOf(el: Element): number {
+    return el.getBoundingClientRect().top - this.o.scroller.getBoundingClientRect().top
+  }
+
+  /** 回到点链接之前读的地方；没有可回的返回 false */
+  back(): boolean {
+    const o = this.origin
+    if (!o) return false
+    this.origin = null
+    this.o.scroller.scrollTop += this.offsetOf(o.el) - o.dy
+    this.o.onJump?.(false)
+    return true
   }
 
   private scrollToEl(el: Element, center = false): void {
@@ -538,6 +562,11 @@ export class HtmlView {
       e.preventDefault()
       const el = this.article.querySelector(`[id="${CSS.escape(decodeURIComponent(href.slice(1)))}"]`)
       if (el) {
+        const from = this.firstVisible()
+        if (from && !this.origin) {
+          this.origin = { el: from.el, dy: this.offsetOf(from.el) }
+          this.o.onJump?.(true)
+        }
         this.scrollToEl(el)
         el.classList.add('fx-target')
         setTimeout(() => el.classList.remove('fx-target'), 1600)

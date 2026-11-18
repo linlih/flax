@@ -23,6 +23,7 @@ export interface HtmlMode {
   goto(page: number, anno?: string, quote?: string): void
   find(query: string | null, again?: boolean, previous?: boolean): void
   zoom(dir: 1 | -1 | 0): void
+  back(): void
 }
 
 let waiting: ((r: HtmlReply) => void) | null = null
@@ -81,7 +82,8 @@ export async function startHtml(o: {
     onLink: (url) => {
       o.post({ type: 'link', url })
       return true
-    }
+    },
+    onJump: (on) => o.post({ type: 'canBack', on })
   })
   if ('fail' in r) {
     scroller.hidden = true
@@ -175,6 +177,9 @@ export async function startHtml(o: {
     },
     zoom(dir) {
       o.post({ type: 'font', scale: view.zoom(dir) })
+    },
+    back() {
+      view.back()
     }
   }
 }

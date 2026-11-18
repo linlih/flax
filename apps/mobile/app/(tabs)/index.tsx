@@ -110,7 +110,16 @@ export default function LibraryScreen() {
   }, [nav, searching])
 
   const sync = s.sync.get()
-  const syncing = sync.state === 'syncing'
+  // 下拉刷新的圈只在自己下拉时转：打开应用时的自动同步在后台悄悄做，不挡着列表
+  const [pulled, setPulled] = useState(false)
+  const syncing = pulled && sync.state === 'syncing'
+  const pull = () => {
+    setPulled(true)
+    s.sync
+      .syncNow()
+      .catch((e: Error) => showNotice(e.message))
+      .finally(() => setPulled(false))
+  }
   const folderName = (id: string) => allFolders.find((f) => f.id === id)?.name ?? '文件夹'
 
   const exportList = async (format: 'bibtex' | 'ris') => {
@@ -152,7 +161,7 @@ export default function LibraryScreen() {
         keyExtractor={(p) => p.id}
         contentContainerStyle={{ paddingBottom: 120, flexGrow: 1 }}
         refreshing={syncing}
-        onRefresh={sync.config ? () => void s.sync.syncNow().catch((e: Error) => showNotice(e.message)) : undefined}
+        onRefresh={sync.config ? pull : undefined}
         renderItem={({ item }) => <PaperRow p={item} tagColors={tagColors} busy={importing.has(item.id)} downloading={downloading.has(item.id)} onLong={() => setRowMenu(item)} />}
         ListEmptyComponent={<EmptyList tab={query.trim() || filtered ? 'search' : tab} hasAny={papers.length > 0} syncOn={!!sync.config} onAdd={() => setAdding(true)} />}
       />

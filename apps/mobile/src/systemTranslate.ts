@@ -8,6 +8,7 @@ import type { AppleTranslateStatus } from '@flax/core'
 interface Native {
   status(): Promise<string>
   prepare(): Promise<string>
+  remove?(): Promise<string>
   translate(text: string, toEnglish: boolean): Promise<string>
 }
 
@@ -60,3 +61,7 @@ export async function prepareSystemTranslate(): Promise<AppleTranslateStatus> {
     throw asError(e)
   }
 }
+
+/** 删掉下载的中文语言包（只有 Android：iPhone 在系统设置里管理）。不支持时是 null */
+export const removeSystemTranslate: (() => Promise<AppleTranslateStatus>) | null =
+  native?.remove ? async () => asStatus(await native.remove!()) : null

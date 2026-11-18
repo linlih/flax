@@ -70,6 +70,9 @@ final class TranslateHost: ObservableObject {
 
   @Published var config: TranslationSession.Configuration?
   private var job: (TranslateJob, CheckedContinuation<String, Error>)?
+  /** 系统把会话交过来了（交过来之前卡住说明视图没挂好：过一会儿报错，别让后面的翻译一直排队） */
+  private var started = false
+  private var serial = 0
   private var queue: [(TranslateJob, Bool, CheckedContinuation<String, Error>)] = []
   private var hosting: UIHostingController<HostView>?
 
@@ -90,6 +93,18 @@ final class TranslateHost: ObservableObject {
       return next()
     }
     job = (j, cont)
+    started = false
+    serial += 1
+    let mine = serial
+    Task { @MainActor in
+      try? await Task.sleep(nanoseconds: 12_000_000_000)
+      guard self.serial == mine, !self.started, let (_, c) = self.job else { return }
+      self.job = nil
+      self.config = nil
+      self.detach()
+      c.resume(throwing: TranslateException("unavailable", "系统翻译没有响应。退出 Flax 再打开试试；还不行就到系统的\"设置 → App → 翻译\"里下载英语和中文。"))
+      self.next()
+    }
     let source = toEnglish ? Self.zh : Self.en
     let target = toEnglish ? Self.en : Self.zh
     if var c = config, c.source == source, c.target == target {
@@ -102,6 +117,7 @@ final class TranslateHost: ObservableObject {
 
   func perform(_ session: TranslationSession) async {
     guard let (j, cont) = job else { return }
+    started = true
     do {
       switch j {
       case .prepare:
@@ -134,15 +150,18 @@ final class TranslateHost: ObservableObject {
     return TranslateException("other", error.localizedDescription)
   }
 
-  /// 把看不见的视图挂到窗口上（下载面板要从它弹出来）
+  /// 把看不见的视图挂到最上层的页面上（下载面板要从它弹出来：挂在被盖住的页面上弹不出来）
   private func attach() -> Bool {
-    if let h = hosting, h.view.window != nil { return true }
     let scenes = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }
     guard let window = scenes.flatMap({ $0.windows }).first(where: { $0.isKeyWindow }) ?? scenes.first?.windows.first,
-          let root = window.rootViewController else { return false }
+          var root = window.rootViewController else { return false }
+    while let p = root.presentedViewController, !p.isBeingDismissed { root = p }
+    if let h = hosting, h.view.window != nil, h.parent === root { return true }
+    detach()
     let h = UIHostingController(rootView: HostView(host: self))
-    h.view.frame = CGRect(x: 0, y: 0, width: 1, height: 1)
-    h.view.alpha = 0.01
+    h.view.frame = CGRect(x: 0, y: 0, width: 2, height: 2)
+    // 透明度太低（≤0.01）系统当成看不见
+    h.view.alpha = 0.02
     h.view.isUserInteractionEnabled = false
     h.view.backgroundColor = .clear
     root.addChild(h)
@@ -150,6 +169,14 @@ final class TranslateHost: ObservableObject {
     h.didMove(toParent: root)
     hosting = h
     return true
+  }
+
+  private func detach() {
+    guard let h = hosting else { return }
+    h.willMove(toParent: nil)
+    h.view.removeFromSuperview()
+    h.removeFromParent()
+    hosting = nil
   }
 }
 

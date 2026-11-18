@@ -42,6 +42,7 @@ type Msg =
   | { type: 'goto'; page: number; anno?: string; quote?: string }
   | { type: 'clearSelection' }
   | { type: 'clearLookup' }
+  | { type: 'back' }
   | { type: 'find'; query: string; again?: boolean; previous?: boolean }
   | { type: 'closeFind' }
   | { type: 'zoom'; dir: 1 | -1 | 0 }
@@ -63,6 +64,8 @@ let redraw: () => void = () => {}
 let goto: (page: number, anno?: string, quote?: string) => void = () => {}
 let find: (m: Extract<Msg, { type: 'find' }> | null) => void = () => {}
 let zoom: (dir: 1 | -1 | 0) => void = () => {}
+/** 回到点论文内部链接（引用、参考文献）之前读的地方 */
+let back: () => void = () => {}
 
 const docOptions = (url: string) => ({
   url,
@@ -113,6 +116,7 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
       goto = r.goto
       find = (f) => r.find(f ? f.query : null, f?.again, f?.previous)
       zoom = r.zoom
+      back = r.back
       return
     }
     post({ type: 'htmlFailed', reason: r.fail, ...(r.message ? { message: r.message } : {}) })
@@ -150,13 +154,39 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
     else viewer.updateScale({ steps: dir })
   }
 
-  // —— 外部链接交给系统浏览器（WebView 里不开别的网页）；论文内部的链接 pdf.js 自己跳 ——
+  // —— 外部链接交给系统浏览器（WebView 里不开别的网页）；论文内部的链接 pdf.js 自己跳，
+  // 跳之前记下读到的地方（连着跳几次只记第一次），RN 那边显示"回到刚才读的地方" ——
+  let origin: { top: number; left: number; scale: number } | null = null
+  const dropOrigin = () => {
+    if (!origin) return
+    origin = null
+    post({ type: 'canBack', on: false })
+  }
+  back = () => {
+    const o = origin
+    if (!o) return
+    dropOrigin()
+    const k = viewer.currentScale / o.scale
+    container.scrollTo({ top: o.top * k, left: o.left * k })
+  }
+  container.addEventListener(
+    'scroll',
+    () => {
+      // 自己滚回去了：不用再提示
+      if (origin && Math.abs(container.scrollTop - origin.top * (viewer.currentScale / origin.scale)) < container.clientHeight * 0.3) dropOrigin()
+    },
+    { passive: true }
+  )
   container.addEventListener(
     'click',
     (e) => {
       const a = (e.target as HTMLElement).closest<HTMLAnchorElement>('.annotationLayer a[href]')
       if (!a) return
       const href = a.getAttribute('href') ?? ''
+      if (href.startsWith('#') && !origin) {
+        origin = { top: container.scrollTop, left: container.scrollLeft, scale: viewer.currentScale }
+        post({ type: 'canBack', on: true })
+      }
       if (/^(https?|mailto):/i.test(href)) {
         e.preventDefault()
         e.stopPropagation()
@@ -346,6 +376,9 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
         break
       case 'clearSelection':
         document.getSelection()?.removeAllRanges()
+        break
+      case 'back':
+        back()
         break
       case 'clearLookup':
         markLookup(null)

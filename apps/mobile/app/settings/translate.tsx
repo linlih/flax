@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { Linking, Platform, ScrollView, Text, View } from 'react-native'
 import { Stack } from 'expo-router'
 import { MT_ENGINES, mtEngineOf, type AppleTranslateStatus, type MtAccountInfo, type MtEngine, type TranslateEngine } from '@flax/core'
-import { prepareSystemTranslate, systemTranslate } from '../../src/systemTranslate'
+import { prepareSystemTranslate, removeSystemTranslate, systemTranslate } from '../../src/systemTranslate'
 import { app, useVersion } from '../../src/services'
 import { Button, Field } from '../../src/ui/kit'
 import { OptionRow } from '../../src/ui/sheets'
@@ -71,10 +71,26 @@ function SystemTest() {
       .catch((e: unknown) => setTest({ state: 'error', message: e instanceof Error ? e.message : String(e) }))
     return () => ctl.abort()
   }, [])
+  const remove = removeSystemTranslate
   return (
-    <Text accessibilityLiveRegion="polite" style={{ marginHorizontal: 20, marginBottom: 8, color: test.state === 'error' ? t.danger : test.state === 'ok' ? t.accentText : t.sub, fontSize: 14 }}>
-      {test.state === 'busy' ? '正在试译…' : test.state === 'ok' ? `可以用 · 试译：Attention is all you need. → ${test.text}` : test.message}
-    </Text>
+    <View style={{ marginHorizontal: 20, marginBottom: 8, gap: 6 }}>
+      <Text accessibilityLiveRegion="polite" style={{ color: test.state === 'error' ? t.danger : test.state === 'ok' ? t.accentText : t.sub, fontSize: 14 }}>
+        {test.state === 'busy' ? '正在试译…' : test.state === 'ok' ? `可以用 · 试译：Attention is all you need. → ${test.text}` : test.message}
+      </Text>
+      {remove ? (
+        <Text
+          accessibilityRole="button"
+          onPress={() =>
+            void remove()
+              .catch(() => undefined)
+              .finally(() => void app().ai.checkApple())
+          }
+          style={{ color: t.sub, fontSize: 13, textDecorationLine: 'underline', alignSelf: 'flex-start', paddingVertical: 4 }}
+        >
+          删除语言包（约 30 MB，删了要重新下载）
+        </Text>
+      ) : null}
+    </View>
   )
 }
 
@@ -84,6 +100,14 @@ function SystemDownload() {
   const s = app()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // 下载没有进度可看：显示等了多久，久了提示多半是连不上 Google
+  const [waited, setWaited] = useState(0)
+  useEffect(() => {
+    if (!busy) return
+    setWaited(0)
+    const id = setInterval(() => setWaited((w) => w + 1), 1000)
+    return () => clearInterval(id)
+  }, [busy])
   const download = async () => {
     setBusy(true)
     setError(null)
@@ -101,10 +125,15 @@ function SystemDownload() {
       <Text style={{ color: t.body, fontSize: 14, lineHeight: 20 }}>
         {Platform.OS === 'ios'
           ? '下载英语和中文的语言包后就能翻译，之后不用联网。也可以在系统的"设置 → App → 翻译 → 已下载的语言"里管理。'
-          : '英语和中文的语言包各约 30 MB，从 Google 下载，建议连上 Wi-Fi。下载好之后不用联网。'}
+          : '英语和中文的语言包各约 30 MB，从 Google 的服务器下载（国内网络一般要开代理），建议连上 Wi-Fi，要等一两分钟。下载好之后不用联网。'}
       </Text>
       {error ? <Text style={{ color: t.danger, fontSize: 14 }}>{error}</Text> : null}
       <Button title={busy ? '正在下载…' : '下载英语和中文'} onPress={() => void download()} busy={busy} disabled={busy} />
+      {busy && Platform.OS === 'android' ? (
+        <Text style={{ color: t.sub, fontSize: 13, lineHeight: 18 }}>
+          {waited < 40 ? `正在从 Google 下载，已等 ${waited} 秒` : `已等 ${waited} 秒。一直下不好多半是连不上 Google：开代理后再试，3 分钟后会自动停下`}
+        </Text>
+      ) : null}
     </View>
   )
 }

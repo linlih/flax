@@ -20,3 +20,6 @@ html, body { margin: 0; height: 100%; background: var(--desk); -webkit-tap-highl
 ::highlight(fx-lookup) { background-color: rgba(59, 130, 246, .32); }
 /* 双击别被当成缩放 */
 #scroll, #html { touch-action: manipulation; }
+/* 网页版只上下滚：太宽的图、表在自己的框里左右滑，整页不跟着左右晃 */
+#html { overflow-x: hidden; }
+#htmlhost .ltx_figure, #htmlhost .ltx_table { max-width: 100%; overflow-x: auto; }

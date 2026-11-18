@@ -16,6 +16,7 @@ import { readerProps } from '../../src/reader'
 import { appendToPaperNote, copyText, pageDark, readerMode, setPageDark, setReaderMode, setStatus } from '../../src/actions'
 import { arxivHtml } from '../../src/arxivHtml'
 import { Button, Chip, Empty, Field, IconButton } from '../../src/ui/kit'
+import { Icon } from '../../src/ui/Icon'
 import { ActionSheet, BottomSheet, Prompt } from '../../src/ui/sheets'
 import { SWATCH, useTheme } from '../../src/ui/theme'
 import { AiChat } from '../../src/ui/AiChat'
@@ -102,6 +103,10 @@ export default function ReadScreen() {
   const [dark, setDark] = useState(() => pageDark(systemDark))
   const [translating, setTranslating] = useState<string | null>(null)
   /** 双击查的词：词、所在的句子、在 PDF 上的位置（网页版里 PDF 对不上时是空的，不能高亮） */
+  /** 点论文里的链接跳走了，能回到之前读的地方 */
+  const [canBack, setCanBack] = useState(false)
+  /** 同一件事给翻页的处理用（消息里的 state 是旧的）：跳去看参考文献不算读到最后 */
+  const away = useRef(false)
   const [lookup, setLookup] = useState<{ word: string; sentence: string; parts: Part[] } | null>(null)
   /** 问 AI 面板：null 关着；字符串是带上的选中文字（空串是不带） */
   const [asking, setAsking] = useState<string | null>(null)
@@ -204,7 +209,13 @@ export default function ReadScreen() {
       case 'missing':
         setMissing(new Set((m['ids'] as string[]) ?? []))
         break
+      case 'canBack':
+        away.current = !!m['on']
+        setCanBack(!!m['on'])
+        break
       case 'loaded': {
+        away.current = false
+        setCanBack(false)
         const total = Number(m['pages'])
         setShown(m['mode'] === 'html' ? 'html' : 'pdf')
         const o = s.library.positionElsewhere(paper.id)
@@ -235,7 +246,7 @@ export default function ReadScreen() {
             s.library.updatePaper(paper.id, { readingStatus: 'reading' })
             s.changed()
           }
-          if (p && p.readingStatus !== 'done' && nearEnd(pg, total) && !endOffered.current) {
+          if (p && p.readingStatus !== 'done' && nearEnd(pg, total) && !endOffered.current && !away.current) {
             endOffered.current = true
             setAtEnd(true)
             setTimeout(() => setAtEnd(false), 10000)
@@ -244,6 +255,8 @@ export default function ReadScreen() {
         break
       }
       case 'position': {
+        // 跳去看参考文献、图表时不记：读到的地方还是正文里那一处
+        if (away.current) break
         // 滚动时只存本机的位置；会同步的"在哪台设备读到第几页"离开阅读器时再记一次，免得每翻一页都同步
         const pos = { fileHash: file.hash, page: Number(m['page']), left: Number(m['left']), top: Number(m['top']), scale: String(m['scale']), updatedAt: new Date().toISOString() }
         lastPos.current = pos
@@ -406,9 +419,22 @@ export default function ReadScreen() {
           ) : (
             <>
               <IconButton icon="back" label="返回" onPress={() => router.back()} />
-              <Text numberOfLines={1} style={{ flex: 1, color: t.text, fontSize: 16, fontWeight: '500' }}>
-                {paper.title}
-              </Text>
+              {/* 页码不单独浮在页面上（抢视线）：放在顶栏标题下面一小行，点标题跳页 */}
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel={page ? `${paper.title}，第 ${page.page} 页，共 ${page.total} 页，点一下跳页` : paper.title}
+                onPress={page ? () => setJumping(true) : undefined}
+                style={{ flex: 1, paddingVertical: 6 }}
+              >
+                <Text numberOfLines={1} style={{ color: t.text, fontSize: 16, fontWeight: '500' }}>
+                  {paper.title}
+                </Text>
+                {page ? (
+                  <Text style={{ color: t.sub, fontSize: 12, marginTop: 1 }}>
+                    第 {page.page} / {page.total} 页
+                  </Text>
+                ) : null}
+              </Pressable>
               <IconButton icon="search" label="查找" onPress={() => setFinding(true)} />
               <IconButton icon="ai" label="问 AI" onPress={() => setAsking('')} />
               <IconButton icon="more" label="更多" onPress={() => setMenu(true)} />
@@ -416,12 +442,17 @@ export default function ReadScreen() {
           )}
         </View>
       ) : null}
-      {/* 页码不常驻（抢视线）：和顶栏一起，点一下页面才出来，可以点它跳页 */}
-      {page && chrome && !finding && !selected && !active ? (
-        <Pressable accessibilityRole="button" accessibilityLabel={`第 ${page.page} 页，共 ${page.total} 页，点一下跳页`} onPress={() => setJumping(true)} style={[styles.pill, { bottom: insets.bottom + 20 }]}>
-          <Text style={{ color: '#fff', fontSize: 13 }}>
-            第 {page.page} / {page.total} 页
-          </Text>
+      {/* 点了引用、参考文献跳走以后：一键回到正文读到的地方（自己滚回去了就不显示） */}
+      {canBack && !selected && !active && !lookup ? (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="回到刚才读的地方"
+          onPress={() => send({ type: 'back' })}
+          style={[styles.back, { bottom: insets.bottom + 20, backgroundColor: t.container }]}
+          android_ripple={{ color: '#00000018', borderless: false }}
+        >
+          <Icon name="back" size={18} color={t.onContainer} />
+          <Text style={{ color: t.onContainer, fontSize: 14, fontWeight: '500' }}>回到刚才读的地方</Text>
         </Pressable>
       ) : null}
       {elsewhere || atEnd ? (
@@ -742,7 +773,7 @@ function Action({ label, onPress, danger }: { label: string; onPress: () => void
 const styles = StyleSheet.create({
   top: { position: 'absolute', left: 0, right: 0, top: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, elevation: 2 },
   banner: { position: 'absolute', left: 12, right: 12, minHeight: 48, borderRadius: 8, paddingLeft: 16, paddingRight: 8, flexDirection: 'row', alignItems: 'center', elevation: 6 },
-  pill: { position: 'absolute', alignSelf: 'center', height: 32, paddingHorizontal: 14, borderRadius: 16, backgroundColor: 'rgba(30,30,30,0.72)', justifyContent: 'center' },
+  back: { position: 'absolute', alignSelf: 'center', height: 40, paddingHorizontal: 16, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 12, paddingTop: 16, gap: 10, elevation: 12 },
   swatches: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
   swatchBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
