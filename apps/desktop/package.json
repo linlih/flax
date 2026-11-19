@@ -57,6 +57,14 @@
       "package.json"
     ],
     "afterPack": "build/sign.cjs",
+    "protocols": [
+      {
+        "name": "Flax",
+        "schemes": [
+          "flax"
+        ]
+      }
+    ],
     "electronDist": ".electron-dist",
     "asarUnpack": [
       "**/*.node"

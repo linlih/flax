@@ -22,6 +22,7 @@
 | [08-界面设计调研](08-界面设计调研.md) | 好看的应用（Linear、Craft、Reeder、Things 等）的共同做法，对 v0.3 的诊断和 v0.4 的改法 |
 | [09-BoardUI与appllama参考](09-BoardUI与appllama参考.md) | BoardUI 的视觉语言（实测 token）、appllama 免费设计 Skill 的规则，以及 v0.5 的改法 |
 | [11-移动端与同步规划](11-移动端与同步规划.md) | iPhone、iPad、Android 怎么做（React Native + 原生 PDFKit 阅读器）；同步的数据范围、合并规则、存储格式、后端和加密；阶段顺序和待决定的事 |
+| [12-浏览器插件](12-浏览器插件.md) | 一键把网页上的论文存进桌面端：本地 HTTP 连接服务、安全校验、接口、插件识别页面和下载 PDF、分阶段计划（草案，未动代码） |
 | [DESIGN.md](../DESIGN.md) / [PRODUCT.md](../PRODUCT.md) | 视觉方向 v0.5「托盘 + 白卡」（参考 BoardUI；单一蓝色强调色、纯中性灰、真实论文缩略图）、设计 token 和规则；产品简介（供项目内的设计类 Skill 读取） |
 | 交互原型 v0.5（托盘 + 白卡，参考 BoardUI） | [在线画布](https://claude.ai/artifact/98uxYRkg1eKxqGY2yHy2kr)（文献库首页、阅读器 + 笔记分栏、iPad 用笔圈选问 AI）；源文件备份在 [prototype/](../prototype/) |
 
@@ -48,6 +49,7 @@
 | 2026-11-11 | Android 不做手写；检查更新只给浏览器下载链接，不在应用里装；发布签名的 keystore 放在 apps/mobile/signing/，不进 git | 桌面和批注数据都没有手写，单独在手机上加一种桌面看不了的批注不合适；自己装 APK 要额外权限，交给系统更稳；keystore 丢了以后就发不了更新。见 [11-移动端与同步规划](11-移动端与同步规划.md) 第 13 节 |
 | 2026-11-11 | 安卓 APK 和电脑版一起由打标签的发版构建、传到同一个 Release，版本号三端一致 | 手机上的检查更新看的是最新 Release，里面没有 APK 就永远更新不了；同一个版本号用户才对得上。签名密钥放仓库 secret。见 [11-移动端与同步规划](11-移动端与同步规划.md) 13.2 |
 | 2026-11-12 | iOS 版先发不签名的 .ipa，用户用 AltStore / Sideloadly 自己签着装；不开 Apple 开发者账号 | 开源项目常见的做法，不用每年 99 美元也能让人用上；要上 TestFlight / App Store 时再开账号。见 [11-移动端与同步规划](11-移动端与同步规划.md) 第 14 节 |
+| 2026-11-19 | 浏览器插件走本地 HTTP 服务（固定端口 27183，不做配对令牌和 Native Messaging），用 WXT 打包，安装时要所有网站的权限，存论文时桌面端只发通知不跳窗口 | 照 Zotero 的做法，Chrome 157、Edge 157 实测插件能直接连本机，网页被服务端规则挡住；PDF 要在浏览器里带 cookie 下载，按需授权体验太差。见 [12-浏览器插件](12-浏览器插件.md) |
 
 ## 待决策
 

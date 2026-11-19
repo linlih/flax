@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import { cp, mkdir, rename, rm } from 'node:fs/promises'
-import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, Notification, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
 import { IDENTIFY_IMAGES_MAX, IDENTIFY_TEXT_MAX, Library, LibraryTooNewError, resetDeviceIdentity, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PageImage, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
 import type { ImportNotice, LibrarySnapshot, MenuCommand, SyncConnect } from '../shared/api'
 import { Importer } from './importer'
@@ -20,6 +20,7 @@ import { FileStore } from './store'
 import { SyncService } from './sync'
 import { deviceName } from './device'
 import { createArxivHtml } from './arxivHtml'
+import { ConnectorService } from './connectorService'
 
 app.setName('Flax')
 
@@ -53,6 +54,32 @@ function moveLegacyData(): boolean {
 let win: BrowserWindow | null = null
 let updater: Updater | null = null
 let appearance!: ReturnType<typeof createAppearance>
+let connector: ConnectorService | null = null
+
+// 打包后只开一个 Flax（两个进程同时写一个资料库会出问题；Windows 上点 flax:// 链接也会再启动一个）。
+// 开发版不抢这把锁，不然装好的 Flax 开着时开发版就起不来
+const secondInstance = app.isPackaged && !app.requestSingleInstanceLock()
+if (secondInstance) app.quit()
+
+/** 把窗口拉到最前面；窗口关了（macOS 上应用还在）就重新开一个 */
+function bringToFront(): void {
+  if (!app.isReady()) return
+  if (!win) return createWindow()
+  if (win.isMinimized()) win.restore()
+  win.show()
+  win.focus()
+  app.focus({ steal: true })
+}
+
+// 浏览器插件在 Flax 没开时打开 flax://open 唤起应用。链接里不带任何数据，打开后插件再通过本地服务传论文
+if (app.isPackaged && !secondInstance) {
+  app.setAsDefaultProtocolClient('flax')
+  app.on('second-instance', () => bringToFront())
+}
+app.on('open-url', (e) => {
+  e.preventDefault()
+  bringToFront()
+})
 
 /** 换过的资料文件夹找不到（比如在没接上的移动硬盘上）：让用户接上再试、另选一个，或者退出。不悄悄换成空的资料库 */
 async function findDataDir(): Promise<boolean> {
@@ -588,6 +615,35 @@ function setup(): void {
   handle('ai:openTranslateLanguages', () => shell.openExternal('x-apple.systempreferences:com.apple.Localization-Settings.extension'))
   handle('ai:cancel', (requestId) => ai.cancel(str(requestId, 'requestId')))
 
+  // —— 浏览器插件：本地连接服务（docs/12-浏览器插件.md）——
+  const showPaper = (id: string): boolean => {
+    if (!library.getPaper(id)) return false
+    bringToFront()
+    const deliver = () => win?.webContents.send('app:showPaper', id)
+    if (win?.webContents.isLoading()) win.webContents.once('did-finish-load', deliver)
+    else deliver()
+    return true
+  }
+  // 通知对象要留着，不然被回收以后点了没反应
+  const shown = new Set<Notification>()
+  connector = new ConnectorService({
+    configDir,
+    deps: { version: app.getVersion(), findPage: (p) => importer.findPage(p), addFromPage: (p) => importer.addFromPage(p), open: showPaper },
+    notify: (title, body, onClick) => {
+      if (!Notification.isSupported()) return
+      const n = new Notification({ title, body, silent: true })
+      shown.add(n)
+      n.on('click', () => (shown.delete(n), onClick()))
+      n.on('close', () => shown.delete(n))
+      n.show()
+    },
+    onState: (st) => send('connector:state', st)
+  })
+  connector.start()
+  app.on('will-quit', () => connector?.stop())
+  handle('connector:status', () => ({ settings: connector!.settings(), state: connector!.state() }))
+  handle('connector:set', (patch) => connector!.set((patch ?? {}) as { enabled?: unknown; port?: unknown }))
+
   handle('library:arxivHtml', (id, version) => arxivHtml(str(id, 'id'), version === null || version === undefined ? null : str(version, 'version')))
   handle('library:showInFinder', (id) => {
     const p = mainFile(str(id, 'id'))
@@ -733,6 +789,7 @@ function setMenu(): void {
 }
 
 app.whenReady().then(async () => {
+  if (secondInstance) return
   if (!moveLegacyData() || !(await findDataDir())) return app.quit()
   mkdirSync(dataDir, { recursive: true })
   appearance = createAppearance(dataDir, () => setMenu())

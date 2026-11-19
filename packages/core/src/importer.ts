@@ -2,14 +2,31 @@
 // 1. 立刻做：读文件、算哈希、查重、抽文字、存文件、先用 PDF 里的信息建一条记录
 // 2. 排队做：联网查元数据（arXiv 有限速），查完再更新记录
 // 不依赖平台：读文件、算哈希、存文件、读 PDF 里的文字都由平台传进来（桌面用 node:fs、node:crypto 和 pdf.js）。
-import { findIdentifiers, guessFromPdf, identifyPdf, identifyText, idLabel, idsInText, searchByTitle, type FetchText, type PdfFacts } from './metadata'
+import { findIdentifiers, guessFromPdf, identifyPdf, identifyText, idLabel, idsInText, searchByTitle, splitName, type FetchText, type FoundIds, type PdfFacts } from './metadata'
 import { bibToPaper, parseBibTeX } from './cite'
 import type { Library } from './library'
-import type { FileRef, PaperMeta } from './model'
+import type { FileRef, Paper, PaperMeta } from './model'
 import { BOOK_PAGES } from './pdfFacts'
 
 export interface Candidate extends PaperMeta {
   similarity: number
+}
+
+/** 浏览器插件从网页上读到的论文信息（字段都来自网页，不可信，用前要检查） */
+export interface PageInfo {
+  url: string
+  /** 网页上找到的编号（citation_doi、citation_arxiv_id、网址） */
+  ids?: { doi?: string; arxiv?: string }
+  /** 网页上的 citation_* 信息：联网查不到时用它，不只剩一个编号当标题 */
+  meta?: { title?: string; authors?: string[]; year?: number; venue?: string; abstract?: string }
+}
+
+/** 插件存完或查完以后，告诉它库里那一篇的情况 */
+export interface PageResult {
+  paperId: string
+  title: string
+  /** 有 PDF，或者正在从 arXiv 下 */
+  hasPdf: boolean
 }
 
 /** 导入时需要告诉用户的事 */
@@ -386,6 +403,56 @@ export class Importer {
     return true
   }
 
+  /** 插件问：这个网页上的论文库里有没有 */
+  findPage(page: PageInfo): PageResult | null {
+    const ids = pageIds(page)
+    const meta = pageMeta(page, ids)
+    const known = this.d.library.findDuplicate({ ...ids, ...(meta ? { title: meta.title } : {}) })
+    return known ? this.pageResult(known.paper) : null
+  }
+
+  /**
+   * 插件点了保存：按网页上的编号建一条记录，联网查详情（查不到就用网页上的信息），arXiv 的再在后台下 PDF。
+   * 库里已有就不重复加（没有 PDF 的话顺便去下）。网页上既没有编号也没有标题时返回 null。
+   */
+  async addFromPage(page: PageInfo): Promise<(PageResult & { status: 'added' | 'existing' }) | null> {
+    const lib = this.d.library
+    const ids = pageIds(page)
+    const meta = pageMeta(page, ids)
+    const hasId = !!(ids.arxiv || ids.doi)
+    if (!hasId && !meta) return null
+    const known = lib.findDuplicate({ ...ids, ...(meta ? { title: meta.title } : {}) })
+    if (known) {
+      if (known.paper.files.length === 0) this.startDownload(known.paper.id)
+      return { ...this.pageResult(lib.getPaper(known.paper.id) ?? known.paper), status: 'existing' }
+    }
+    const base: PaperMeta = meta ?? { title: idLabel(ids), authors: [], identifiers: ids, source: 'web' }
+    // 网页信息够用（有标题和作者）就不标"需要匹配"；联网查到了会再换成查到的
+    const enough = !!meta && meta.authors.length > 0
+    const p = lib.addPaper(base, enough ? { needsMatch: false } : { needsMatch: true, matchIssue: hasId ? 'lookup_failed' : 'no_id' })
+    if (hasId) {
+      this.importing.add(p.id)
+      this.d.onChanged()
+      try {
+        const text = [ids.arxiv && `arXiv:${ids.arxiv}`, ids.doi].filter(Boolean).join(' ')
+        const r = await identifyText(text, this.d.fetchText).catch(() => null)
+        const now = lib.getPaper(p.id)
+        if (r && !r.needsMatch && now && now.metadataSource !== 'user') lib.applyMeta(p.id, r.meta, { needsMatch: false })
+        else if (r?.matchIssue && now && !enough) lib.applyMeta(p.id, { ...base, identifiers: { ...base.identifiers, ...r.meta.identifiers } }, { needsMatch: true, matchIssue: r.matchIssue })
+      } finally {
+        this.importing.delete(p.id)
+      }
+    }
+    this.d.onChanged()
+    this.startDownload(p.id)
+    const saved = lib.getPaper(p.id)
+    return saved ? { ...this.pageResult(saved), status: 'added' } : null
+  }
+
+  private pageResult(p: Paper): PageResult {
+    return { paperId: p.id, title: p.title, hasPdf: p.files.length > 0 || this.downloading.has(p.id) }
+  }
+
   /** 下载链接指向的 PDF，和选文件导入一样处理（查重、联网查详情）。出错用通知告诉用户 */
   private async addFromUrl(url: string): Promise<void> {
     const fileName = fileNameFromUrl(url)
@@ -482,4 +549,35 @@ export class Importer {
     this.d.library.applyMeta(id, meta, { needsMatch: false })
     this.d.onChanged()
   }
+}
+
+/** 网页上的编号：先用插件找到的，再看网址。都按粘贴文字的规则认一遍，格式不对的丢掉 */
+function pageIds(page: PageInfo): FoundIds {
+  const str = (v: unknown) => (typeof v === 'string' ? v.slice(0, 300) : '')
+  const arxiv = str(page.ids?.arxiv)
+  const given = idsInText([arxiv && `arXiv:${arxiv.replace(/^arxiv:/i, '')}`, str(page.ids?.doi)].join(' '))
+  const fromUrl = idsInText(str(page.url))
+  const out: FoundIds = {}
+  const a = given.arxiv ?? fromUrl.arxiv
+  const d = given.doi ?? fromUrl.doi
+  if (a) out.arxiv = a
+  if (d) out.doi = d
+  return out
+}
+
+/** 网页上的 citation_* 信息；没有标题就是 null */
+function pageMeta(page: PageInfo, ids: FoundIds): PaperMeta | null {
+  const m = page.meta
+  const clean = (v: unknown, max: number) => (typeof v === 'string' ? v.replace(/\s+/g, ' ').trim().slice(0, max) : '')
+  const title = clean(m?.title, 1000)
+  if (!title) return null
+  const names = Array.isArray(m?.authors) ? m!.authors.map((a) => clean(a, 200)).filter(Boolean) : []
+  const meta: PaperMeta = { title, authors: [...new Set(names)].slice(0, 500).map(splitName), identifiers: { ...ids }, source: 'web' }
+  const year = Number(m?.year)
+  if (Number.isInteger(year) && year > 1000 && year < 3000) meta.year = year
+  const venue = clean(m?.venue, 300)
+  if (venue) meta.venue = venue
+  const abstract = clean(m?.abstract, 10_000)
+  if (abstract) meta.abstract = abstract
+  return meta
 }

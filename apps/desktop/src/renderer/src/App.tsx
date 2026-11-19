@@ -168,6 +168,12 @@ export function App() {
     }
   }
   useEffect(() => api.onMenu((c) => onMenu.current(c)), [])
+  // 浏览器插件的「在 Flax 中打开」、点了「已存进文献库」的通知
+  useEffect(() => api.onShowPaper((id) => {
+    setReadingId(null)
+    setView('all')
+    setSelId(id)
+  }), [])
 
   // 更新：发现新版本就问用户（同一个版本自动检查只问一次，手动检查每次都问）；手动检查的其他结果也告诉用户
   const [upd, setUpd] = useState<UpdateState>({ kind: 'idle' })

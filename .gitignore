@@ -15,3 +15,6 @@ apps/mobile/expo-env.d.ts
 apps/mobile/modules/*/android/build/
 # 发布签名的 keystore 和密码：只在本机，自己备份
 apps/mobile/signing/
+# 浏览器插件：WXT 生成的类型和构建输出
+apps/extension/.wxt/
+apps/extension/.output/

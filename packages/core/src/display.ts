@@ -18,6 +18,7 @@ export const SOURCE_LABEL: Record<MetadataSource, string> = {
   ai: 'AI 从前几页识别的',
   pdf: '从 PDF 文字识别',
   filename: '用的是文件名',
+  web: '来自网页',
   user: '手动编辑过'
 }
 

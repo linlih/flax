@@ -121,7 +121,13 @@ const api: PaperApi = {
     install: () => ipcRenderer.invoke('app:installUpdate'),
     onState: listen('app:update')
   },
-  onMenu: listen('app:menu')
+  onMenu: listen('app:menu'),
+  connector: {
+    status: () => ipcRenderer.invoke('connector:status'),
+    set: (patch) => ipcRenderer.invoke('connector:set', patch),
+    onState: listen('connector:state')
+  },
+  onShowPaper: listen('app:showPaper')
 }
 
 contextBridge.exposeInMainWorld('api', api)

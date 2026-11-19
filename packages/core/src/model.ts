@@ -38,7 +38,8 @@ export interface FileRef {
   addedAt: string
 }
 
-export type MetadataSource = 'arxiv' | 'crossref' | 'openalex' | 'openlibrary' | 'ai' | 'pdf' | 'filename' | 'user'
+/** web：浏览器插件从网页上的 citation_* 信息读到的（联网查不到时才用） */
+export type MetadataSource = 'arxiv' | 'crossref' | 'openalex' | 'openlibrary' | 'ai' | 'pdf' | 'filename' | 'web' | 'user'
 
 /** 识别不完整的原因，界面据此给出不同的提示 */
 export type MatchIssue = 'no_id' | 'lookup_failed' | 'not_found'

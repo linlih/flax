@@ -233,6 +233,58 @@ describe('Importer', () => {
     ])
   })
 
+  describe('saving from a web page (browser extension)', () => {
+    const page = (extra: object = {}) => ({ url: 'https://arxiv.org/abs/2101.01234v2', ...extra })
+
+    it('looks up the paper by the id on the page and downloads the arXiv PDF', async () => {
+      const r = await importer.addFromPage(page({ meta: { title: 'From the page', authors: ['Ada Lovelace'] } }))
+      expect(r).toMatchObject({ status: 'added', title: 'Sparse Mixtures for Long Documents', hasPdf: true })
+      const p = lib.getPaper(r!.paperId)!
+      expect(p).toMatchObject({ identifiers: { arxiv: '2101.01234' }, metadataSource: 'arxiv', needsMatch: false })
+      await importer.whenIdle()
+      expect(lib.getPaper(p.id)!.files).toHaveLength(1)
+    })
+
+    it('keeps what the page says when the lookup fails', async () => {
+      online = false
+      const r = await importer.addFromPage({ url: 'https://dl.example.org/doi/10.1145/3589334.3645341', meta: { title: '  A  Paper\nFrom ACM ', authors: ['Lovelace, Ada', 'Grace Hopper', 'Grace Hopper'], year: 2024, venue: 'WWW' } })
+      const p = lib.getPaper(r!.paperId)!
+      expect(p).toMatchObject({
+        title: 'A Paper From ACM',
+        authors: [{ given: 'Ada', family: 'Lovelace' }, { given: 'Grace', family: 'Hopper' }],
+        year: 2024, venue: 'WWW', identifiers: { doi: '10.1145/3589334.3645341' }, metadataSource: 'web', needsMatch: false
+      })
+      expect(r!.hasPdf).toBe(false)
+    })
+
+    it('marks a page with only an id and no lookup result as needing a match', async () => {
+      online = false
+      const r = await importer.addFromPage({ url: 'https://example.org/x', ids: { doi: '10.1000/xyz123' } })
+      expect(lib.getPaper(r!.paperId)).toMatchObject({ title: '10.1000/xyz123', needsMatch: true, matchIssue: 'lookup_failed' })
+    })
+
+    it('saves a page with a title but no id, to be matched later', async () => {
+      const r = await importer.addFromPage({ url: 'https://proceedings.example.org/paper/42', meta: { title: 'Untitled Conference Paper' } })
+      expect(lib.getPaper(r!.paperId)).toMatchObject({ title: 'Untitled Conference Paper', needsMatch: true, matchIssue: 'no_id' })
+    })
+
+    it('does not add the same paper twice and tells the extension it is already there', async () => {
+      const first = await importer.addFromPage(page())
+      await importer.whenIdle()
+      expect(importer.findPage({ url: 'https://arxiv.org/pdf/2101.01234' })).toMatchObject({ paperId: first!.paperId, hasPdf: true })
+      const again = await importer.addFromPage({ url: 'https://example.org/', ids: { arxiv: 'arXiv:2101.01234' } })
+      expect(again).toMatchObject({ status: 'existing', paperId: first!.paperId })
+      expect(lib.listPapers()).toHaveLength(1)
+    })
+
+    it('ignores ids and fields that are not what they claim to be', async () => {
+      expect(await importer.addFromPage({ url: 'https://example.org/', ids: { doi: 'javascript:alert(1)', arxiv: 42 as unknown as string } })).toBeNull()
+      expect(await importer.addFromPage({ url: 'https://example.org/', meta: { title: '   ', authors: [{} as unknown as string] } })).toBeNull()
+      expect(importer.findPage({ url: 'https://example.org/' })).toBeNull()
+      expect(lib.listPapers()).toEqual([])
+    })
+  })
+
   it('downloads the PDF from arXiv after a pasted link', async () => {
     await importer.addFromText('https://arxiv.org/abs/2101.01234')
     const id = lib.listPapers()[0]!.id

@@ -141,7 +141,28 @@ export interface PaperApi {
   }
   /** 菜单栏里点了某一项 */
   onMenu(cb: (cmd: MenuCommand) => void): () => void
+  /** 浏览器插件的本地连接服务 */
+  connector: {
+    status(): Promise<{ settings: ConnectorSettings; state: ConnectorState }>
+    set(patch: Partial<ConnectorSettings>): Promise<ConnectorSettings>
+    onState(cb: (s: ConnectorState) => void): () => void
+  }
+  /** 别处（浏览器插件、系统通知）要显示某一篇 */
+  onShowPaper(cb: (paperId: string) => void): () => void
 }
+
+// —— 浏览器插件 ——
+
+export interface ConnectorSettings {
+  enabled: boolean
+  port: number
+}
+
+export type ConnectorState =
+  | { kind: 'off' }
+  | { kind: 'listening'; port: number }
+  | { kind: 'port_in_use'; port: number }
+  | { kind: 'error'; port: number; message: string }
 
 // —— 同步 ——
 

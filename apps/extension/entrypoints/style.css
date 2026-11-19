@@ -1,0 +1,56 @@
+/* 和桌面端同一套颜色（DESIGN.md：托盘 + 白卡，单一蓝色强调色） */
+:root {
+  color-scheme: light dark;
+  --bg: #f7f7f7;
+  --card: #ffffff;
+  --border: #ebebeb;
+  --text: #0a0a0a;
+  --sub: #6b6b6b;
+  --accent: #155dfc;
+  --accent-top: #2b7fff;
+  --accent-text: #155dfc;
+  --ok: #15803d;
+  --err: #dc2626;
+  --hover: #f5f5f5;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #1a1a1a;
+    --card: #242424;
+    --border: #333333;
+    --text: #f2f2f2;
+    --sub: #a3a3a3;
+    --accent-text: #6aa5ff;
+    --ok: #4ade80;
+    --err: #f87171;
+    --hover: #2e2e2e;
+  }
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+}
+main { width: 340px; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+header { display: flex; align-items: center; gap: 6px; color: var(--sub); font-size: 12px; font-weight: 500; }
+.card { background: var(--card); border: 1px solid var(--border); border-radius: 12px; padding: 12px 14px; display: flex; flex-direction: column; gap: 4px; }
+.title { margin: 0; font-size: 14px; font-weight: 600; display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+.sub { margin: 0; color: var(--sub); font-size: 12px; }
+.status { margin: 4px 0 0; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.status.ok { color: var(--ok); font-weight: 500; }
+.status.err { color: var(--err); }
+.actions { display: flex; gap: 8px; }
+button {
+  font: inherit; font-weight: 500; height: 30px; padding: 0 12px; border-radius: 8px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--card); color: var(--text);
+}
+button:hover { background: var(--hover); }
+button.primary { border: none; color: #fff; background: linear-gradient(var(--accent-top), var(--accent)); }
+button.primary:hover { filter: brightness(1.05); }
+button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-text); outline-offset: 2px; }
+.spin { width: 12px; height: 12px; border: 2px solid var(--border); border-top-color: var(--accent-text); border-radius: 50%; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+label { display: flex; flex-direction: column; gap: 6px; }
+input { font: inherit; height: 30px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--card); color: var(--text); width: 120px; }

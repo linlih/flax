@@ -7,6 +7,7 @@ import { host, serviceName, useAiStatus } from '../lib/ai'
 import { api } from '../lib/library'
 import { FILES_APP, kbd, KEYCHAIN } from '../lib/platform'
 import { Icon, Spinner } from './Icon'
+import { ConnectorSettings } from './ConnectorSettings'
 import { SyncSettings } from './SyncSettings'
 import { TranslateSettings } from './TranslateSettings'
 
@@ -74,6 +75,7 @@ export function SettingsView({ onShortcuts }: { onShortcuts: () => void }) {
     <TranslateSettings status={status} />
     <AppearanceSection />
     <SyncSettings />
+    <ConnectorSettings />
     <DataSection />
     <AboutSection onShortcuts={onShortcuts} />
     </div>
