@@ -150,6 +150,8 @@ jobs:
           name: flax-extension
           retention-days: 14
           if-no-files-found: error
+          # WXT 把包放在 .output 里；upload-artifact 默认跳过以点开头的目录
+          include-hidden-files: true
           # 源码包只在上架 Firefox 时手动传，不放进 Releases
           path: |
             apps/extension/.output/Flax-*-chrome-extension.zip
