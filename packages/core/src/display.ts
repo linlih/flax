@@ -10,6 +10,31 @@ export const MATCH_HINT: Record<MatchIssue, string> = {
   not_found: '编号没有查到对应的信息'
 }
 
+/** 常见会议的全名 → 大家平时说的简称 */
+const VENUE_SHORT: [RegExp, string][] = [
+  [/neural information processing systems/i, 'NeurIPS'],
+  [/north american chapter of the association for computational linguistics/i, 'NAACL'],
+  [/^findings of the association for computational linguistics:?\s*(.+)$/i, 'Findings of $1'],
+  [/empirical methods in natural language processing/i, 'EMNLP'],
+  [/annual meeting of the association for computational linguistics/i, 'ACL'],
+  [/international conference on machine learning/i, 'ICML'],
+  [/international conference on learning representations/i, 'ICLR'],
+  [/aaai conference on artificial intelligence/i, 'AAAI'],
+  [/international joint conference on artificial intelligence/i, 'IJCAI']
+]
+
+/** 列表里一行放不下会议全名，显示简称："2016 IEEE Conference on … (CVPR)" → "CVPR"，
+ *  "Medical Image Computing … – MICCAI 2015" → "MICCAI 2015"。认不出来就原样返回 */
+export function shortVenue(venue: string): string {
+  const v = venue.trim()
+  const paren = /\(([A-Z][A-Za-z0-9&/-]{1,15})\)$/.exec(v)
+  if (paren) return paren[1]!
+  const tail = /\s[–—-]\s+([^–—]{2,20})$/.exec(v)?.[1]
+  if (tail && /\b[A-Z]{3,}/.test(tail)) return tail.trim()
+  for (const [re, short] of VENUE_SHORT) if (re.test(v)) return short.includes('$') ? v.replace(re, short) : short
+  return v
+}
+
 export const SOURCE_LABEL: Record<MetadataSource, string> = {
   arxiv: '来自 arXiv',
   crossref: '来自 Crossref',

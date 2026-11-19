@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer, webUtils } from 'electron'
-import type { AiApi, LibraryApi, NotesApi, PaperApi, SyncApi } from '../shared/api'
+import type { AiApi, LibraryApi, NotesApi, PaperApi, SearchApi, SyncApi } from '../shared/api'
 
 // 渲染进程能用的能力都从这里暴露。不直接暴露 ipcRenderer。
 const invoke = (channel: string) => (...args: unknown[]) => ipcRenderer.invoke(`library:${channel}`, ...args)
@@ -90,6 +90,12 @@ const ai = {
   onStatus: listen('ai:status')
 } as AiApi
 
+const search: SearchApi = {
+  pending: () => ipcRenderer.invoke('search:pending'),
+  put: (hash, pages) => ipcRenderer.invoke('search:put', hash, pages),
+  query: (q) => ipcRenderer.invoke('search:query', q)
+}
+
 const sync: SyncApi = {
   status: () => ipcRenderer.invoke('sync:status'),
   probe: (c) => ipcRenderer.invoke('sync:probe', c),
@@ -113,6 +119,7 @@ const api: PaperApi = {
   restore: () => ipcRenderer.invoke('app:restore'),
   library,
   notes,
+  search,
   ai,
   sync,
   update: {

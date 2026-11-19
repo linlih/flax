@@ -70,7 +70,7 @@ interface Props {
   toast: (t: Omit<Toast, 'key'>) => void
   notes: NoteSummary[]
   /** 打开后跳到这条批注（从笔记里的引用块点过来）；n 变了就再跳一次 */
-  jump?: { id: string; n: number }
+  jump?: ReaderJump
   onOpenNoteTitle: (title: string) => void
   onOpenAnnotation: (id: string) => void
   onOpenSettings: () => void
@@ -108,6 +108,14 @@ const pref = {
       /* 存不了就算了，下次用默认值 */
     }
   }
+}
+
+/** 从别处点进来：id 是批注；page + find 是全文搜索里点的一处（翻到那页、查找这个词） */
+export interface ReaderJump {
+  id?: string
+  page?: number
+  find?: string
+  n: number
 }
 
 export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, onOpenNoteTitle, onOpenAnnotation, onOpenSettings, terms, onReloadFile, onStatus }: Props) {
@@ -885,6 +893,27 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     scrollRef.current?.focus({ preventScroll: true })
   }
 
+  // 网页版也能 Ctrl / ⌘ + 滚轮、触控板捏合改字号。字号是一档一档的：
+  // 鼠标滚轮一格一档；触控板的小幅变化攒够了再换一档
+  useEffect(() => {
+    const el = htmlScrollRef.current
+    if (!el) return
+    let acc = 0
+    const onWheel = (e: WheelEvent) => {
+      if (!(e.ctrlKey || e.metaKey)) return
+      e.preventDefault()
+      const view = html.current
+      if (!view) return
+      const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaY
+      acc = Math.abs(dy) >= 50 ? dy : acc + dy
+      if (Math.abs(acc) < 40) return
+      setFontScale(view.zoom(acc < 0 ? 1 : -1))
+      acc = 0
+    }
+    el.addEventListener('wheel', onWheel, { passive: false })
+    return () => el.removeEventListener('wheel', onWheel)
+  }, [])
+
   // —— 缩放 ——
   const zoom = (dir: 1 | -1 | 0) => {
     if (modeRef.current === 'html') {
@@ -1080,6 +1109,17 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const jumped = useRef(0)
   useEffect(() => {
     if (!jump || jumped.current === jump.n || !doc || !ready) return
+    if (jump.find) {
+      jumped.current = jump.n
+      const { page, find: query } = jump
+      // 等缩放按窗口宽度算好再翻页、查找（PDF.js 从当前页开始找）
+      setTimeout(() => {
+        if (page) goPage(page)
+        setFind((f) => ({ ...f, open: true, query }))
+        runFind(query)
+      }, 250)
+      return
+    }
     const a = annos.find((x) => x.id === jump.id)
     if (!a) return
     jumped.current = jump.n

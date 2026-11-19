@@ -21,7 +21,9 @@ import { mod, TRASH } from './lib/platform'
 import { STATUS_LABEL } from './lib/format'
 import { useAiStatus } from './lib/ai'
 import { identifyWithAi } from './lib/identify'
-import type { ReadingStatus } from '@flax/core'
+import type { ReadingStatus, TextHit } from '@flax/core'
+import { kickIndexer, pauseIndexing } from './lib/textIndexer'
+import type { ReaderJump } from './reader/Reader'
 
 const TITLES: Record<string, string> = {
   all: '全部论文', reading: '在读', toread: '待读', terms: '术语', notes: '笔记', settings: '设置', trash: TRASH
@@ -38,8 +40,8 @@ export function App() {
   const syncNote = sync?.state === 'error' ? { text: '同步出了问题', error: true } : sync?.files?.left ? { text: `还有 ${sync.files.left} 个 PDF 在同步`, error: false } : null
   /** 笔记页里打开的那篇 */
   const [noteId, setNoteId] = useState<string | null>(null)
-  /** 阅读器打开后要跳到的批注 */
-  const [jump, setJump] = useState<{ id: string; n: number } | undefined>(undefined)
+  /** 阅读器打开后要跳到的批注，或者翻到某页并查找（全文搜索里点的） */
+  const [jump, setJump] = useState<ReaderJump | undefined>(undefined)
   const [view, setView] = useState<View>('all')
   /** 选中的论文：列表里高亮，右边显示详情 */
   const [selId, setSelId] = useState<string | null>(null)
@@ -119,6 +121,26 @@ export function App() {
     setView('notes')
     setNoteId(found.id)
   }
+  /** 全文搜索里点了一处：批注就跳到批注，正文就翻到那一页并查找搜索词 */
+  const openHit = (paperId: string, hit: TextHit, query: string) => {
+    if (hit.kind === 'anno') return void openAnnotation(hit.id)
+    const p = lib.papers.find((x) => x.id === paperId)
+    if (!p?.files.length) return openPaper(paperId)
+    setReadingId(paperId)
+    setJump((j) => ({ page: hit.page, find: query, n: (j?.n ?? 0) + 1 }))
+  }
+  const openNote = (id: string) => {
+    setReadingId(null)
+    setView('notes')
+    setNoteId(id)
+  }
+
+  // 全文搜索的索引：有新的 PDF 就在后台读；看论文的时候先停一停
+  useEffect(() => {
+    if (lib.loaded) kickIndexer()
+  }, [lib.loaded, lib.papers])
+  useEffect(() => pauseIndexing(Boolean(readingId)), [readingId])
+
   /** 笔记里的引用块：打开那篇论文并跳到这条批注 */
   const openAnnotation = async (id: string) => {
     const a = await api.library.annotation(id)
@@ -339,6 +361,9 @@ export function App() {
             reading={view === 'reading'}
             statusFilter={view === 'all' || view.startsWith('folder:')}
             onToast={(text) => toast({ text })}
+            onOpenHit={openHit}
+            notes={view === 'all' ? notes : undefined}
+            onOpenNote={openNote}
           />
         )}
       </main>

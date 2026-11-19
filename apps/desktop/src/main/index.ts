@@ -1,7 +1,7 @@
 import { mkdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { cp, mkdir, rename, rm } from 'node:fs/promises'
 import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, net, Notification, protocol, safeStorage, shell, type MenuItemConstructorOptions } from 'electron'
 import { IDENTIFY_IMAGES_MAX, IDENTIFY_TEXT_MAX, Library, LibraryTooNewError, resetDeviceIdentity, TAG_COLORS, toBibTeX, toRIS, type AnnotationPatch, type NewAnnotation, type PageImage, type PaperMeta, type PaperPatch, type ReadingPosition, type TagColor } from '@flax/core'
@@ -21,6 +21,7 @@ import { SyncService } from './sync'
 import { deviceName } from './device'
 import { createArxivHtml } from './arxivHtml'
 import { ConnectorService } from './connectorService'
+import { createSearch } from './search'
 
 app.setName('Flax')
 
@@ -528,6 +529,25 @@ function setup(): void {
   app.on('browser-window-blur', () => syncSvc.blurred())
   app.on('before-quit', () => syncSvc.stop())
   syncSvc.start()
+  // 全文搜索：索引放在应用自己的文件夹里（能随时重建），坏了就删掉重来
+  const searchDb = (() => {
+    const file = join(app.getPath('userData'), 'search.sqlite')
+    try {
+      return new DatabaseSync(file)
+    } catch (e) {
+      console.error('search index:', e)
+      rmSync(file, { force: true })
+      return new DatabaseSync(file)
+    }
+  })()
+  searchDb.exec('PRAGMA journal_mode = WAL;')
+  const search = createSearch({ db: searchDb, library, pathFor: (h) => store.pathFor(h), notes })
+  search.prune()
+  handle('search:pending', () => search.pending())
+  handle('search:put', (hash, pages) => search.put(str(hash, 'hash'), pages))
+  handle('search:query', (q) => search.query(str(q, 'query')))
+  app.on('before-quit', () => searchDb.close())
+
   handle('notes:list', () => notes.list())
   handle('notes:read', (id) => notes.read(str(id, 'id')))
   handle('notes:create', (opts) => {

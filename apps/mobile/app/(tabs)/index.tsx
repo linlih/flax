@@ -3,7 +3,7 @@
 import { useEffect, useLayoutEffect, useMemo, useState } from 'react'
 import { ActivityIndicator, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native'
 import { router, Stack, useLocalSearchParams, useNavigation } from 'expo-router'
-import { authorLine, filterPapers, formatCitation, isNew, isStale, MATCH_HINT, progress, sortReading, STATUS_LABEL, STATUSES, tagColorMap, toBibTeX, toRIS, type CiteStyle, type Paper, type ReadingStatus } from '@flax/core'
+import { authorLine, filterPapers, shortVenue, formatCitation, isNew, isStale, MATCH_HINT, progress, sortReading, STATUS_LABEL, STATUSES, tagColorMap, toBibTeX, toRIS, type CiteStyle, type Paper, type ReadingStatus } from '@flax/core'
 import { app, showNotice, useVersion } from '../../src/services'
 import { hasPdf } from '../../src/platform/files'
 import { pickAndImport, pickBibTeX } from '../../src/importPdf'
@@ -344,7 +344,7 @@ function PaperRow({ p, tagColors, busy, downloading, onLong }: { p: Paper; tagCo
   const pr = progress(p)
   const main = p.files.find((f) => f.role === 'main') ?? p.files[0]
   const cloud = main && !hasPdf(main.hash)
-  const meta = [authorLine(p, 1), [p.venue, p.year].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
+  const meta = [authorLine(p, 1), [p.venue && shortVenue(p.venue), p.year].filter(Boolean).join(' ')].filter(Boolean).join(' · ')
   const stale = p.readingStatus === 'reading' && isStale(p)
   const status = busy ? '正在识别标题和作者…' : downloading ? '正在下载 PDF…' : null
   return (

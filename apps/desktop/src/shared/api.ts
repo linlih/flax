@@ -17,7 +17,7 @@ export interface LibrarySnapshot {
 }
 
 // 导入相关的类型挪到了 core（importer.ts），手机版也用
-import type { Candidate, ImportNotice } from '@flax/core'
+import type { Candidate, ImportNotice, TextSearchResult } from '@flax/core'
 export type { Candidate, ImportNotice } from '@flax/core'
 
 export interface LibraryApi {
@@ -95,6 +95,15 @@ export interface NoteSummary {
   annotationRefs: string[]
 }
 
+/** 全文搜索：论文正文、批注、笔记 */
+export interface SearchApi {
+  /** 本机有、还没读进索引的 PDF（哈希） */
+  pending(): Promise<string[]>
+  /** 存一个 PDF 各页的文字（第 1 页在最前） */
+  put(hash: string, pages: string[]): Promise<void>
+  query(q: string): Promise<TextSearchResult>
+}
+
 export interface NotesApi {
   list(): Promise<NoteSummary[]>
   read(id: string): Promise<{ note: NoteSummary; body: string } | null>
@@ -128,6 +137,7 @@ export interface PaperApi {
   restore(): Promise<boolean>
   library: LibraryApi
   notes: NotesApi
+  search: SearchApi
   ai: AiApi
   sync: SyncApi
   /** 自动更新 */

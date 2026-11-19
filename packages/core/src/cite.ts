@@ -41,8 +41,10 @@ export function formatCitation(p: CitePaper, style: CiteStyle): string {
   const chinese = CJK.test(p.title)
   let who = shown.join(', ')
   if (p.authors.length > 3) who += chinese ? ', 等' : ', et al'
-  const kind = arxiv && !p.venue ? 'EB/OL' : 'J'
-  const venue = p.venue ?? (arxiv ? `arXiv:${arxiv}` : '')
+  const vk = venueKind(p.venue)
+  const preprint = Boolean(arxiv) && (vk === 'none' || vk === 'preprint')
+  const kind = preprint ? 'EB/OL' : vk === 'proceedings' ? 'C' : 'J'
+  const venue = preprint ? `arXiv:${arxiv}` : p.venue ?? ''
   const tail = [venue, p.year].filter(Boolean).join(', ')
   return `${who ? who + '. ' : ''}${p.title}[${kind}]. ${tail ? tail + '.' : ''}${doi ? ` DOI: ${doi}.` : kind === 'EB/OL' && link ? ` ${link}.` : ''}`.trim()
 }
@@ -66,6 +68,15 @@ export function citeKeys(papers: CitePaper[]): string[] {
   })
 }
 
+/** 会议论文集：按名字认（Crossref、BibTeX 里都只有一个名字） */
+const PROCEEDINGS = /\b(proceedings|conference|symposium|workshop|advances in neural information processing|CVPR|ICCV|ECCV|NeurIPS|NIPS|ICML|ICLR|AAAI|IJCAI|ACL|EMNLP|NAACL|COLING|SIGIR|SIGGRAPH|KDD|CHI|WWW|Interspeech|ICASSP)\b/i
+/** 论文发在哪：只写着 arXiv 的算预印本，不算期刊 */
+function venueKind(venue: string | undefined): 'none' | 'preprint' | 'proceedings' | 'journal' {
+  if (!venue) return 'none'
+  if (/^arxiv$/i.test(venue.trim())) return 'preprint'
+  return PROCEEDINGS.test(venue) ? 'proceedings' : 'journal'
+}
+
 const bibEscape = (s: string) => s.replace(/\\/g, '\\textbackslash{}').replace(/([&%$#_])/g, '\\$1').replace(/[{}]/g, (c) => `\\${c}`)
 
 export function toBibTeX(papers: CitePaper[]): string {
@@ -75,12 +86,13 @@ export function toBibTeX(papers: CitePaper[]): string {
       const id = p.identifiers
       // 有 ISBN、没有 DOI 的是书：出版社写在 publisher 里
       const book = Boolean(id.isbn && !id.doi && !id.arxiv)
-      const type = book ? 'book' : p.venue ? 'article' : 'misc'
+      const kind = venueKind(p.venue)
+      const type = book ? 'book' : kind === 'proceedings' ? 'inproceedings' : kind === 'journal' ? 'article' : 'misc'
       const fields: [string, string | undefined][] = [
         ['title', `{${bibEscape(p.title)}}`],
         ['author', p.authors.length ? p.authors.map((a) => (a.given ? `${bibEscape(a.family)}, ${bibEscape(a.given)}` : `{${bibEscape(a.family)}}`)).join(' and ') : undefined],
         ['year', p.year ? String(p.year) : undefined],
-        [book ? 'publisher' : 'journal', p.venue ? bibEscape(p.venue) : undefined],
+        [book ? 'publisher' : kind === 'proceedings' ? 'booktitle' : 'journal', p.venue && kind !== 'preprint' ? bibEscape(p.venue) : undefined],
         ['doi', id.doi],
         ['isbn', book ? id.isbn : undefined],
         ['eprint', id.arxiv],
@@ -101,7 +113,7 @@ export function toRIS(papers: CitePaper[]): string {
       const id = p.identifiers
       const book = Boolean(id.isbn && !id.doi && !id.arxiv)
       const lines: [string, string | undefined][] = [
-        ['TY', book ? 'BOOK' : p.venue ? 'JOUR' : id.arxiv ? 'PREP' : 'GEN'],
+        ['TY', book ? 'BOOK' : venueKind(p.venue) === 'proceedings' ? 'CPAPER' : venueKind(p.venue) === 'journal' ? 'JOUR' : id.arxiv ? 'PREP' : 'GEN'],
         ['TI', p.title],
         ...p.authors.map((a): [string, string] => ['AU', a.given ? `${a.family}, ${a.given}` : a.family]),
         ['PY', p.year ? String(p.year) : undefined],

@@ -117,6 +117,7 @@ async function lookupIds(ids: FoundIds, fetchText: FetchText): Promise<{ meta?: 
       const m = await t()
       if (m) {
         m.identifiers = { ...ids, ...m.identifiers }
+        if (m.source === 'arxiv' && m.venue === 'arXiv') await addPublishedVersion(m, fetchText)
         return { meta: m, issue }
       }
     } catch {
@@ -124,6 +125,44 @@ async function lookupIds(ids: FoundIds, fetchText: FetchText): Promise<{ meta?: 
     }
   }
   return { issue }
+}
+
+/** arXiv 上的论文很多后来发在了会议或期刊上（CVPR、ACL、NeurIPS 2022 起……），arXiv 却不知道。
+ *  到 Crossref 按标题找正式发表的版本：标题几乎一样、第一作者在作者里、年份差不多才算。
+ *  找到就换成会议/期刊名、发表年份，并记下 DOI；作者和摘要仍用 arXiv 的（更全）。查不到或出错就保持原样 */
+export async function addPublishedVersion(m: PaperMeta, fetchText: FetchText): Promise<void> {
+  const first = m.authors[0]?.family
+  if (!first || normalizeTitle(m.title).length < 8) return
+  try {
+    // arXiv 有时记着正式版的 DOI，却没写发在哪：直接按 DOI 查
+    if (m.identifiers.doi) {
+      const r = await fetchText(`${CROSSREF_API}/${encodeURIComponent(m.identifiers.doi)}`)
+      const p = r.status === 200 ? parseCrossrefWork(JSON.parse(r.body).message) : null
+      if (p?.venue && !/arxiv/i.test(p.venue)) {
+        m.venue = p.venue
+        if (p.year) m.year = p.year
+      }
+      return
+    }
+    const q = encodeURIComponent(`${m.title} ${first}`)
+    const r = await fetchText(`${CROSSREF_API}?rows=5&filter=type:proceedings-article,type:journal-article,type:book-chapter&query.bibliographic=${q}`)
+    if (r.status !== 200) return
+    const items = (JSON.parse(r.body).message?.items ?? []) as CrossrefWork[]
+    const key = (s: string) => normalizeTitle(s).replace(/ /g, '')
+    for (const it of items) {
+      const p = parseCrossrefWork(it)
+      if (!p?.venue || !p.identifiers.doi || /arxiv/i.test(p.venue)) continue
+      if (key(p.title) !== key(m.title) && titleSimilarity(p.title, m.title) < 0.95) continue
+      if (!p.authors.some((a) => normalizeTitle(a.family) === normalizeTitle(first))) continue
+      if (m.year && p.year && (p.year < m.year - 1 || p.year > m.year + 3)) continue
+      m.venue = p.venue
+      if (p.year) m.year = p.year
+      m.identifiers = { ...m.identifiers, doi: p.identifiers.doi }
+      return
+    }
+  } catch {
+    // 只是锦上添花，查不到不影响导入
+  }
 }
 
 /** 按标题搜候选，用在"需要匹配"时。结果按标题相似度排序 */
@@ -191,6 +230,8 @@ interface CrossrefWork {
   abstract?: string
 }
 
+const BOOK_SERIES = /^(lecture notes in|communications in computer and information science|advances in intelligent systems and computing|informatik aktuell|smart innovation|studies in computational intelligence)/i
+
 export function parseCrossrefWork(w: CrossrefWork | undefined): PaperMeta | null {
   const title = clean(w?.title?.[0] ?? '')
   if (!w || !title) return null
@@ -202,7 +243,9 @@ export function parseCrossrefWork(w: CrossrefWork | undefined): PaperMeta | null
   if (w.DOI) m.identifiers.doi = w.DOI.toLowerCase()
   const year = (w.issued ?? w.published)?.['date-parts']?.[0]?.[0]
   if (year) m.year = year
-  const venue = w['container-title']?.[0]
+  // Springer 的会议论文（ECCV、MICCAI……）先写丛书名再写论文集名，要的是论文集名
+  const names = w['container-title'] ?? []
+  const venue = names.find((n) => !BOOK_SERIES.test(n)) ?? names[0]
   if (venue) m.venue = clean(venue)
   if (w.abstract) m.abstract = clean(w.abstract.replace(/<[^>]+>/g, ' '))
   return m

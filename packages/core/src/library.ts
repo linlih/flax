@@ -3,6 +3,7 @@
 import type { Annotation, DevicePosition, TrashedPaper, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingPosition, ReadingStatus, TagColor, Term, UUID } from './model'
 import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
+import { likePattern } from './search'
 import { createLibrarySyncStore, LIBRARY_SYNC_SCHEMA } from './sync/libraryStore'
 import { createConversationSyncStore } from './sync/conversationStore'
 import { CONVERSATION_SCHEMA, Conversations } from './conversations'
@@ -488,6 +489,12 @@ export class Library {
     const rows = this.db.prepare('SELECT data FROM annotations WHERE paper_id = ? AND deleted = 0').all(paperId) as { data: string }[]
     const top = (a: Annotation) => Math.max(...a.target.rects.map((r) => Math.max(r[1], r[3])), 0)
     return rows.map((r) => JSON.parse(r.data) as Annotation).sort((a, b) => a.page - b.page || top(b) - top(a) || a.createdAt.localeCompare(b.createdAt))
+  }
+
+  /** 原文或评论里可能有 q 的批注（粗筛，JSON 里转义过的字符可能多筛进来几条，由调用方再精确比对） */
+  searchAnnotations(q: string): Annotation[] {
+    const rows = this.db.prepare("SELECT data FROM annotations WHERE deleted = 0 AND data LIKE ? ESCAPE '\\'").all(likePattern(q)) as { data: string }[]
+    return rows.map((r) => JSON.parse(r.data) as Annotation)
   }
 
   /** 按 id 取一条批注（笔记里的引用块跳回原文时用） */

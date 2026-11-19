@@ -190,3 +190,65 @@ describe('searchByTitle', () => {
     await expect(searchByTitle('Graph methods for tables', fakeFetch({ 'api.crossref.org': 'offline', 'export.arxiv.org': 'offline' }))).rejects.toThrow()
   })
 })
+
+describe('published version of an arXiv paper', () => {
+  // 同一篇 arXiv 论文，没写发在哪
+  const bare = ARXIV_FEED.replace(/\s*<arxiv:doi[^]*?<\/arxiv:doi>/, '').replace(/\s*<arxiv:journal_ref[^]*?<\/arxiv:journal_ref>/, '')
+  const work = (over: Record<string, unknown>) => ({ DOI: '10.1109/conf.2022.7', title: ['Sparse Mixtures for Long Documents & Beyond'], author: [{ given: 'Ada', family: 'Lovelace' }], issued: { 'date-parts': [[2022]] }, 'container-title': ['2022 Conference on Examples (CoE)'], ...over })
+  const search = (items: unknown[]) => ({ status: 200, body: JSON.stringify({ message: { items } }) })
+  const pasted = 'arXiv:2101.01234'
+
+  it('takes the venue, year and DOI of the published version', async () => {
+    const f = fakeFetch({
+      'export.arxiv.org': { status: 200, body: bare },
+      'works?rows': search([
+        work({ DOI: '10.3390/other.1', author: [{ given: 'Someone', family: 'Else' }], 'container-title': ['Applied Examples'] }),
+        work({})
+      ])
+    })
+    const r = (await identifyText(pasted, f))!
+    expect(r.meta.venue).toBe('2022 Conference on Examples (CoE)')
+    expect(r.meta.year).toBe(2022)
+    expect(r.meta.identifiers).toEqual({ arxiv: '2101.01234', doi: '10.1109/conf.2022.7' })
+    expect(r.meta.authors).toHaveLength(2) // arXiv 的作者更全，不换
+    expect(r.meta.source).toBe('arxiv')
+  })
+  it('stays an arXiv paper when nothing matches closely', async () => {
+    const f = fakeFetch({
+      'export.arxiv.org': { status: 200, body: bare },
+      'works?rows': search([work({ title: ['Sparse Mixtures for Short Documents'] }), work({ issued: { 'date-parts': [[2012]] } })])
+    })
+    const r = (await identifyText(pasted, f))!
+    expect(r.meta.venue).toBe('arXiv')
+    expect(r.meta.year).toBe(2021)
+    expect(r.meta.identifiers.doi).toBeUndefined()
+  })
+  it('still imports when Crossref is offline', async () => {
+    const f = fakeFetch({ 'export.arxiv.org': { status: 200, body: bare }, 'api.crossref.org': 'offline' })
+    const r = (await identifyText(pasted, f))!
+    expect(r.needsMatch).toBe(false)
+    expect(r.meta.venue).toBe('arXiv')
+  })
+  it('looks the DOI up when arXiv knows it but not the venue', async () => {
+    const withDoi = ARXIV_FEED.replace(/\s*<arxiv:journal_ref[^]*?<\/arxiv:journal_ref>/, '')
+    const f = fakeFetch({ 'export.arxiv.org': { status: 200, body: withDoi }, 'works/10.9999': { status: 200, body: JSON.stringify({ message: work({ DOI: '10.9999/abc.1' }) }) } })
+    const r = (await identifyText(pasted, f))!
+    expect(r.meta.venue).toBe('2022 Conference on Examples (CoE)')
+    expect(r.meta.identifiers.doi).toBe('10.9999/abc.1')
+    expect(f.calls.some((u) => u.includes('works?rows'))).toBe(false)
+  })
+  it('takes the proceedings name, not the book series, for Springer conference papers', async () => {
+    const f = fakeFetch({
+      'export.arxiv.org': { status: 200, body: bare },
+      'works?rows': search([work({ title: ['Invited Talk: Sparse Mixtures for Long Documents & Beyond'], 'container-title': ['Informatik aktuell', 'Some Workshop 2023'] }), work({ 'container-title': ['Lecture Notes in Computer Science', 'Computer Vision – ECCV 2022'] })])
+    })
+    const r = (await identifyText(pasted, f))!
+    expect(r.meta.venue).toBe('Computer Vision – ECCV 2022')
+  })
+  it('leaves papers alone when arXiv already says where they were published', async () => {
+    const f = fakeFetch({ 'export.arxiv.org': { status: 200, body: ARXIV_FEED } })
+    const r = (await identifyText(pasted, f))!
+    expect(r.meta.venue).toBe('Journal of Examples 3 (2022)')
+    expect(f.calls).toHaveLength(1)
+  })
+})

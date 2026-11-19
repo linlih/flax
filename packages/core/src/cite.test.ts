@@ -15,7 +15,7 @@ describe('citations', () => {
     expect(formatCitation(attention, 'apa')).toBe('Vaswani, A., Shazeer, N., Parmar, N., & Uszkoreit, J. (2017). Attention Is All You Need. Advances in Neural Information Processing Systems. https://doi.org/10.48550/arXiv.1706.03762')
   })
   it('formats GB/T 7714 with et al after three authors', () => {
-    expect(formatCitation(attention, 'gbt7714')).toBe('VASWANI A, SHAZEER N, PARMAR N, et al. Attention Is All You Need[J]. Advances in Neural Information Processing Systems, 2017. DOI: 10.48550/arXiv.1706.03762.')
+    expect(formatCitation(attention, 'gbt7714')).toBe('VASWANI A, SHAZEER N, PARMAR N, et al. Attention Is All You Need[C]. Advances in Neural Information Processing Systems, 2017. DOI: 10.48550/arXiv.1706.03762.')
   })
   it('formats an arXiv-only preprint and Chinese names', () => {
     const p = { title: '注意力机制综述', authors: [{ family: '张', given: '三' }], year: 2024, identifiers: { arxiv: '2401.01234' } }
@@ -29,7 +29,8 @@ describe('citations', () => {
 describe('export', () => {
   it('writes BibTeX that reads back the same', () => {
     const bib = toBibTeX([{ ...attention, title: 'Costs & Benefits of {Braces}_x' }])
-    expect(bib).toContain('@article{vaswani2017costs,')
+    expect(bib).toContain('@inproceedings{vaswani2017costs,')
+    expect(bib).toContain('booktitle = {Advances in Neural Information Processing Systems}')
     expect(bib).toContain('author = {Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob}')
     const back = bibToPaper(parseBibTeX(bib)[0]!)!
     expect(back.meta.title).toBe('Costs & Benefits of Braces_x')
@@ -37,9 +38,23 @@ describe('export', () => {
     expect(back.meta.identifiers.arxiv).toBe('1706.03762')
     expect(back.tags).toEqual(['transformer'])
   })
+  it('tells journals, proceedings and arXiv-only papers apart', () => {
+    const journal = toBibTeX([{ ...attention, venue: 'Nature' }])
+    expect(journal).toContain('@article{')
+    expect(journal).toContain('journal = {Nature}')
+    const cvpr = toBibTeX([{ ...attention, venue: '2016 IEEE Conference on Computer Vision and Pattern Recognition (CVPR)' }])
+    expect(cvpr).toContain('@inproceedings{')
+    const preprint = { ...attention, venue: 'arXiv', identifiers: { arxiv: '1706.03762' } }
+    const bib = toBibTeX([preprint])
+    expect(bib).toContain('@misc{')
+    expect(bib).not.toContain('journal =')
+    expect(toRIS([preprint]).startsWith('TY  - PREP')).toBe(true)
+    expect(formatCitation(preprint, 'gbt7714')).toContain('[EB/OL]. arXiv:1706.03762, 2017.')
+    expect(formatCitation({ ...attention, venue: 'Nature' }, 'gbt7714')).toContain('[J]. Nature, 2017.')
+  })
   it('writes RIS', () => {
     const ris = toRIS([attention])
-    expect(ris.split('\n').slice(0, 4)).toEqual(['TY  - JOUR', 'TI  - Attention Is All You Need', 'AU  - Vaswani, Ashish', 'AU  - Shazeer, Noam'])
+    expect(ris.split('\n').slice(0, 4)).toEqual(['TY  - CPAPER', 'TI  - Attention Is All You Need', 'AU  - Vaswani, Ashish', 'AU  - Shazeer, Noam'])
     expect(ris.trim().endsWith('ER  -')).toBe(true)
   })
 })

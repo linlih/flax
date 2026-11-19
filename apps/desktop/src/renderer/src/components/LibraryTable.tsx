@@ -1,7 +1,9 @@
-import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { Folder, Paper, ReadingStatus, TagColor } from '@flax/core'
 import { tagColorMap } from '../lib/tags'
-import { formatCitation, type CiteStyle } from '@flax/core'
+import { findAll, formatCitation, normalizeQuery, searchable, shortVenue, type CiteStyle, type PaperHits, type TextHit, type TextSearchResult } from '@flax/core'
+import type { NoteSummary } from '../../../shared/api'
+import { onIndexed } from '../lib/textIndexer'
 import { Icon, Spinner } from './Icon'
 import { PAPER_DRAG_TYPE } from './Sidebar'
 import { addedLabel, authorLine, MATCH_HINT, STATUS_LABEL } from '../lib/format'
@@ -32,7 +34,48 @@ interface Props {
   folders: Folder[]
   /** 变一次就把光标放进筛选框（侧栏的快速搜索、⌘K） */
   focusFilter?: number
+  /** 全文搜索里点了一处（正文的某页或一条批注） */
+  onOpenHit?: (paperId: string, hit: TextHit, query: string) => void
+  /** 给了就在结果最后列出命中的笔记（全部论文里） */
+  notes?: NoteSummary[]
+  onOpenNote?: (id: string) => void
 }
+
+/** 把文字里出现的搜索词标出来 */
+function Marked({ text, q }: { text: string; q: string }) {
+  const at = q ? findAll(text, q) : []
+  if (!at.length) return <>{text}</>
+  const out: ReactNode[] = []
+  let i = 0
+  for (const a of at) {
+    if (a > i) out.push(text.slice(i, a))
+    out.push(<mark key={a} className="q">{text.slice(a, a + q.length)}</mark>)
+    i = a + q.length
+  }
+  if (i < text.length) out.push(text.slice(i))
+  return <>{out}</>
+}
+
+/** 一处命中：左边是在哪（第几页、哪条批注），右边一行摘录 */
+function HitLine({ hit, onOpen }: { hit: TextHit; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      className="hit"
+      title={hit.kind === 'anno' ? `跳到第 ${hit.page} 页的这条批注` : `打开第 ${hit.page} 页并查找`}
+      onClick={(e) => { e.stopPropagation(); onOpen() }}
+      onDoubleClick={(e) => e.stopPropagation()}
+    >
+      <span className="hit-where num">
+        {hit.kind === 'anno' ? <><i className={`hit-sw sw-${hit.color}`} aria-hidden="true" />批注</> : `第 ${hit.page} 页`}
+      </span>
+      <span className="hit-text">{hit.before}<mark className="q">{hit.match}</mark>{hit.after}</span>
+    </button>
+  )
+}
+
+/** 每篇最多显示几处 */
+const HITS_SHOWN = 2
 
 type SortKey = 'added' | 'title' | 'venue'
 type Sort = { key: SortKey; desc: boolean }
@@ -48,8 +91,25 @@ const STYLES: [CiteStyle, string][] = [['apa', 'APA'], ['gbt7714', 'GB/T 7714'],
 /** 两次点击算双击的间隔；单击要等这么久才打开详情 */
 const DOUBLE_CLICK_MS = 250
 
-export function LibraryTable({ label, papers, tags, importing, downloading, selected: sel, onSelect: setSel, onRead, onRemove, onStatus, reading = false, statusFilter = false, onToast, folders, focusFilter = 0 }: Props) {
+export function LibraryTable({ label, papers, tags, importing, downloading, selected: sel, onSelect: setSel, onRead, onRemove, onStatus, reading = false, statusFilter = false, onToast, folders, focusFilter = 0, onOpenHit, notes, onOpenNote }: Props) {
   const [q, setQ] = useState('')
+  // 全文搜索：筛选框里的字也到正文、批注、笔记里找。停一下再搜；后台读完新的 PDF 再搜一次
+  const query = normalizeQuery(q)
+  const [found, setFound] = useState<TextSearchResult | null>(null)
+  const [indexed, setIndexed] = useState(0)
+  useEffect(() => onIndexed(() => setIndexed((n) => n + 1)), [])
+  useEffect(() => {
+    if (!searchable(query)) return setFound(null)
+    let alive = true
+    const t = setTimeout(() => void api.search.query(query).then((r) => alive && setFound(r), () => {}), 180)
+    return () => {
+      alive = false
+      clearTimeout(t)
+    }
+  }, [query, indexed])
+  const live = found && found.query === query ? found : null
+  const hitsOf = useMemo(() => new Map<string, PaperHits>((live?.papers ?? []).map((h) => [h.paperId, h])), [live])
+  const noteHits = useMemo(() => (live && notes ? live.notes.flatMap((h) => { const n = notes.find((x) => x.id === h.id); return n ? [{ ...h, note: n }] : [] }) : []), [live, notes])
   const [status, setStatus] = useState<ReadingStatus | ''>('')
   /** 右键菜单：哪一篇、在哪里弹出 */
   const [menu, setMenu] = useState<{ p: Paper; x: number; y: number } | null>(null)
@@ -113,7 +173,10 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
   const [sort, setSort] = useState<Sort>({ key: 'added', desc: true })
   const sortBy = (key: SortKey) => setSort((s) => (s.key === key ? { key, desc: !s.desc } : { key, desc: key === 'added' }))
   const rows = useMemo(() => {
-    const r = filterPapers(papers, q, tag).filter((p) => !status || p.readingStatus === status)
+    const byMeta = filterPapers(papers, q, tag)
+    const metaIds = new Set(byMeta.map((p) => p.id))
+    const byText = hitsOf.size ? filterPapers(papers, '', tag).filter((p) => hitsOf.has(p.id) && !metaIds.has(p.id)) : []
+    const r = [...byMeta, ...byText].filter((p) => !status || p.readingStatus === status)
     if (reading) return sortReading(r)
     const dir = sort.desc ? -1 : 1
     const text = (a: string, b: string) => a.localeCompare(b, 'zh-Hans-CN', { numeric: true, sensitivity: 'base' })
@@ -123,7 +186,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
       if (sort.key === 'venue') return !a.venue || !b.venue ? Number(!a.venue) - Number(!b.venue) : dir * text(a.venue, b.venue)
       return dir * a.addedAt.localeCompare(b.addedAt)
     })
-  }, [papers, q, tag, status, reading, sort])
+  }, [papers, q, tag, status, reading, sort, hitsOf])
 
   // 多选：⌘ 点加减一篇，⇧ 点选一段，⌘A 全选。选了以后表格上面出现一条批量操作
   const [picked, setPicked] = useState<Set<string>>(new Set())
@@ -185,7 +248,8 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
     ro.observe(el)
     return () => ro.disconnect()
   }, [])
-  const virtual = !reading && rows.length > VIRTUAL_FROM
+  // 有全文命中时行高不一样，不按固定行高只画一部分
+  const virtual = !reading && !hitsOf.size && rows.length > VIRTUAL_FROM
   const [win, setWin] = useState({ start: 0, end: 60 })
 
   // 只画滚动区域里看得见的行，上下各多画一些；1 万篇也不卡
@@ -263,7 +327,14 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
       <div className="tray-h tray-h-row">
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 2 }}>
           <h2 id="h-list" className={label ? 'lbl' : 'sr'} style={{ margin: 0 }}>{label || '论文'}</h2>
-          <span className="big num">{rows.length === papers.length ? `${papers.length} 篇` : `${rows.length} / ${papers.length} 篇`}</span>
+          <span className="big num">
+            {rows.length === papers.length ? `${papers.length} 篇` : `${rows.length} / ${papers.length} 篇`}
+            {live && (() => {
+              const n = rows.reduce((sum, p) => sum + (hitsOf.get(p.id)?.total ?? 0), 0)
+              const parts = [n ? `正文和批注里 ${n} 处` : '', live.pending ? `还有 ${live.pending} 篇在读取文字` : '']
+              return parts.some(Boolean) ? <small className="hits-sum">{parts.filter(Boolean).join('，')}</small> : null
+            })()}
+          </span>
         </div>
         {statusFilter && (
           <label className="select">
@@ -369,7 +440,7 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                   role="row"
                   aria-rowindex={(virtual ? win.start : 0) + k + 2}
                   tabIndex={0}
-                  className={'tr td' + (shownSel === p.id || picked.has(p.id) ? ' sel' : '') + (reading && isStale(p) ? ' stale' : '')}
+                  className={'tr td' + (shownSel === p.id || picked.has(p.id) ? ' sel' : '') + (reading && isStale(p) ? ' stale' : '') + (hitsOf.has(p.id) ? ' has-hits' : '')}
                   aria-selected={picked.size ? picked.has(p.id) : shownSel === p.id}
                   onPointerDown={() => (byPointer.current = true)}
                   onClick={(e) => {
@@ -403,8 +474,21 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                       <span className="sr">{STATUS_LABEL[p.readingStatus]}</span>
                     </span>
                     <span className="rt">
-                      <b className={'row-title' + (p.readingStatus === 'done' ? ' read' : '')} title={p.title}>{p.title}</b>
+                      <b className={'row-title' + (p.readingStatus === 'done' ? ' read' : '')} title={p.title}>{live ? <Marked text={p.title} q={query} /> : p.title}</b>
                       <small>{sub}</small>
+                      {(() => {
+                        const h = hitsOf.get(p.id)
+                        if (!h || !onOpenHit) return null
+                        const shown = h.hits.slice(0, HITS_SHOWN)
+                        const more = h.total - shown.length
+                        const first = h.hits.find((x) => x.kind === 'page') ?? h.hits[0]!
+                        return (
+                          <span className="hits">
+                            {shown.map((hit, i) => <HitLine key={i} hit={hit} onOpen={() => onOpenHit(p.id, hit, query)} />)}
+                            {more > 0 && <button type="button" className="hits-more" onClick={(e) => { e.stopPropagation(); onOpenHit(p.id, first, query) }} onDoubleClick={(e) => e.stopPropagation()}>还有 {more} 处</button>}
+                          </span>
+                        )
+                      })()}
                       {pr && <span className="row-progress" aria-hidden="true"><i style={{ width: `${Math.round((pr.page / pr.total) * 100)}%` }} /></span>}
                     </span>
                     {p.tags.length > 0 && (
@@ -414,14 +498,32 @@ export function LibraryTable({ label, papers, tags, importing, downloading, sele
                       </span>
                     )}
                   </div>
-                  <div role="cell" className="cell-muted" title={p.venue}>{p.venue ?? '—'}</div>
+                  <div role="cell" className="cell-muted" title={p.venue}>{p.venue ? shortVenue(p.venue) : '—'}</div>
                   <div role="cell" className="r cell-muted num">{addedLabel(reading ? p.lastOpenedAt ?? p.addedAt : p.addedAt)}</div>
                 </div>
                 </Fragment>
               )
             })}
             {virtual && win.end < rows.length && <div aria-hidden="true" style={{ height: (rows.length - win.end) * ROW }} />}
-            {rows.length === 0 && (
+            {noteHits.length > 0 && onOpenNote && (
+              <>
+                <div className="tr-sep" role="presentation">笔记</div>
+                {noteHits.map((h) => (
+                  <div key={h.id} role="row" className="tr td note-hit" tabIndex={0} onClick={() => onOpenNote(h.id)} onKeyDown={(e) => e.key === 'Enter' && onOpenNote(h.id)}>
+                    <div role="cell" className="cell-paper">
+                      <span className="thumb note"><Icon name="notes" size={14} /></span>
+                      <span className="rt">
+                        <b className="row-title"><Marked text={h.note.title} q={query} /></b>
+                        {h.match ? <small>{h.before}<mark className="q">{h.match}</mark>{h.after}</small> : <small>{h.note.excerpt}</small>}
+                      </span>
+                    </div>
+                    <div role="cell" className="cell-muted">笔记</div>
+                    <div role="cell" className="r cell-muted num">{addedLabel(h.note.updatedAt)}</div>
+                  </div>
+                ))}
+              </>
+            )}
+            {rows.length === 0 && noteHits.length === 0 && (
               <div className="table-empty">
                 {papers.length === 0 ? '这里还没有论文。' : '没有符合筛选条件的论文。'}
                 {(q || tag) && <button type="button" className="link" onClick={() => { setQ(''); setTag('') }}>清除筛选</button>}
