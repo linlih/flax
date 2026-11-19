@@ -1,0 +1,23 @@
+# 给发版构建准备安卓和 iOS 的编译缓存（ccache 和 Gradle 的构建缓存，见 mobile.yml 开头）。
+# 标签上的构建只读得到 main 上存的缓存，所以在 main 上完整编一遍、把缓存存下来，不上传安装包。
+# 每周一次：原生依赖不常变，上周的缓存发版时大多还能命中；GitHub 会删掉 7 天没人用的缓存，每周跑也正好续上。
+# 升级了 React Native、Expo 或原生库以后，可以在 Actions 页手动跑一次，下一次发版就快了。
+# 不在每次推 main 时跑：iOS 要占一台 macOS 机器二十分钟，和发版同时跑会让发版排队。
+name: Mobile build cache
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "47 3 * * 1"
+
+concurrency:
+  group: mobile-cache
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Mobile
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/mobile.yml
+    with:
+      fill-cache: true

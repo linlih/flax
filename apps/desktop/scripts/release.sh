@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 发布一个版本：改版本号（电脑和安卓）、提交、打带发布说明的标签；加 --push 推到 GitHub，
+# 发布一个版本：改版本号（电脑、手机和浏览器插件）、提交、打带发布说明的标签；加 --push 推到 GitHub，
 # "Build app" 工作流会打包、签名，发布到 Releases，装好的 Flax 从那里自动更新。
 #
 #   npm run release -- 0.1.2 -m "新增：……" --push
@@ -29,11 +29,14 @@ git rev-parse -q --verify "refs/tags/v$version" >/dev/null && { echo "v$version 
 node - "$version" <<'JS'
 const fs = require('fs')
 const v = process.argv[2]
-const p = 'apps/desktop/package.json'
-const s = fs.readFileSync(p, 'utf8')
-fs.writeFileSync(p, s.replace(/("version":\s*")[^"]+(")/, `$1${v}$2`))
+// 浏览器插件用同一个版本号，打出来的包名和发布对得上
 const lock = JSON.parse(fs.readFileSync('package-lock.json', 'utf8'))
-if (lock.packages?.['apps/desktop']) lock.packages['apps/desktop'].version = v
+for (const w of ['apps/desktop', 'apps/extension']) {
+  const p = `${w}/package.json`
+  const s = fs.readFileSync(p, 'utf8')
+  fs.writeFileSync(p, s.replace(/("version":\s*")[^"]+(")/, `$1${v}$2`))
+  if (lock.packages?.[w]) lock.packages[w].version = v
+}
 fs.writeFileSync('package-lock.json', JSON.stringify(lock, null, 2) + '\n')
 // 安卓和 iOS 用同一个版本号（手机上的检查更新拿它和最新发布比）。versionCode 是 Android 判断新旧的数字，
 // 只能往上涨：1.2.3 → 1002003（预发布版和正式版同一个数）

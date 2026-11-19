@@ -1,6 +1,9 @@
 name: CI
+# 推标签时不跑：发版的 "Build app" 里每个平台都会再检查一遍，免得多占一台 macOS 机器
+# （同时能跑的 macOS 任务有限，多出来的要排队，发版就慢）
 on:
   push:
+    branches: ["**"]
   pull_request:
 jobs:
   test:
