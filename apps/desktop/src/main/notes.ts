@@ -118,7 +118,8 @@ export class NoteStore {
     const e = this.must(id)
     const title = safeNoteTitle(wanted)
     if (title === e.title) return summary(e)
-    const free = this.freeTitle(title)
+    const free = this.freeTitle(title, e.title)
+    if (free === e.title) return summary(e)
     renameSync(join(this.dir, e.file), join(this.dir, `${free}.md`))
     const old = e.title
     const pattern = new RegExp(`\\[\\[${escapeRe(old)}(?=[\\]|#])`, 'g')
@@ -213,12 +214,14 @@ export class NoteStore {
     renameSync(tmp, join(this.dir, file))
   }
 
-  private freeTitle(title: string): string {
+  /** 没人用的标题；重名时加 2、3…。self 是改名的笔记现在的标题，它自己占着的名字可以继续用 */
+  private freeTitle(title: string, self?: string): string {
     const taken = new Set([...this.entries.values()].map((e) => e.title.toLowerCase()))
-    if (!taken.has(title.toLowerCase()) && !existsSync(join(this.dir, `${title}.md`))) return title
+    const ok = (t: string) => (self != null && t.toLowerCase() === self.toLowerCase()) || (!taken.has(t.toLowerCase()) && !existsSync(join(this.dir, `${t}.md`)))
+    if (ok(title)) return title
     for (let i = 2; ; i++) {
       const t = `${title} ${i}`
-      if (!taken.has(t.toLowerCase()) && !existsSync(join(this.dir, `${t}.md`))) return t
+      if (ok(t)) return t
     }
   }
 

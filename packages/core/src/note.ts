@@ -49,7 +49,27 @@ export function safeNoteTitle(title: string): string {
     .replace(/^\.+/, '')
     .slice(0, 120)
     .trim()
-  return t || '未命名笔记'
+  return t || UNTITLED_NOTE
+}
+
+/** 没起名字的笔记叫这个（重名时后面加 2、3…） */
+export const UNTITLED_NOTE = '未命名笔记'
+
+export function isUntitledNote(title: string): boolean {
+  return title === UNTITLED_NOTE || new RegExp(`^${UNTITLED_NOTE} \\d+$`).test(title)
+}
+
+/** 正文第一行是标题（# 读书笔记）时的标题文字，去掉 Markdown 记号；不是就是 null */
+export function headingTitle(body: string): string | null {
+  const first = body.split('\n').find((l) => l.trim())
+  const m = first && /^ {0,3}#{1,6}[ \t]+(.+?)(?:[ \t]+#+)?[ \t]*$/.exec(first)
+  if (!m) return null
+  const t = m[1]!
+    .replace(/\[\[([^\]|]+)(?:\|([^\]]*))?\]\]/g, (_, a: string, b?: string) => b || a)
+    .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
+    .replace(/(\*\*|__|`+|~~|\*|\$)/g, '')
+    .trim()
+  return t || null
 }
 
 /** 正文里的 [[链接]]（去掉 |别名 和 #小标题），去重 */

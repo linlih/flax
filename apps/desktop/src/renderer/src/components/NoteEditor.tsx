@@ -5,17 +5,23 @@ import { useEffect, useMemo, useRef, useState, type MutableRefObject, type React
 import { autocompletion, closeBrackets, closeBracketsKeymap, completionKeymap, type CompletionContext, type CompletionResult } from '@codemirror/autocomplete'
 import { defaultKeymap, history, historyKeymap, indentWithTab } from '@codemirror/commands'
 import { markdown, markdownLanguage } from '@codemirror/lang-markdown'
+import { languages } from '@codemirror/language-data'
 import { HighlightStyle, syntaxHighlighting } from '@codemirror/language'
 import { highlightSelectionMatches, searchKeymap } from '@codemirror/search'
 import { EditorState, Prec } from '@codemirror/state'
 import { EditorView, keymap, placeholder, type ViewUpdate } from '@codemirror/view'
 import { tags as t } from '@lezer/highlight'
+import { headingTitle, isUntitledNote, safeNoteTitle } from '@flax/core'
 import type { NoteSummary } from '../../../shared/api'
 import { api } from '../lib/library'
 import { linkAt } from '../lib/noteLinks'
 import { Icon } from './Icon'
 import { slashCommands } from './slashMenu'
 import { excerptAt, exitEmptyQuote, insertLink, livePreview, pasteLink, toggleTask, toggleWrap } from './livePreview'
+import { closeCodeFence, cursorDownSkippingGaps, cursorUpSkippingGaps, joinParagraph, newParagraph, softBreak } from './noteKeys'
+import { nextCell, prevCell, tableEnter } from './noteTable'
+import { noteBlocks } from './noteBlocks'
+import { smartPaste } from './notePaste'
 import { composing, FILES_APP, TRASH } from '../lib/platform'
 
 /** 外面可以往正在编辑的笔记里插内容（摘到笔记用） */
@@ -66,6 +72,8 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
   const idRef = useRef(initialId)
   const titleRef = useRef('')
   titleRef.current = title
+  /** 标题跟着正文第一行的 # 标题走（没起过名字的笔记，或者标题本来就和它一样）；手动改过标题就不跟了 */
+  const followHeading = useRef(false)
 
   const me = noteId ? notes.find((n) => n.id === noteId) : undefined
 
@@ -73,6 +81,7 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
   useEffect(() => {
     let alive = true
     let creating: Promise<void> | null = null
+    let renaming = false
     const save = async () => {
       clearTimeout(pending.current)
       if (!dirty.current || !view.current) return
@@ -98,6 +107,9 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
           if (handle?.current) handle.current.noteId = n.id
           latest.current.onCreated?.(n.id)
           creating = null
+          followHeading.current = isUntitledNote(n.title)
+          titleRef.current = n.title
+          void titleFromHeading(body, false)
         }, failed)
         return creating
       }
@@ -107,8 +119,33 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
           setLoaded({ updatedAt: saved.updatedAt })
           setSaveError(null)
         }
+        await titleFromHeading(body, false)
       } catch (e) {
         failed(e)
+      }
+    }
+    /** 光标还在第一行标题里时先不改名（还在打字），离开那一行或关掉笔记时再改 */
+    const titleFromHeading = async (body: string, closing: boolean) => {
+      const id = idRef.current
+      const want = headingTitle(body)
+      if (!id || !followHeading.current || !want) return
+      const safe = safeNoteTitle(want)
+      // 和别的笔记重名时文件名后面加了数字（"读书笔记 2"），也算对上了
+      const cur = titleRef.current.toLowerCase()
+      if (cur === safe.toLowerCase() || (cur.startsWith(safe.toLowerCase() + ' ') && /^\d+$/.test(cur.slice(safe.length + 1)))) return
+      const ed = view.current
+      if (!closing && ed?.hasFocus) {
+        const firstLine = ed.state.doc.lineAt(ed.state.doc.toString().search(/\S|$/))
+        if (ed.state.selection.main.head <= firstLine.to) return
+      }
+      if (renaming) return
+      renaming = true
+      try {
+        const r = await api.notes.rename(id, want)
+        titleRef.current = r.title
+        if (alive) setTitle(r.title)
+      } finally {
+        renaming = false
       }
     }
     retry.current = () => void save()
@@ -119,15 +156,29 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
         extensions: [
           history(),
           closeBrackets(),
-          markdown({ base: markdownLanguage }),
+          // 代码块按语言上色（用到哪种语言才加载哪种）
+          markdown({ base: markdownLanguage, codeLanguages: languages }),
           syntaxHighlighting(mdStyle),
           livePreview,
+          noteBlocks,
           pasteLink,
-          Prec.highest(keymap.of([{ key: 'Enter', run: exitEmptyQuote }])),
+          smartPaste,
           highlightSelectionMatches(),
           EditorView.lineWrapping,
           placeholder('直接写。输入 / 插入标题、列表、待办、代码块…，输入 [[ 链接到别的笔记'),
           autocompletion({ override: [(ctx) => completeLinks(ctx, latest.current.notes, idRef.current), slashCommands], icons: false }),
+          // 放在补全后面：补全菜单开着时回车是选中那一项
+          Prec.highest(
+            keymap.of([
+              { key: 'Enter', run: (v) => exitEmptyQuote(v) || closeCodeFence(v) || tableEnter(v) || newParagraph(v) },
+              { key: 'Shift-Enter', run: softBreak },
+              { key: 'Backspace', run: joinParagraph },
+              { key: 'Tab', run: nextCell },
+              { key: 'Shift-Tab', run: prevCell },
+              { key: 'ArrowDown', run: cursorDownSkippingGaps },
+              { key: 'ArrowUp', run: cursorUpSkippingGaps }
+            ])
+          ),
           keymap.of([
             { key: 'Mod-b', run: toggleWrap('**') },
             { key: 'Mod-i', run: toggleWrap('*') },
@@ -164,6 +215,8 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
             }
           }),
           EditorView.updateListener.of((u: ViewUpdate) => {
+            // 写完标题、光标离开那一行：改名
+            if (!u.docChanged && (u.selectionSet || u.focusChanged) && !dirty.current) void titleFromHeading(u.state.doc.toString(), false)
             if (!u.docChanged || u.transactions.every((tr) => tr.isUserEvent('load'))) return
             dirty.current = true
             clearTimeout(pending.current)
@@ -179,6 +232,8 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
         if (!r) return setMissing(true)
         ed.dispatch({ changes: { from: 0, to: ed.state.doc.length, insert: r.body }, userEvent: 'load' })
         setTitle(r.note.title)
+        titleRef.current = r.note.title
+        followHeading.current = isUntitledNote(r.note.title) || safeNoteTitle(headingTitle(r.body) ?? '') === r.note.title
         setLoaded({ updatedAt: r.note.updatedAt })
         if (autoFocus || !r.body.trim()) {
           ed.dispatch({ selection: { anchor: ed.state.doc.length }, scrollIntoView: true })
@@ -208,10 +263,10 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
       if (dirty.current) {
         const body = ed.state.doc.toString()
         const d = latest.current.draft
-        if (idRef.current) void api.notes.save(idRef.current, body)
+        if (idRef.current) void api.notes.save(idRef.current, body).then(() => titleFromHeading(body, true))
         else if (creating) void creating.then(() => { if (idRef.current) void api.notes.save(idRef.current, body) })
-        else if (body.trim()) void api.notes.create({ title: titleRef.current.trim() || d?.title, paperId: d?.paperId, body })
-      }
+        else if (body.trim()) void api.notes.create({ title: titleRef.current.trim() || d?.title || headingTitle(body) || undefined, paperId: d?.paperId, body })
+      } else void titleFromHeading(ed.state.doc.toString(), true)
       clearTimeout(pending.current)
       ed.destroy()
       view.current = null
@@ -238,6 +293,7 @@ export function NoteEditor({ noteId: initialId, draft, onCreated, notes, compact
     if (!me || !want || want === me.title) return setTitle(me?.title ?? title)
     const r = await api.notes.rename(noteId, want)
     setTitle(r.title)
+    followHeading.current = safeNoteTitle(headingTitle(view.current?.state.doc.toString() ?? '') ?? '') === r.title
   }
 
   const backlinks = useMemo(() => (me && !compact ? notes.filter((n) => n.id !== me.id && n.links.some((l) => l.toLowerCase() === me.title.toLowerCase())) : []), [notes, me, compact])
@@ -325,7 +381,14 @@ const mdStyle = HighlightStyle.define([
   { tag: t.strikethrough, textDecoration: 'line-through' },
   { tag: t.url, color: 'var(--text-2)' },
   { tag: t.monospace, fontFamily: 'var(--font-mono)' },
-  { tag: [t.processingInstruction, t.meta], color: 'var(--text-2)' }
+  { tag: [t.processingInstruction, t.meta], color: 'var(--text-2)' },
+  // 代码块里的语法颜色（颜色在 styles.css 里，深色模式另有一套）
+  { tag: [t.keyword, t.operatorKeyword, t.controlKeyword, t.definitionKeyword, t.moduleKeyword], class: 'tok-kw' },
+  { tag: [t.string, t.special(t.string), t.regexp], class: 'tok-str' },
+  { tag: [t.number, t.bool, t.null, t.atom], class: 'tok-num' },
+  { tag: [t.comment, t.lineComment, t.blockComment, t.docComment], class: 'tok-com' },
+  { tag: [t.function(t.variableName), t.function(t.propertyName), t.definition(t.function(t.variableName))], class: 'tok-fn' },
+  { tag: [t.typeName, t.className, t.namespace], class: 'tok-type' }
 ])
 
 /** 系统报错换成人话 */

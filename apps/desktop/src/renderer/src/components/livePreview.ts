@@ -8,6 +8,8 @@ import { syntaxTree } from '@codemirror/language'
 import { EditorSelection, type EditorState, type Range, type StateCommand } from '@codemirror/state'
 import { Decoration, EditorView, ViewPlugin, WidgetType, type DecorationSet, type ViewUpdate } from '@codemirror/view'
 import { kbd } from '../lib/platform'
+import { findInlineMath, MathWidget } from './noteMath'
+import { isGapLine } from './noteKeys'
 
 // —— 小部件 ——
 class BulletWidget extends WidgetType {
@@ -37,6 +39,17 @@ class CheckboxWidget extends WidgetType {
   }
   ignoreEvent() { return false }
 }
+/** 代码块收起来的第一行：只在右上角写语言 */
+class LangWidget extends WidgetType {
+  constructor(readonly lang: string) { super() }
+  eq(o: LangWidget) { return o.lang === this.lang }
+  toDOM() {
+    const s = document.createElement('span')
+    s.className = 'cm-lp-lang'
+    s.textContent = this.lang
+    return s
+  }
+}
 class RuleWidget extends WidgetType {
   eq() { return true }
   toDOM() {
@@ -61,6 +74,7 @@ const M = {
   anno: mark('cm-lp-link cm-annolink', { title: '点击跳回原文' }),
   wiki: mark('cm-lp-link cm-wikilink', { title: kbd('⌘ 点击打开') }),
   faint: mark('cm-lp-faint'),
+  mathSrc: mark('cm-lp-mathsrc-inline'),
   done: mark('cm-lp-done')
 }
 const L = {
@@ -69,7 +83,9 @@ const L = {
   excerpt: Decoration.line({ class: 'cm-lp-quote cm-lp-excerpt', attributes: { title: kbd('点击跳到论文里这一段（⌥ 点击可以修改）') } }),
   code: line('cm-lp-codeblock'),
   codeFirst: line('cm-lp-codeblock cm-lp-codeblock-first'),
-  codeLast: line('cm-lp-codeblock cm-lp-codeblock-last')
+  codeLast: line('cm-lp-codeblock cm-lp-codeblock-last'),
+  fence: line('cm-lp-fence'),
+  gap: line('cm-lp-gap')
 }
 
 const ANNO_RE = /\((?:flax|paper):\/\/annotation\/([\w-]+)\)/
@@ -82,6 +98,14 @@ export function excerptAt(state: EditorState, pos: number): { id: string; from: 
     return m ? { id: m[1]!, from: n.from, to: n.to } : null
   }
   return null
+}
+
+/** 代码、表格里的 $ 不是公式 */
+function inCode(state: EditorState, pos: number): boolean {
+  for (let n: ReturnType<typeof syntaxTree>['topNode'] | null = syntaxTree(state).resolveInner(pos, 1); n; n = n.parent) {
+    if (/^(InlineCode|FencedCode|CodeBlock|HTMLBlock|Table|URL)$/.test(n.name)) return true
+  }
+  return false
 }
 
 function build(view: EditorView): { all: DecorationSet; atomic: DecorationSet } {
@@ -179,7 +203,7 @@ function build(view: EditorView): { all: DecorationSet; atomic: DecorationSet } 
           if (!lineTouched(node.from)) out.push(rule.range(node.from, node.to))
           return
         }
-        // 代码块：等宽、带底色；``` 那两行淡一点
+        // 代码块：等宽、带底色。光标不在里面时 ``` 那两行收起来，第一行只在右边写语言
         if (n === 'FencedCode') {
           const first = state.doc.lineAt(node.from).number
           const last = state.doc.lineAt(node.to).number
@@ -187,8 +211,23 @@ function build(view: EditorView): { all: DecorationSet; atomic: DecorationSet } 
             const l = state.doc.line(i)
             out.push((i === first ? L.codeFirst : i === last ? L.codeLast : L.code).range(l.from))
           }
+          const closed = last > first && /^\s*(```|~~~)/.test(state.doc.line(last).text)
+          if (!touches(node.from, node.to)) {
+            const open = state.doc.line(first)
+            const info = node.node.getChild('CodeInfo')
+            const lang = info ? state.doc.sliceString(info.from, info.to).trim() : ''
+            out.push(L.fence.range(open.from), Decoration.replace({ widget: new LangWidget(lang) }).range(open.from, open.to))
+            if (closed) {
+              const close = state.doc.line(last)
+              out.push(L.fence.range(close.from))
+              if (close.to > close.from) out.push(hide.range(close.from, close.to))
+            }
+            return false
+          }
           return
         }
+        // 表格的源码不加别的样式（光标不在里面时整张表由 noteBlocks 换成排好的表格）
+        if (n === 'Table') return false
         if (n === 'CodeMark' || n === 'CodeInfo') {
           out.push(M.faint.range(node.from, node.to))
           return
@@ -196,6 +235,27 @@ function build(view: EditorView): { all: DecorationSet; atomic: DecorationSet } 
         return
       }
     })
+
+    // 段落之间的空行收窄（光标停在上面时恢复正常高度，看得见光标）
+    for (let pos = from; pos <= to; ) {
+      const l = state.doc.lineAt(pos)
+      if (isGapLine(state, l.number) && !(focused && sel.some((r) => r.from <= l.to && r.to >= l.from))) out.push(L.gap.range(l.from))
+      pos = l.to + 1
+    }
+
+    // $行内公式$：光标不在上面时排出来
+    for (let pos = from; pos <= to; ) {
+      const l = state.doc.lineAt(pos)
+      pos = l.to + 1
+      if (!l.text.includes('$') || /^\s*\$\$/.test(l.text)) continue
+      for (const m of findInlineMath(l.text)) {
+        const a = l.from + m.from
+        const b = l.from + m.to
+        if (inCode(state, a)) continue
+        if (touches(a, b)) out.push(M.mathSrc.range(a, b))
+        else out.push(Decoration.replace({ widget: new MathWidget(m.tex, false) }).range(a, b))
+      }
+    }
 
     // [[链接]]：Markdown 语法里没有，自己找。平时只显示标题（或 | 后面的别名）
     const text = state.doc.sliceString(from, to)

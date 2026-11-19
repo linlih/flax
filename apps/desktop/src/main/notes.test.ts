@@ -29,6 +29,15 @@ test('duplicate titles get a number', () => {
   expect(s.create({ title: 'idea' }).title).toBe('idea 2')
 })
 
+test('renaming to a taken name more than once keeps the same number', () => {
+  const s = make()
+  s.create({ title: 'Idea' })
+  const b = s.create({ title: '未命名笔记' })
+  expect(s.rename(b.id, 'Idea').title).toBe('Idea 2')
+  expect(s.rename(b.id, 'Idea').title).toBe('Idea 2')
+  expect(readdirSync(dir).sort()).toEqual(['Idea 2.md', 'Idea.md'])
+})
+
 test('saving keeps the head and updates links', () => {
   const s = make()
   const a = s.create({ title: 'A' })

@@ -5,6 +5,7 @@ import { startCompletion, type Completion, type CompletionContext, type Completi
 import { syntaxTree } from '@codemirror/language'
 import type { EditorView } from '@codemirror/view'
 import { insertLink } from './livePreview'
+import { emptyTable } from './noteTable'
 import { kbd } from '../lib/platform'
 
 type Apply = (view: EditorView, from: number, to: number) => void
@@ -54,6 +55,17 @@ const ownLine =
     insert(lead + before, after + tail)(view, from, to)
   }
 
+/** 表格要和上面的段落隔一个空行，不然会被当成段落的一部分 */
+const table: Apply = (view, from, to) => {
+  const line = view.state.doc.lineAt(from)
+  const before = view.state.sliceDoc(line.from, from).trim()
+  const prevText = line.number > 1 ? view.state.doc.line(line.number - 1).text.trim() : ''
+  const lead = before ? '\n\n' : prevText ? '\n' : ''
+  const tail = view.state.sliceDoc(to, line.to).trim() ? '\n\n' : ''
+  const t = emptyTable()
+  view.dispatch({ changes: { from, to, insert: lead + t.text + tail }, selection: { anchor: from + lead.length + t.cursor }, userEvent: 'input' })
+}
+
 const today = () => {
   const d = new Date()
   const p = (n: number) => String(n).padStart(2, '0')
@@ -71,6 +83,9 @@ const COMMANDS: Command[] = [
   { section: '段落', label: '引用', keys: ['quote', 'yy'], detail: '>', run: block('> ') },
   { section: '插入', label: '链接到笔记', keys: ['link', 'page', 'note', 'lj', 'bj'], detail: '[[', run: (v, f, t) => (insert('[[', ']]')(v, f, t), startCompletion(v)) },
   { section: '插入', label: '网页链接', keys: ['url', 'link', 'web', 'lj'], detail: '⌘K', run: (v, f, t) => (v.dispatch({ changes: { from: f, to: t }, selection: { anchor: f } }), insertLink({ state: v.state, dispatch: v.dispatch })) },
+  { section: '插入', label: '表格', keys: ['table', 'bg'], detail: '|', run: table },
+  { section: '插入', label: '公式', keys: ['math', 'formula', 'equation', 'latex', 'gs'], detail: '$$', run: ownLine('$$\n', '\n$$') },
+  { section: '插入', label: '行内公式', keys: ['math', 'inline', 'latex', 'gs', 'hngs'], detail: '$', run: insert('$', '$') },
   { section: '插入', label: '代码块', keys: ['code', 'dm', 'dmk'], detail: '```', run: ownLine('```\n', '\n```') },
   { section: '插入', label: '分隔线', keys: ['hr', 'divider', 'line', 'fgx'], detail: '---', run: ownLine('---\n') },
   { section: '插入', label: '今天的日期', keys: ['date', 'today', 'rq', 'jt'], run: (v, f, t) => insert(today())(v, f, t) },
