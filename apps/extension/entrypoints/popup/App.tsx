@@ -6,9 +6,9 @@ import { markSaved, readTab } from '../../utils/tab'
 
 type State =
   | { kind: 'reading' }
-  | { kind: 'no_paper'; pdf: boolean }
+  | { kind: 'no_paper' }
   | { kind: 'offline'; waking: boolean }
-  | { kind: 'saving' }
+  | { kind: 'saving'; pdf: boolean }
   | { kind: 'saved'; r: Saved }
   | { kind: 'error'; message: string }
 
@@ -20,7 +20,7 @@ export function App() {
   useEffect(() => () => void (alive.current = false), [])
 
   const save = useCallback(async (p: PageInfo) => {
-    setState({ kind: 'saving' })
+    setState({ kind: 'saving', pdf: p.isPdf })
     try {
       const r = await flax.save(p)
       if (!alive.current) return
@@ -29,7 +29,7 @@ export function App() {
     } catch (e) {
       if (!alive.current) return
       if (e instanceof FlaxError && e.kind === 'offline') return setState({ kind: 'offline', waking: false })
-      if (e instanceof FlaxError && e.kind === 'no_paper') return setState({ kind: 'no_paper', pdf: p.isPdf })
+      if (e instanceof FlaxError && e.kind === 'no_paper') return setState({ kind: 'no_paper' })
       if (e instanceof FlaxError && e.kind === 'too_old') return setState({ kind: 'error', message: '这个插件版本太旧了，请更新插件。' })
       setState({ kind: 'error', message: e instanceof Error ? e.message : String(e) })
     }
@@ -38,12 +38,12 @@ export function App() {
   useEffect(() => {
     void (async () => {
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true })
-      if (!tab?.id || !tab.url) return setState({ kind: 'no_paper', pdf: false })
+      if (!tab?.id || !tab.url) return setState({ kind: 'no_paper' })
       tabId.current = tab.id
       const p = await readTab(tab.id, tab.url)
       if (!alive.current) return
       setPage(p)
-      if (!looksLikePaper(p)) return setState({ kind: 'no_paper', pdf: p.isPdf })
+      if (!looksLikePaper(p)) return setState({ kind: 'no_paper' })
       await save(p)
     })()
   }, [save])
@@ -85,7 +85,7 @@ function Status({ state }: { state: State }) {
     case 'reading':
       return <p className="status"><span className="spin" />正在读页面…</p>
     case 'saving':
-      return <p className="status"><span className="spin" />正在存进文献库…</p>
+      return <p className="status"><span className="spin" />{state.pdf ? 'Flax 正在下载这个 PDF…' : '正在存进文献库…'}</p>
     case 'saved':
       return (
         <p className="status ok">
@@ -94,7 +94,7 @@ function Status({ state }: { state: State }) {
         </p>
       )
     case 'no_paper':
-      return <p className="status">{state.pdf ? '直接打开的 PDF 下一版才能存。可以先下载，再拖进 Flax。' : '这个页面上没找到论文。'}</p>
+      return <p className="status">这个页面上没找到论文。</p>
     case 'offline':
       return <p className="status">{state.waking ? <><span className="spin" />正在打开 Flax…</> : 'Flax 没有打开。'}</p>
     case 'error':

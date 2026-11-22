@@ -97,5 +97,6 @@ const PAPER_URLS = [
 
 /** 这个页面上有没有能存的论文：有编号，或者有 citation_title，或者网址是论文页 */
 export function looksLikePaper(p: PageInfo): boolean {
-  return !!(p.ids.doi || p.ids.arxiv || p.meta.title || PAPER_URLS.some((re) => re.test(p.url)))
+  // 直接打开的 PDF 也算：Flax 会按网址自己下载
+  return !!(p.isPdf || p.ids.doi || p.ids.arxiv || p.meta.title || PAPER_URLS.some((re) => re.test(p.url)))
 }

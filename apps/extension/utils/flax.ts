@@ -57,7 +57,7 @@ async function call<T>(path: string, body: unknown, timeoutMs = 5000): Promise<T
 export const flax = {
   ping: () => call<{ app: string; version: string; apiVersion: number }>('/ping', {}, 1500),
   lookup: (page: PageInfo) => call<{ paper: PaperRef | null }>('/lookup', page).then((r) => r.paper),
-  // 联网查元数据可能要十几秒（arXiv 有限速）
-  save: (page: PageInfo) => call<Saved>('/save', page, 60_000),
+  // 联网查元数据可能要十几秒（arXiv 有限速）；直接打开的 PDF 要等 Flax 下完文件，大文件更久
+  save: (page: PageInfo) => call<Saved>('/save', page, page.isPdf ? 115_000 : 60_000),
   open: (paperId: string) => call<{ ok: boolean }>('/open', { paperId })
 }

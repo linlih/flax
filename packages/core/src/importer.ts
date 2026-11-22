@@ -19,6 +19,8 @@ export interface PageInfo {
   ids?: { doi?: string; arxiv?: string }
   /** 网页上的 citation_* 信息：联网查不到时用它，不只剩一个编号当标题 */
   meta?: { title?: string; authors?: string[]; year?: number; venue?: string; abstract?: string }
+  /** 标签页里直接打开的是 PDF：Flax 按网址自己下载这个文件 */
+  isPdf?: boolean
 }
 
 /** 插件存完或查完以后，告诉它库里那一篇的情况 */
@@ -173,20 +175,24 @@ export class Importer {
     this.flushHeld()
   }
 
-  private async importOne(fileName: string, data: Uint8Array): Promise<void> {
+  /** 导入一个 PDF。返回它落到了库里哪一篇（新加的，还是已有的）；不是 PDF 时返回 null */
+  private async importOne(fileName: string, data: Uint8Array): Promise<{ paperId: string; status: 'added' | 'existing' } | null> {
     const hash = await this.sha256(data)
     const lib = this.d.library
 
     const same = lib.findDuplicate({ hash })
     if (same) {
       this.d.onNotice({ kind: 'same_file', paperId: same.paper.id, title: same.paper.title })
-      return
+      return { paperId: same.paper.id, status: 'existing' }
     }
     let facts: PdfFacts
     try {
       facts = await this.readPdfFacts(data, fileName)
     } catch (e) {
-      if (e instanceof NotAPdfError) return this.d.onNotice({ kind: 'not_pdf', fileName })
+      if (e instanceof NotAPdfError) {
+        this.d.onNotice({ kind: 'not_pdf', fileName })
+        return null
+      }
       throw e
     }
     const file = await this.storeFile(data, hash, facts, fileName)
@@ -194,7 +200,10 @@ export class Importer {
     // 编号能直接对上库里的论文：不用等联网，马上问用户
     const ids = findIdentifiers(facts)
     const known = lib.findDuplicate(ids)
-    if (known) return this.askDuplicate(known.paper.id, file)
+    if (known) {
+      this.askDuplicate(known.paper.id, file)
+      return { paperId: known.paper.id, status: 'existing' }
+    }
 
     const guess = guessFromPdf(facts)
     const p = lib.addPaper({ ...guess, identifiers: { ...guess.identifiers, ...ids } }, { file, needsMatch: true, matchIssue: ids.arxiv || ids.doi || ids.isbn ? 'lookup_failed' : 'no_id' })
@@ -202,6 +211,7 @@ export class Importer {
       this.importing.add(p.id)
       this.queue.push({ id: p.id, facts })
     } else this.offerAi(p.id, facts, guess)
+    return { paperId: p.id, status: 'added' }
   }
 
   /** 读入 BibTeX（Zotero、Better BibTeX、JabRef 导出的）：元数据直接用，file 字段里的 PDF 一起导进来 */
@@ -418,6 +428,8 @@ export class Importer {
   async addFromPage(page: PageInfo): Promise<(PageResult & { status: 'added' | 'existing' }) | null> {
     const lib = this.d.library
     const ids = pageIds(page)
+    // 直接打开的 PDF：就存这个文件。arXiv 的除外，按编号存详情更全，PDF 照样从 arXiv 下
+    if (page.isPdf === true && !ids.arxiv) return this.addPdfFromPage(String(page.url), ids)
     const meta = pageMeta(page, ids)
     const hasId = !!(ids.arxiv || ids.doi)
     if (!hasId && !meta) return null
@@ -449,6 +461,43 @@ export class Importer {
     return saved ? { ...this.pageResult(saved), status: 'added' } : null
   }
 
+  /** 插件在 PDF 标签页上点了保存：Flax 自己下载这个网址，和拖进来的文件一样导入。下载失败就报错，插件小窗里显示 */
+  private async addPdfFromPage(url: string, ids: FoundIds): Promise<PageResult & { status: 'added' | 'existing' }> {
+    const lib = this.d.library
+    const known = ids.doi ? lib.findDuplicate(ids) : null
+    if (known && known.paper.files.length > 0) return { ...this.pageResult(known.paper), status: 'existing' }
+    const body = await this.fetchPdf(url)
+    this.batches++
+    let r: { paperId: string; status: 'added' | 'existing' } | null
+    try {
+      r = await this.importOne(fileNameFromUrl(url), body)
+    } finally {
+      this.batches--
+    }
+    this.d.onChanged()
+    this.kick()
+    this.flushHeld()
+    const saved = r && lib.getPaper(r.paperId)
+    if (!r || !saved) throw new Error('这个 PDF 读不出来。')
+    return { ...this.pageResult(saved), status: r.status }
+  }
+
+  /** 下载网址上的 PDF。出错时的消息直接给用户看 */
+  private async fetchPdf(url: string): Promise<Uint8Array> {
+    if (!/^https?:\/\//i.test(url)) throw new Error('只能下载 http 和 https 的链接。')
+    if (!this.d.fetchBytes) throw new Error('这里不能从链接下载，请下载后选择文件添加。')
+    let res: Awaited<ReturnType<FetchBytes>>
+    try {
+      res = await this.d.fetchBytes(url)
+    } catch (e) {
+      throw new Error(e instanceof Error && e.message === '文件太大' ? '文件超过 200 MB，请下载后选择文件添加。' : '下载失败，请检查链接和网络。')
+    }
+    if (res.status === 401 || res.status === 403) throw new Error('这个 PDF 要登录才能下载，Flax 下不到。请在浏览器里下载后拖进 Flax。')
+    if (res.status !== 200) throw new Error(res.status === 404 ? '链接打不开（404）。' : `下载失败（服务器返回 ${res.status}）。`)
+    if (!isPdf(res.body)) throw new Error('链接打开的不是 PDF。网页上的论文请找到 PDF 链接，或下载后选择文件添加。')
+    return res.body
+  }
+
   private pageResult(p: Paper): PageResult {
     return { paperId: p.id, title: p.title, hasPdf: p.files.length > 0 || this.downloading.has(p.id) }
   }
@@ -457,18 +506,15 @@ export class Importer {
   private async addFromUrl(url: string): Promise<void> {
     const fileName = fileNameFromUrl(url)
     const fail = (message: string) => this.d.onNotice({ kind: 'failed', fileName, message })
-    if (!this.d.fetchBytes) return fail('这里不能从链接下载，请下载后选择文件添加。')
-    let res: Awaited<ReturnType<FetchBytes>>
+    let body: Uint8Array
     try {
-      res = await this.d.fetchBytes(url)
+      body = await this.fetchPdf(url)
     } catch (e) {
-      return fail(e instanceof Error && e.message === '文件太大' ? '文件超过 200 MB，请下载后选择文件添加。' : '下载失败，请检查链接和网络。')
+      return fail(e instanceof Error ? e.message : String(e))
     }
-    if (res.status !== 200) return fail(res.status === 404 ? '链接打不开（404）。' : `下载失败（服务器返回 ${res.status}）。`)
-    if (!isPdf(res.body)) return fail('链接打开的不是 PDF。网页上的论文请找到 PDF 链接，或下载后选择文件添加。')
     this.batches++
     try {
-      await this.importOne(fileName, res.body)
+      await this.importOne(fileName, body)
     } catch (e) {
       fail(e instanceof Error ? e.message : String(e))
     } finally {

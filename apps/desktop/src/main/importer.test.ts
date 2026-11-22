@@ -277,6 +277,32 @@ describe('Importer', () => {
       expect(lib.listPapers()).toHaveLength(1)
     })
 
+    it('saves a PDF opened directly in the tab by downloading it', async () => {
+      const url = 'https://someone.github.io/book/handbook.pdf'
+      web[url] = makePdf([[{ text: 'A Handbook of Examples', size: 20, y: 700 }]])
+      const r = await importer.addFromPage({ url, isPdf: true })
+      expect(r).toMatchObject({ status: 'added', hasPdf: true })
+      const p = lib.getPaper(r!.paperId)!
+      expect(p.files).toHaveLength(1)
+      expect(p.files[0]).toMatchObject({ role: 'main', originalName: 'handbook.pdf', hash: sha256(web[url]!) })
+      // 再存一次：同一个文件，不再加一篇
+      expect(await importer.addFromPage({ url, isPdf: true })).toMatchObject({ status: 'existing', paperId: p.id })
+      expect(lib.listPapers()).toHaveLength(1)
+    })
+
+    it('tells the extension why a PDF tab could not be saved', async () => {
+      await expect(importer.addFromPage({ url: 'https://example.org/gone.pdf', isPdf: true })).rejects.toThrow('链接打不开（404）。')
+      web['https://example.org/viewer.pdf'] = new TextEncoder().encode('<html>sign in</html>')
+      await expect(importer.addFromPage({ url: 'https://example.org/viewer.pdf', isPdf: true })).rejects.toThrow(/不是 PDF/)
+      await expect(importer.addFromPage({ url: 'file:///Users/me/a.pdf', isPdf: true })).rejects.toThrow(/http/)
+      expect(lib.listPapers()).toEqual([])
+    })
+
+    it('saves an arXiv PDF tab by its id, with the details from arXiv', async () => {
+      const r = await importer.addFromPage({ url: 'https://arxiv.org/pdf/2101.01234v2', isPdf: true })
+      expect(lib.getPaper(r!.paperId)).toMatchObject({ title: 'Sparse Mixtures for Long Documents', metadataSource: 'arxiv' })
+    })
+
     it('ignores ids and fields that are not what they claim to be', async () => {
       expect(await importer.addFromPage({ url: 'https://example.org/', ids: { doi: 'javascript:alert(1)', arxiv: 42 as unknown as string } })).toBeNull()
       expect(await importer.addFromPage({ url: 'https://example.org/', meta: { title: '   ', authors: [{} as unknown as string] } })).toBeNull()
