@@ -121,6 +121,12 @@ function overlay(): { color: string; symbolColor: string; height: number } {
     : { color: '#FFFFFF', symbolColor: '#1F1F1F', height: 36 }
 }
 
+/**
+ * 能不能用系统钥匙串加密。macOS 上 isEncryptionAvailable() 本身就要读钥匙串里的密钥，
+ * 应用更新后第一次读会弹窗要电脑密码，所以只为了"能不能用"不去问：macOS 和 Windows 总是有，只有 Linux 要看有没有装密钥服务
+ */
+const keychainAvailable = (): boolean => process.platform !== 'linux' || safeStorage.isEncryptionAvailable()
+
 function createWindow(): void {
   win = new BrowserWindow({
     width: 1440,
@@ -142,6 +148,11 @@ function createWindow(): void {
     }
   })
   win.once('ready-to-show', () => win?.show())
+  // 万一 ready-to-show 没来（启动时被系统弹窗挡住之类），过一会儿照样显示，不留一个看不见的窗口
+  const shown = win
+  setTimeout(() => {
+    if (!shown.isDestroyed() && !shown.isVisible()) shown.show()
+  }, 4000)
   win.on('closed', () => (win = null))
   // 外部链接用系统浏览器打开，不在应用里导航
   win.webContents.setWindowOpenHandler(({ url }) => {
@@ -494,7 +505,7 @@ function setup(): void {
     notes,
     files: store,
     crypt: {
-      available: () => safeStorage.isEncryptionAvailable(),
+      available: keychainAvailable,
       encrypt: (t) => safeStorage.encryptString(t),
       decrypt: (b) => safeStorage.decryptString(b)
     },
@@ -589,7 +600,7 @@ function setup(): void {
     apple,
     conversations,
     settings: new AiSettings(aiDir, {
-      available: () => safeStorage.isEncryptionAvailable(),
+      available: keychainAvailable,
       encrypt: (t) => safeStorage.encryptString(t),
       decrypt: (b) => safeStorage.decryptString(b)
     }),
@@ -836,8 +847,10 @@ app.whenReady().then(async () => {
     setTimeout(() => updater?.check(), 10_000)
     setInterval(() => updater?.check(), 6 * 3600_000)
   })
+  // 点程序坞图标：没有窗口就开一个；有但没显示出来（页面已经加载完）就显示。还在加载的等 ready-to-show，免得先闪一下空窗口
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (!win) return createWindow()
+    if (!win.isVisible() && !win.webContents.isLoading()) win.show()
   })
 })
 

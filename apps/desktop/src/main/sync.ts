@@ -73,6 +73,8 @@ const MAX_BACKOFF_MS = 30 * 60_000
 export class SyncService {
   private dir: string
   private engine: SyncEngine | null = null
+  /** 同步开着，但同步密码还没从钥匙串里读出来：等第一次真要同步时再读（见 unlock） */
+  private locked = false
   private stores: SyncStore[]
   private saved: Saved | null = null
   private status: SyncStatus
@@ -122,16 +124,25 @@ export class SyncService {
       this.saved = null
       return
     }
+    const lastSync = this.d.library.metaGet('sync.lastSync') ?? undefined
+    this.status = { ...this.status, config: view(this.saved), encrypted: this.saved.encrypted, state: 'idle', ...(lastSync ? { lastSync } : {}) }
+    // 密码在钥匙串里。启动时不读：macOS 更新后第一次读钥匙串会弹窗要电脑密码，
+    // 在窗口出来之前弹会卡住启动（只有程序坞图标、没有窗口）
+    this.locked = true
+  }
+
+  /** 第一次要同步或下载时才从钥匙串读同步密码，建好同步引擎 */
+  private unlock(): void {
+    if (!this.locked || !this.saved) return
+    this.locked = false
     let secret: Secret = {}
     try {
       secret = JSON.parse(this.d.crypt.decrypt(readFileSync(join(this.dir, 'secret.bin')))) as Secret
     } catch {
       /* 没有或解不开：下面按出错处理 */
     }
-    const lastSync = this.d.library.metaGet('sync.lastSync') ?? undefined
-    this.status = { ...this.status, config: view(this.saved), encrypted: this.saved.encrypted, state: 'idle', ...(lastSync ? { lastSync } : {}) }
     if (this.saved.encrypted && !secret.key) {
-      this.status = { ...this.status, state: 'error', error: '这台设备上的同步密码丢了，请停用同步后重新开启。' }
+      this.set({ state: 'error', error: '这台设备上的同步密码丢了，请停用同步后重新开启。' })
       return
     }
     this.engine = this.makeEngine(this.backendFor(this.saved.conn, secret.password ?? ''), secret.key ? fromBase64(secret.key) : null)
@@ -199,6 +210,7 @@ export class SyncService {
     const secret: Secret = { ...(c.kind === 'webdav' ? { password: c.password } : {}), ...(key ? { key: toBase64(key) } : {}) }
     writeFileSync(join(this.dir, 'secret.bin'), this.d.crypt.encrypt(JSON.stringify(secret)), { mode: 0o600 })
     this.saved = saved
+    this.locked = false
     this.engine = this.makeEngine(backend, key)
     this.failures = 0
     this.set({ config: view(saved), encrypted: saved.encrypted, state: 'idle', error: undefined })
@@ -209,6 +221,7 @@ export class SyncService {
   disconnect(): void {
     this.stop()
     this.engine = null
+    this.locked = false
     this.saved = null
     rmSync(this.dir, { recursive: true, force: true })
     this.d.library.metaSet('sync.lastSync', null)
@@ -219,7 +232,7 @@ export class SyncService {
   // —— 定时 ——
 
   start(): void {
-    if (this.engine) this.schedule(3000)
+    if (this.engine || this.locked) this.schedule(3000)
   }
 
   stop(): void {
@@ -274,6 +287,7 @@ export class SyncService {
   }
 
   private async run(throwErrors = false): Promise<void> {
+    this.unlock()
     const engine = this.engine
     if (!engine) return
     this.set({ state: 'syncing' })
@@ -349,6 +363,7 @@ export class SyncService {
 
   /** 从云端下载一个 PDF（打开论文时本机没有，就等它下载完再显示）。云端也没有返回 false */
   download(hash: string): Promise<boolean> {
+    this.unlock()
     const engine = this.engine
     if (!engine) return Promise.resolve(false)
     let p = this.downloads.get(hash)
@@ -373,7 +388,7 @@ export class SyncService {
   }
 
   get enabled(): boolean {
-    return !!this.engine
+    return !!this.engine || this.locked
   }
 }
 

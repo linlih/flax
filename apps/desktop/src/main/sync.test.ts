@@ -152,8 +152,26 @@ describe('turning sync on', () => {
     await settled(a.svc)
     rmSync(join(a.dataDir, 'sync', 'secret.bin'))
     const again = a.reopen()
+    // 启动时不读钥匙串，第一次同步时才发现
+    await again.syncNow()
     expect(again.get()).toMatchObject({ state: 'error', error: expect.stringContaining('同步密码丢了') })
     expect(again.enabled).toBe(false)
+  })
+
+  it('does not read the keychain at startup, only when it first syncs', async () => {
+    const a = device('a')
+    await a.svc.connect(folder, null)
+    await settled(a.svc)
+    const decrypt = vi.spyOn(a.deps.crypt, 'decrypt')
+    const again = a.reopen()
+    expect(decrypt).not.toHaveBeenCalled()
+    expect(again.enabled).toBe(true)
+    expect(again.get()).toMatchObject({ state: 'idle', config: expect.anything() })
+    await again.syncNow()
+    expect(decrypt).toHaveBeenCalledTimes(1)
+    expect(again.get()).toMatchObject({ state: 'idle', lastSync: expect.any(String) })
+    await again.syncNow()
+    expect(decrypt).toHaveBeenCalledTimes(1)
   })
 })
 
