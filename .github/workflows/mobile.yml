@@ -144,6 +144,14 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           command -v ccache >/dev/null || brew install ccache
+          # Xcode 调编译器时不带我们的环境变量，设置写进 ccache 自己的配置文件。
+          # sloppiness 照 React Native 的 scripts/xcode/ccache.conf（模块、索引这些每次都会变的东西不算）
+          ccache --set-config=compiler_check=content
+          ccache --set-config=max_size=1.5G
+          ccache --set-config=base_dir="$GITHUB_WORKSPACE"
+          ccache --set-config=sloppiness=clang_index_store,file_stat_matches,include_file_ctime,include_file_mtime,ivfsoverlay,pch_defines,modules,system_headers,time_macros
+          ccache --set-config=depend_mode=true
+          echo "CCACHE_PATH_BIN=$(command -v ccache)" >> "$GITHUB_ENV"
       # 用 ccache 在 Mac 上的默认目录：Xcode 调编译器时不一定带上这里的环境变量，
       # 上次设了 CCACHE_DIR，结果缓存写到了默认目录，存缓存的那一步什么也没找到（2026-11-22）
       - uses: actions/cache/restore@v4
@@ -156,15 +164,15 @@ jobs:
       - name: Prebuild
         working-directory: apps/mobile
         run: npm run prebuild:ios -- --no-install
-      # USE_CCACHE=1：Expo 生成的 Podfile 让 React Native 把编译器换成它的 ccache 包装脚本
       - name: Pods
         working-directory: apps/mobile/ios
         env:
           LANG: en_US.UTF-8
-          USE_CCACHE: 1
         run: pod install
-      # CLANG_ENABLE_EXPLICIT_MODULES=NO：Xcode 26 默认用显式模块，认不出 React Native 的 ccache 包装脚本，
-      # 就自己调编译器、不走 ccache（日志里 "Explicit modules is enabled but the compiler was not recognized"，2026-11-22）
+      # 用 Xcode 自己的 C_COMPILER_LAUNCHER 把 ccache 放在编译器前面。不用 React Native 的 USE_CCACHE：
+      # 它把 CC 换成一个包装脚本，脚本从环境变量 CCACHE_BINARY 找 ccache，而 Xcode 不把这个设置传给编译器，
+      # 结果直接调了 clang，缓存一直是空的；Xcode 26 的显式模块也认不出那个脚本（2026-11-22）。
+      # 显式模块和 ccache 一起用要 CLANG_ENABLE_EXPLICIT_MODULES_WITH_COMPILER_LAUNCHER，稳妥起见关掉显式模块
       - name: Package
         working-directory: apps/mobile/ios
         run: |
@@ -172,12 +180,12 @@ jobs:
           xcodebuild -workspace Flax.xcworkspace -scheme Flax -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' -derivedDataPath build \
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
-            CLANG_ENABLE_EXPLICIT_MODULES=NO build | tail -50
+            C_COMPILER_LAUNCHER="$CCACHE_PATH_BIN" CLANG_ENABLE_EXPLICIT_MODULES=NO build | tail -50
       - name: ccache stats
         if: always()
         run: |
           ccache -s
-          du -sh ~/Library/Caches/ccache ~/.ccache 2>/dev/null || true
+          ccache --show-config | grep -E 'cache_dir|config_path' || true
       - if: inputs.fill-cache
         uses: actions/cache/save@v4
         with:
