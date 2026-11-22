@@ -1,0 +1,184 @@
+/* 网页里的保存窗口。放在 shadow root 里，网页的样式进不来，这里的也出不去。
+   颜色和桌面端同一套（DESIGN.md：白卡，单一蓝色强调色） */
+:host {
+  all: initial;
+  --card: #ffffff;
+  --border: #e5e5e5;
+  --text: #0a0a0a;
+  --sub: #6b6b6b;
+  --accent: #155dfc;
+  --accent-top: #2b7fff;
+  --accent-text: #155dfc;
+  --ok: #15803d;
+  --err: #dc2626;
+  --hover: #f5f5f5;
+  --field: #fafafa;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.14), 0 2px 6px rgba(0, 0, 0, 0.08);
+}
+@media (prefers-color-scheme: dark) {
+  :host {
+    --card: #242424;
+    --border: #383838;
+    --text: #f2f2f2;
+    --sub: #a3a3a3;
+    --accent-text: #6aa5ff;
+    --ok: #4ade80;
+    --err: #f87171;
+    --hover: #2e2e2e;
+    --field: #1d1d1d;
+    --shadow: 0 10px 30px rgba(0, 0, 0, 0.5), 0 2px 6px rgba(0, 0, 0, 0.3);
+  }
+}
+* { box-sizing: border-box; }
+.win {
+  position: fixed;
+  top: 16px;
+  right: 16px;
+  z-index: 2147483647;
+  width: 340px;
+  max-width: calc(100vw - 32px);
+  background: var(--card);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  font: 13px/1.45 -apple-system, BlinkMacSystemFont, "PingFang SC", "Segoe UI", "Microsoft YaHei", sans-serif;
+  text-align: left;
+  overflow: hidden;
+  animation: enter 0.16s ease-out;
+}
+.win.leaving { animation: leave 0.18s ease-in forwards; }
+@keyframes enter { from { opacity: 0; transform: translateY(-6px); } }
+@keyframes leave { to { opacity: 0; transform: translateY(-6px); } }
+@media (prefers-reduced-motion: reduce) {
+  .win, .win.leaving { animation: none; }
+}
+.head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 10px 10px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.brand { font-weight: 600; font-size: 13px; }
+.target { flex: 1; min-width: 0; display: flex; align-items: center; gap: 6px; color: var(--sub); font-size: 12px; }
+.target select {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  font: inherit;
+  font-size: 12px;
+  color: var(--text);
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.close {
+  width: 26px;
+  height: 26px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  margin-left: auto;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+}
+.close:hover { background: var(--hover); color: var(--text); }
+.body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 8px; }
+.title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.row { margin: 0; display: flex; align-items: center; gap: 6px; font-size: 12.5px; }
+.row .label { color: var(--sub); width: 30px; flex: none; }
+/* 文字可能折成两行：标签和转圈对齐第一行 */
+.row.top { align-items: flex-start; }
+.row.top .spin { margin-top: 3px; }
+.ok { color: var(--ok); }
+.err { color: var(--err); }
+.muted { color: var(--sub); }
+.mark { width: 14px; flex: none; text-align: center; font-weight: 700; }
+.spin {
+  width: 12px;
+  height: 12px;
+  flex: none;
+  margin: 0 1px;
+  border: 2px solid var(--border);
+  border-top-color: var(--accent-text);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  min-height: 30px;
+  padding: 3px 6px;
+  background: var(--field);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.tags:focus-within { border-color: var(--accent-text); }
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 4px 0 8px;
+  border-radius: 11px;
+  background: var(--hover);
+  font-size: 12px;
+}
+.chip button {
+  border: none;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+  padding: 0 3px;
+  font: inherit;
+  line-height: 1;
+}
+.tags input {
+  flex: 1;
+  min-width: 80px;
+  height: 22px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+  font-size: 12.5px;
+}
+.actions { display: flex; gap: 8px; justify-content: flex-end; }
+.btn {
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--card);
+  color: var(--text);
+}
+.btn:hover { background: var(--hover); }
+.btn.primary { border: none; color: #fff; background: linear-gradient(var(--accent-top), var(--accent)); }
+.btn.primary:hover { filter: brightness(1.05); }
+.btn:focus-visible, .close:focus-visible, select:focus-visible, .chip button:focus-visible {
+  outline: 2px solid var(--accent-text);
+  outline-offset: 2px;
+}

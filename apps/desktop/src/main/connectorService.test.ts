@@ -33,7 +33,11 @@ function make(states: ConnectorState[], notes: string[][]) {
     deps: {
       version: '1',
       findPage: () => null,
-      addFromPage: async (p) => ({ paperId: `id${++n}`, title: `T${n}`, hasPdf: false, status: p.url.includes('old') ? 'existing' : 'added' }),
+      addFromPage: async (p) => ({ paperId: `id${++n}`, title: `T${n}`, hasPdf: false, pdf: 'no', status: p.url.includes('old') ? 'existing' : 'added' }),
+      addPdfData: async () => ({ paperId: 'x', title: 'X', hasPdf: true, pdf: 'yes', status: 'added' }),
+      findOpenPdf: async () => ({ paperId: 'x', title: 'X', hasPdf: false, pdf: 'no' }),
+      saveTargets: () => ({ folders: [], tags: [] }),
+      updateSaved: () => ({ paperId: 'x', title: 'X', hasPdf: false, pdf: 'no' }),
       open: () => true
     },
     notify: (title, body) => notes.push([title, body]),

@@ -662,7 +662,16 @@ function setup(): void {
   const shown = new Set<Notification>()
   connector = new ConnectorService({
     configDir,
-    deps: { version: app.getVersion(), findPage: (p) => importer.findPage(p), addFromPage: (p) => importer.addFromPage(p), open: showPaper },
+    deps: {
+      version: app.getVersion(),
+      findPage: (p) => importer.findPage(p),
+      addFromPage: (p) => importer.addFromPage(p),
+      addPdfData: (data, name, paperId) => importer.addPdfData(data, name, paperId),
+      findOpenPdf: (id) => importer.findOpenPdf(id),
+      saveTargets: () => importer.saveTargets(),
+      updateSaved: (id, patch) => importer.updateSaved(id, patch),
+      open: showPaper
+    },
     notify: (title, body, onClick) => {
       if (!Notification.isSupported()) return
       const n = new Notification({ title, body, silent: true })

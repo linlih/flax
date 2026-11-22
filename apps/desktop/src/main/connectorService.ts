@@ -44,7 +44,7 @@ export class ConnectorService {
     this.running?.stop()
     this.running = null
     if (!this.current.enabled) return this.setState({ kind: 'off' })
-    this.running = startConnector({ ...this.o.deps, onSaved: (r) => r.status === 'added' && this.saved(r) }, this.current.port, (s) => this.setState(s))
+    this.running = startConnector({ ...this.o.deps, onSaved: (r, quiet) => r.status === 'added' && !quiet && this.saved(r) }, this.current.port, (s) => this.setState(s))
   }
 
   stop(): void {

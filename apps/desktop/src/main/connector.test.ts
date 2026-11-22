@@ -11,15 +11,26 @@ let server: Server
 let port: number
 let saved: PageInfo[]
 let opened: string[]
+let files: { size: number; name: string; paperId?: string }[]
+let notified: boolean[]
 
 const deps = (): ConnectorDeps => ({
   version: '9.9.9',
-  findPage: (p) => (p.url.includes('known') ? { paperId: 'p1', title: 'Known', hasPdf: true } : null),
+  findPage: (p) => (p.url.includes('known') ? { paperId: 'p1', title: 'Known', hasPdf: true, pdf: 'yes' } : null),
   addFromPage: async (p) => {
     saved.push(p)
-    return p.url.includes('nothing') ? null : { paperId: 'p2', title: 'Saved', hasPdf: false, status: 'added' }
+    return p.url.includes('nothing') ? null : { paperId: 'p2', title: 'Saved', hasPdf: false, pdf: 'no', status: 'added' }
   },
-  open: (id) => (opened.push(id), id === 'p1')
+  addPdfData: async (data, name, paperId) => {
+    if (!new TextDecoder().decode(data.subarray(0, 5)).startsWith('%PDF')) throw new Error('下载到的不是 PDF。')
+    files.push({ size: data.byteLength, name, ...(paperId ? { paperId } : {}) })
+    return { paperId: paperId ?? 'p3', title: 'From PDF', hasPdf: true, pdf: 'yes', status: paperId ? 'existing' : 'added' }
+  },
+  findOpenPdf: async (id) => ({ paperId: id, title: 'Saved', hasPdf: false, pdf: 'no' }),
+  saveTargets: () => ({ folders: [{ id: 'f1', name: 'Reading', depth: 0 }], tags: ['ml'] }),
+  updateSaved: (id, patch) => ({ paperId: id, title: JSON.stringify(patch), hasPdf: false, pdf: 'no' }),
+  open: (id) => (opened.push(id), id === 'p1'),
+  onSaved: (_r, quiet) => notified.push(quiet)
 })
 
 /** 发一个原始请求，能随便设 Host、Origin 这些头。连接被断开时 status 是 0 */
@@ -39,6 +50,8 @@ const ext = (extra: Record<string, string> = {}) => ({ 'User-Agent': UA, Origin:
 beforeEach(async () => {
   saved = []
   opened = []
+  files = []
+  notified = []
   server = createServer(createConnectorHandler(deps()))
   await new Promise<void>((r) => server.listen(0, '127.0.0.1', r))
   port = (server.address() as AddressInfo).port
@@ -46,10 +59,37 @@ beforeEach(async () => {
 afterEach(() => new Promise<void>((r) => server.close(() => r())))
 
 describe('connector', () => {
+  it('takes PDF bytes from the extension, for a saved paper or on their own', async () => {
+    const pdf = { ...ext({ 'Content-Type': 'application/pdf' }) }
+    const body = '%PDF-1.7 fake'
+    const r = await call('/file?paperId=p2&name=paper', { headers: pdf, body })
+    expect(r.status).toBe(200)
+    expect(JSON.parse(r.body)).toMatchObject({ paperId: 'p2', pdf: 'yes' })
+    // 直接打开的 PDF：没有 paperId，算新存的一篇，插件自己显示了结果就不发通知
+    expect(JSON.parse((await call('/file?name=a%2F..%2Fb.pdf&quiet=1', { headers: pdf, body })).body)).toMatchObject({ paperId: 'p3', status: 'added' })
+    expect(files).toEqual([{ size: body.length, name: 'paper.pdf', paperId: 'p2' }, { size: body.length, name: 'a..b.pdf' }])
+    expect(notified).toEqual([true])
+    // 不是 PDF：把原因告诉插件
+    const bad = await call('/file?paperId=p2', { headers: pdf, body: '<html>' })
+    expect(bad.status).toBe(500)
+    expect(JSON.parse(bad.body)).toEqual({ error: 'failed', message: '下载到的不是 PDF。' })
+    // 别的类型、没有插件头的网页都不收
+    expect((await call('/file', { headers: ext(), body })).status).toBe(415)
+    expect((await call('/file', { headers: { 'User-Agent': UA, 'Content-Type': 'application/pdf' }, body })).status).toBe(0)
+  })
+
+  it('lists folders and applies folder and tag changes', async () => {
+    expect(JSON.parse((await call('/targets', { headers: ext(), body: '{}' })).body)).toEqual({ folders: [{ id: 'f1', name: 'Reading', depth: 0 }], tags: ['ml'] })
+    const r = await call('/update', { headers: ext(), body: JSON.stringify({ paperId: 'p2', patch: { addFolder: 'f1', addTags: ['ml'] } }) })
+    expect(JSON.parse(r.body)).toMatchObject({ paperId: 'p2', title: '{"addFolder":"f1","addTags":["ml"]}' })
+    expect((await call('/update', { headers: ext(), body: '{}' })).status).toBe(400)
+    expect(JSON.parse((await call('/findPdf', { headers: ext(), body: '{"paperId":"p2"}' })).body)).toMatchObject({ pdf: 'no' })
+  })
+
   it('answers the extension', async () => {
     const r = await call('/ping', { headers: ext(), body: '{}' })
     expect(r.status).toBe(200)
-    expect(JSON.parse(r.body)).toEqual({ app: 'flax', version: '9.9.9', apiVersion: 1 })
+    expect(JSON.parse(r.body)).toEqual({ app: 'flax', version: '9.9.9', apiVersion: 2 })
     expect(r.headers['x-flax-version']).toBe('9.9.9')
     expect(r.headers['access-control-allow-origin']).toBeUndefined()
   })
@@ -58,7 +98,7 @@ describe('connector', () => {
     const page = { url: 'https://arxiv.org/abs/2101.01234', ids: { arxiv: '2101.01234' } }
     expect(JSON.parse((await call('/save', { headers: ext(), body: JSON.stringify(page) })).body)).toMatchObject({ paperId: 'p2', status: 'added' })
     expect(saved).toEqual([page])
-    expect(JSON.parse((await call('/lookup', { headers: ext(), body: JSON.stringify({ url: 'https://x/known' }) })).body)).toEqual({ paper: { paperId: 'p1', title: 'Known', hasPdf: true } })
+    expect(JSON.parse((await call('/lookup', { headers: ext(), body: JSON.stringify({ url: 'https://x/known' }) })).body)).toEqual({ paper: { paperId: 'p1', title: 'Known', hasPdf: true, pdf: 'yes' } })
     expect(JSON.parse((await call('/lookup', { headers: ext(), body: JSON.stringify({ url: 'https://x/other' }) })).body)).toEqual({ paper: null })
     expect((await call('/save', { headers: ext(), body: JSON.stringify({ url: 'https://x/nothing' }) })).status).toBe(422)
     expect((await call('/open', { headers: ext(), body: JSON.stringify({ paperId: 'p1' }) })).status).toBe(200)

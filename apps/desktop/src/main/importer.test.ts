@@ -24,6 +24,8 @@ let online: boolean
 let pdfs: Record<string, Uint8Array>
 /** 其他网站的链接能下到什么 */
 let web: Record<string, Uint8Array>
+/** OpenAlex 按 DOI 回什么 */
+let openalex: Record<string, { status: number; body: string }>
 let lib: Library
 let store: FileStore
 let importer: Importer
@@ -32,6 +34,7 @@ const fetchText: FetchText = async (url) => {
   calls.push(url)
   if (!online) throw new Error('offline')
   const id = /id_list=([\d.]+)/.exec(url)?.[1]
+  if (url.startsWith('https://api.openalex.org/works/doi:')) return openalex[decodeURIComponent(url.slice(35))] ?? { status: 404, body: '' }
   if (url.includes('openlibrary.org')) return { status: 200, body: url.includes('9780306406157') ? JSON.stringify({ 'ISBN:9780306406157': { title: 'A Field Guide to Examples', authors: [{ name: 'Grace Hopper' }], publishers: [{ name: 'Example Press' }], publish_date: '2017' } }) : '{}' }
   if (id === '2101.01234') return { status: 200, body: feed(id, 'Sparse Mixtures for Long Documents') }
   return { status: 200, body: '<feed></feed>' }
@@ -54,6 +57,7 @@ beforeEach(() => {
   online = true
   pdfs = { '2101.01234': arxivPdf('2101.01234', 'from arXiv') }
   web = {}
+  openalex = {}
   lib = new Library(new DatabaseSync(':memory:'))
   store = new FileStore(dir)
   importer = new Importer({
@@ -301,6 +305,54 @@ describe('Importer', () => {
     it('saves an arXiv PDF tab by its id, with the details from arXiv', async () => {
       const r = await importer.addFromPage({ url: 'https://arxiv.org/pdf/2101.01234v2', isPdf: true })
       expect(lib.getPaper(r!.paperId)).toMatchObject({ title: 'Sparse Mixtures for Long Documents', metadataSource: 'arxiv' })
+    })
+
+    it('attaches the PDF the extension downloaded to the paper it just saved', async () => {
+      online = false
+      const r = await importer.addFromPage({ url: 'https://publisher.example/article/1', ids: { doi: '10.1000/abc' }, meta: { title: 'Paywalled', authors: ['Ada Lovelace'] } })
+      expect(r).toMatchObject({ pdf: 'no', hasPdf: false })
+      const pdf = makePdf([[{ text: 'Paywalled', size: 18, y: 700 }]])
+      expect(await importer.addPdfData(pdf, 'paper.pdf', r!.paperId)).toMatchObject({ paperId: r!.paperId, pdf: 'yes' })
+      expect(lib.getPaper(r!.paperId)!.files).toMatchObject([{ originalName: 'paper.pdf', hash: sha256(pdf) }])
+      // 已经有 PDF 的不换
+      await importer.addPdfData(makePdf([[{ text: 'Other', size: 18, y: 700 }]]), 'other.pdf', r!.paperId)
+      expect(lib.getPaper(r!.paperId)!.files).toHaveLength(1)
+      await expect(importer.addPdfData(new TextEncoder().encode('<html>'), 'x.pdf', r!.paperId)).rejects.toThrow('下载到的不是 PDF。')
+      await expect(importer.addPdfData(pdf, 'x.pdf', 'gone')).rejects.toThrow(/不在文献库/)
+    })
+
+    it('finds a free PDF through OpenAlex when the page had none', async () => {
+      const oa = 'https://repository.example/paper.pdf'
+      web[oa] = makePdf([[{ text: 'Open Paper', size: 18, y: 700 }]])
+      openalex['10.1000/open'] = { status: 200, body: JSON.stringify({ best_oa_location: { pdf_url: 'https://broken.example/x.pdf' }, locations: [{ is_oa: true, pdf_url: oa }, { is_oa: false, pdf_url: 'https://closed.example/y.pdf' }] }) }
+      const r = await importer.addFromPage({ url: 'https://publisher.example/a', ids: { doi: '10.1000/open' }, meta: { title: 'Open Paper', authors: ['Ada Lovelace'] } })
+      expect(await importer.findOpenPdf(r!.paperId)).toMatchObject({ pdf: 'yes' })
+      expect(lib.getPaper(r!.paperId)!.files).toMatchObject([{ originalName: 'paper.pdf' }])
+      expect(calls).not.toContain('https://closed.example/y.pdf')
+      // 没有开放获取的版本：不算出错
+      const none = await importer.addFromPage({ url: 'https://publisher.example/b', ids: { doi: '10.1000/closed' }, meta: { title: 'Closed', authors: ['Ada Lovelace'] } })
+      expect(await importer.findOpenPdf(none!.paperId)).toMatchObject({ pdf: 'no' })
+    })
+
+    it('waits for the arXiv download when asked for a PDF', async () => {
+      const r = await importer.addFromPage({ url: 'https://arxiv.org/abs/2101.01234' })
+      expect(r).toMatchObject({ pdf: 'downloading' })
+      expect(await importer.findOpenPdf(r!.paperId)).toMatchObject({ pdf: 'yes' })
+    })
+
+    it('lists folders in tree order and applies the folder and tags picked in the extension', async () => {
+      const b = lib.createFolder('B')
+      const a = lib.createFolder('A')
+      const child = lib.createFolder('Child', b.id)
+      const names = importer.saveTargets().folders.map((f) => `${f.depth}:${f.name}`)
+      expect(names).toEqual(expect.arrayContaining(['0:A', '0:B', '1:Child']))
+      expect(names.indexOf('1:Child')).toBe(names.indexOf('0:B') + 1)
+      const r = await importer.addFromPage({ url: 'https://example.org/p', meta: { title: 'Tagged' } })
+      importer.updateSaved(r!.paperId, { addFolder: a.id, addTags: ['ml', ' ml ', 'nlp'] })
+      importer.updateSaved(r!.paperId, { removeFolder: a.id, addFolder: child.id, removeTags: ['nlp'] })
+      importer.updateSaved(r!.paperId, { addFolder: 'no-such-folder' })
+      expect(lib.getPaper(r!.paperId)).toMatchObject({ folderIds: [child.id], tags: ['ml'] })
+      expect(importer.saveTargets().tags).toEqual(['ml'])
     })
 
     it('ignores ids and fields that are not what they claim to be', async () => {

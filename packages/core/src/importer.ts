@@ -27,8 +27,26 @@ export interface PageInfo {
 export interface PageResult {
   paperId: string
   title: string
-  /** 有 PDF，或者正在从 arXiv 下 */
+  /** 有 PDF，或者正在下 */
   hasPdf: boolean
+  /** yes：库里有 PDF；downloading：Flax 正在下（arXiv、开放获取）；no：还没有 */
+  pdf: 'yes' | 'downloading' | 'no'
+}
+
+/** 插件保存窗口里「存到哪个文件夹」的选项，按文件夹树的顺序排好 */
+export interface SaveTarget {
+  id: string
+  name: string
+  /** 第几层，顶层是 0 */
+  depth: number
+}
+
+/** 存完以后在插件窗口里改文件夹和标签 */
+export interface SavedPatch {
+  addFolder?: string
+  removeFolder?: string
+  addTags?: string[]
+  removeTags?: string[]
 }
 
 /** 导入时需要告诉用户的事 */
@@ -466,11 +484,27 @@ export class Importer {
     const lib = this.d.library
     const known = ids.doi ? lib.findDuplicate(ids) : null
     if (known && known.paper.files.length > 0) return { ...this.pageResult(known.paper), status: 'existing' }
-    const body = await this.fetchPdf(url)
+    return this.addPdfData(await this.fetchPdf(url), fileNameFromUrl(url))
+  }
+
+  /**
+   * 插件在浏览器里下好的 PDF（带着用户的登录状态）。给了 paperId 就配到那一篇上（那篇已经有 PDF 时不动）；
+   * 没给就和拖进来的文件一样导入（直接打开的 PDF 标签页）。
+   */
+  async addPdfData(data: Uint8Array, fileName: string, paperId?: string): Promise<PageResult & { status: 'added' | 'existing' }> {
+    const lib = this.d.library
+    if (!isPdf(data)) throw new Error('下载到的不是 PDF。')
+    if (paperId) {
+      const p = lib.getPaper(paperId)
+      if (!p) throw new Error('这一篇已经不在文献库里了。')
+      if (p.files.length === 0) await this.attach(paperId, data, fileName)
+      this.d.onChanged()
+      return { ...this.pageResult(lib.getPaper(paperId) ?? p), status: 'existing' }
+    }
     this.batches++
     let r: { paperId: string; status: 'added' | 'existing' } | null
     try {
-      r = await this.importOne(fileNameFromUrl(url), body)
+      r = await this.importOne(fileName, data)
     } finally {
       this.batches--
     }
@@ -480,6 +514,97 @@ export class Importer {
     const saved = r && lib.getPaper(r.paperId)
     if (!r || !saved) throw new Error('这个 PDF 读不出来。')
     return { ...this.pageResult(saved), status: r.status }
+  }
+
+  /** 把 PDF 配到一篇还没有 PDF 的论文上。同一个文件已经是别的论文的，就提示一下不配 */
+  private async attach(id: string, data: Uint8Array, fileName: string): Promise<boolean> {
+    let facts: PdfFacts
+    try {
+      facts = await this.readPdfFacts(data, fileName)
+    } catch (e) {
+      if (e instanceof NotAPdfError) throw new Error('下载到的不是 PDF。')
+      throw e
+    }
+    const paper = this.d.library.getPaper(id)
+    if (!paper || paper.files.length > 0) return false
+    const hash = await this.sha256(data)
+    const other = this.d.library.findDuplicate({ hash })
+    if (other && other.paper.id !== id) {
+      this.d.onNotice({ kind: 'same_file', paperId: other.paper.id, title: other.paper.title })
+      return false
+    }
+    this.d.library.addFile(id, await this.storeFile(data, hash, facts, fileName))
+    return true
+  }
+
+  /**
+   * 网页上没下到 PDF：Flax 自己找免费的版本。arXiv 的从 arXiv 下；有 DOI 的问 OpenAlex 有没有开放获取的 PDF。
+   * 等下载结束再返回，找不到不算出错（返回 pdf: 'no'）。
+   */
+  async findOpenPdf(paperId: string): Promise<PageResult> {
+    const lib = this.d.library
+    const p = lib.getPaper(paperId)
+    if (!p) throw new Error('这一篇已经不在文献库里了。')
+    if (p.files.length === 0 && !this.startDownload(paperId) && p.identifiers.doi && this.d.fetchBytes) {
+      const job = this.downloadOpenAccess(paperId, p.identifiers.doi).finally(() => {
+        this.downloading.delete(paperId)
+        this.d.onChanged()
+      })
+      this.downloading.set(paperId, job)
+      this.d.onChanged()
+    }
+    await this.downloading.get(paperId)
+    return this.pageResult(lib.getPaper(paperId) ?? p)
+  }
+
+  private async downloadOpenAccess(id: string, doi: string): Promise<void> {
+    for (const url of await openAccessPdfs(doi, this.d.fetchText)) {
+      try {
+        const data = await this.fetchPdf(url)
+        await this.attach(id, data, fileNameFromUrl(url))
+        return
+      } catch {
+        // 换下一个地址
+      }
+    }
+  }
+
+  /** 插件保存窗口里的文件夹列表（按树的顺序，带层级）和已有的标签 */
+  saveTargets(): { folders: SaveTarget[]; tags: string[] } {
+    const lib = this.d.library
+    const all = lib.listFolders()
+    const byParent = new Map<string, typeof all>()
+    for (const f of all) {
+      const key = f.parentId && all.some((x) => x.id === f.parentId) ? f.parentId : ''
+      byParent.set(key, [...(byParent.get(key) ?? []), f])
+    }
+    const folders: SaveTarget[] = []
+    const walk = (parent: string, depth: number) => {
+      for (const f of (byParent.get(parent) ?? []).sort((a, b) => a.order - b.order || a.name.localeCompare(b.name))) {
+        folders.push({ id: f.id, name: f.name, depth })
+        walk(f.id, depth + 1)
+      }
+    }
+    walk('', 0)
+    return { folders, tags: lib.listTags().map((t) => t.tag) }
+  }
+
+  /** 插件保存窗口里换了文件夹、加减了标签 */
+  updateSaved(paperId: string, patch: SavedPatch): PageResult {
+    const lib = this.d.library
+    const p = lib.getPaper(paperId)
+    if (!p) throw new Error('这一篇已经不在文献库里了。')
+    const known = new Set(lib.listFolders().map((f) => f.id))
+    const str = (v: unknown) => (typeof v === 'string' ? v.trim().slice(0, 100) : '')
+    const list = (v: unknown) => (Array.isArray(v) ? v.map(str).filter(Boolean).slice(0, 50) : [])
+    let folderIds = p.folderIds.filter((f) => f !== str(patch.removeFolder))
+    const add = str(patch.addFolder)
+    if (add && known.has(add)) folderIds = [...folderIds, add]
+    const remove = new Set(list(patch.removeTags))
+    const tags = [...p.tags.filter((t) => !remove.has(t)), ...list(patch.addTags)]
+    lib.updatePaper(paperId, { folderIds, tags })
+    this.d.onChanged()
+    return this.pageResult(lib.getPaper(paperId)!)
   }
 
   /** 下载网址上的 PDF。出错时的消息直接给用户看 */
@@ -499,7 +624,8 @@ export class Importer {
   }
 
   private pageResult(p: Paper): PageResult {
-    return { paperId: p.id, title: p.title, hasPdf: p.files.length > 0 || this.downloading.has(p.id) }
+    const pdf = p.files.length > 0 ? 'yes' : this.downloading.has(p.id) ? 'downloading' : 'no'
+    return { paperId: p.id, title: p.title, hasPdf: pdf !== 'no', pdf }
   }
 
   /** 下载链接指向的 PDF，和选文件导入一样处理（查重、联网查详情）。出错用通知告诉用户 */
@@ -626,4 +752,22 @@ function pageMeta(page: PageInfo, ids: FoundIds): PaperMeta | null {
   const abstract = clean(m?.abstract, 10_000)
   if (abstract) meta.abstract = abstract
   return meta
+}
+
+/** OpenAlex 记录的开放获取 PDF 地址（最好的那个在前）。查不到、没有就是空的 */
+async function openAccessPdfs(doi: string, fetchText: FetchText): Promise<string[]> {
+  let r: { status: number; body: string }
+  try {
+    r = await fetchText(`https://api.openalex.org/works/doi:${encodeURIComponent(doi)}`)
+  } catch {
+    return []
+  }
+  if (r.status !== 200) return []
+  try {
+    const w = JSON.parse(r.body) as { best_oa_location?: { pdf_url?: unknown } | null; locations?: { pdf_url?: unknown; is_oa?: unknown }[] }
+    const urls = [w.best_oa_location?.pdf_url, ...(w.locations ?? []).filter((l) => l?.is_oa).map((l) => l.pdf_url)]
+    return [...new Set(urls.filter((u): u is string => typeof u === 'string' && /^https?:\/\//.test(u)))].slice(0, 3)
+  } catch {
+    return []
+  }
 }
