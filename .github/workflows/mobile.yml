@@ -5,6 +5,7 @@
 # GitHub Actions 的缓存按分支 / 标签隔开，标签上的构建只读得到 main 上存的，
 # 所以由 mobile-cache.yml 在 main 上每周跑一次、存缓存（fill-cache），发版的构建只读不存。
 # Swift 代码 ccache 管不到，iOS 省多少要看实际跑出来的命中率（Package 后面的 ccache 统计）。
+# 填缓存的那次还会留下 ccache 的调试记录（每个文件算哈希用了哪些东西），命中率低时下载两次的记录比一比就知道是什么在变。
 name: Mobile
 
 on:
@@ -20,6 +21,8 @@ env:
   CCACHE_MAXSIZE: 1500M
   # 每次都是同一个检出路径，路径换成相对的以后命中率更稳
   CCACHE_BASEDIR: ${{ github.workspace }}
+  # 按编译器文件的内容认编译器，不看修改时间：GitHub 换了一版机器镜像，同一个编译器的修改时间也会变
+  CCACHE_COMPILERCHECK: content
 
 jobs:
   android:
@@ -79,6 +82,12 @@ jobs:
         env:
           CMAKE_C_COMPILER_LAUNCHER: ccache
           CMAKE_CXX_COMPILER_LAUNCHER: ccache
+          # 第一次跑出来 578 次编译 0 次命中（2026-11-22）。工作目录不进哈希（调试信息里的路径每次都一样）；
+          # 生成的头文件每次都是新写的，不看文件的修改时间
+          CCACHE_NOHASHDIR: "true"
+          CCACHE_SLOPPINESS: include_file_mtime,include_file_ctime,time_macros,file_stat_matches,system_headers
+          CCACHE_DEBUG: ${{ inputs.fill-cache && 'true' || '' }}
+          CCACHE_DEBUGDIR: ${{ runner.temp }}/ccache-debug
         run: ./gradlew assembleRelease -PreactNativeArchitectures=arm64-v8a --build-cache --no-daemon
       - name: ccache stats
         if: always()
@@ -88,6 +97,14 @@ jobs:
         with:
           path: ~/.ccache
           key: ccache-android-${{ github.sha }}-${{ github.run_id }}
+      - name: Keep ccache debug records
+        if: always() && inputs.fill-cache
+        uses: actions/upload-artifact@v4
+        with:
+          name: ccache-debug-android
+          retention-days: 3
+          if-no-files-found: ignore
+          path: ${{ runner.temp }}/ccache-debug/**/*.ccache-input-text
       - name: Name the APK
         if: ${{ !inputs.fill-cache }}
         run: |
@@ -127,10 +144,11 @@ jobs:
           HOMEBREW_NO_INSTALL_CLEANUP: 1
         run: |
           command -v ccache >/dev/null || brew install ccache
-          echo "CCACHE_DIR=$HOME/.ccache" >> "$GITHUB_ENV"
+      # 用 ccache 在 Mac 上的默认目录：Xcode 调编译器时不一定带上这里的环境变量，
+      # 上次设了 CCACHE_DIR，结果缓存写到了默认目录，存缓存的那一步什么也没找到（2026-11-22）
       - uses: actions/cache/restore@v4
         with:
-          path: ~/.ccache
+          path: ~/Library/Caches/ccache
           key: ccache-ios-${{ github.sha }}
           restore-keys: ccache-ios-
       - run: npm ci
@@ -154,11 +172,13 @@ jobs:
             CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -50
       - name: ccache stats
         if: always()
-        run: ccache -s
+        run: |
+          ccache -s
+          du -sh ~/Library/Caches/ccache ~/.ccache 2>/dev/null || true
       - if: inputs.fill-cache
         uses: actions/cache/save@v4
         with:
-          path: ~/.ccache
+          path: ~/Library/Caches/ccache
           key: ccache-ios-${{ github.sha }}-${{ github.run_id }}
       - name: Make the IPA
         if: ${{ !inputs.fill-cache }}
