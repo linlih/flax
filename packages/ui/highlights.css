@@ -1,6 +1,8 @@
 /* 阅读器里的高亮、下划线、评论标记（overlay.ts 画的那一层）。桌面和手机共用；颜色在 tokens.css。
    外面要有 .paper-light 或 .paper-dark（纸是浅色还是深色）。 */
-/* 整层和页面混合（层内的色块不各自混合，否则层本身会挡住文字） */
+/* 整层和页面混合（层内的色块不各自混合，否则层本身会挡住文字）
+   下划线、评论的线画在 .hl 色块里面，所以都限定在 .hl 上：网页版里的 <mark> 也带 hl-underline 这些类名，
+   它不是定位元素，::after 会按整个阅读区去画，变成一条横跨全宽的文字颜色色条 */
 .hl-layer { position: absolute; inset: 0; pointer-events: none; }
 .paper-light .hl-layer { mix-blend-mode: multiply; }
 .paper-dark .hl-layer { mix-blend-mode: lighten; }
@@ -15,17 +17,17 @@
 .paper-dark .hl-highlight.hl-c-blue { background: var(--hl-dark-blue); }
 .paper-dark .hl-highlight.hl-c-pink { background: var(--hl-dark-pink); }
 .paper-dark .hl-highlight.hl-c-purple { background: var(--hl-dark-purple); }
-.hl-underline { background: transparent !important; }
-.hl-underline::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: max(1.5px, 8%); border-radius: 1px; background: currentColor; }
+.hl.hl-underline { background: transparent !important; }
+.hl.hl-underline::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: max(1.5px, 8%); border-radius: 1px; background: currentColor; }
 .hl-underline.hl-c-yellow { color: var(--ul-yellow); }
 .hl-underline.hl-c-green { color: var(--ul-green); }
 .hl-underline.hl-c-blue { color: var(--ul-blue); }
 .hl-underline.hl-c-pink { color: var(--ul-pink); }
 .hl-underline.hl-c-purple { color: var(--ul-purple); }
 .hl-active { box-shadow: 0 0 0 1.5px var(--ul-blue); }
-.hl-note { background: transparent !important; }
+.hl.hl-note { background: transparent !important; }
 /* 只写评论：一条淡淡的虚线，不涂颜色 */
-.hl-note::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1.5px; background: linear-gradient(to right, var(--note-line) 60%, transparent 0) 0 0 / 5px 100% repeat-x; }
+.hl.hl-note::after { content: ""; position: absolute; left: 0; right: 0; bottom: -1px; height: 1.5px; background: linear-gradient(to right, var(--note-line) 60%, transparent 0) 0 0 / 5px 100% repeat-x; }
 .paper-light .hl-note { --note-line: rgba(60, 60, 67, .55); }
 .paper-dark .hl-note { --note-line: rgba(235, 235, 245, .5); }
 .hl-marks { position: absolute; inset: 0; z-index: 3; pointer-events: none; }

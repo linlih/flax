@@ -28,3 +28,15 @@ test('our class names do not collide with PDF.js global classes', () => {
   const clash = [...ours].filter((c) => pdfjs.has(c) && !intended.has(c))
   expect(clash).toEqual([])
 })
+
+// 网页版里批注是 <mark class="fx-hl hl-underline …">，和 PDF 上的色块共用类名。
+// highlights.css 里绝对定位的伪元素（下划线、评论的线）要是没限定在 .hl 上，就会按整个阅读区去画，
+// 网页版里出现一条横跨全宽的色条（深色外观下是白条，浅色下是黑条）
+test('positioned annotation pseudo-elements only apply to the PDF layer', () => {
+  const css = readFileSync(require.resolve('@flax/ui/highlights.css'), 'utf8').replace(/\/\*[\s\S]*?\*\//g, '')
+  const loose = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)]
+    .filter(([, sel, body]) => /position:\s*absolute/.test(body!) && /::?(after|before)/.test(sel!))
+    .flatMap(([, sel]) => sel!.split(',').map((s) => s.trim()))
+    .filter((s) => /\.hl-(underline|note|highlight)\b/.test(s) && !/\.hl\.hl-/.test(s))
+  expect(loose).toEqual([])
+})
