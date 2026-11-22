@@ -114,7 +114,7 @@ async function findDataDir(): Promise<boolean> {
 
 const isMac = process.platform === 'darwin'
 
-/** Windows 右上角窗口按钮的底色和图标色，跟着浅色 / 深色走（和 tokens.css 的 --bg、--text 一致） */
+/** 窗口底色，和 Windows 右上角窗口按钮的底色、图标色，跟着浅色 / 深色走（和 tokens.css 的 --bg、--text 一致） */
 function overlay(): { color: string; symbolColor: string; height: number } {
   return nativeTheme.shouldUseDarkColors
     ? { color: '#121212', symbolColor: '#E6E6E6', height: 36 }
@@ -137,9 +137,12 @@ function createWindow(): void {
     title: '文献库',
     icon: iconPath,
     ...(isMac
-      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 }, backgroundColor: '#00000000' }
+      ? { titleBarStyle: 'hiddenInset' as const, trafficLightPosition: { x: 16, y: 18 } }
       // Windows / Linux：去掉系统标题栏，右上角留系统自己的最小化、最大化、关闭按钮
-      : { titleBarStyle: 'hidden' as const, titleBarOverlay: overlay(), backgroundColor: overlay().color }),
+      : { titleBarStyle: 'hidden' as const, titleBarOverlay: overlay() }),
+    // 窗口底色跟页面的 --bg 一样，不能透明：网页还没画完的地方（比如刚切到网页版时）会露出底色，
+    // 透明的话就透出窗口后面的东西，深色外观下一条浅色横条
+    backgroundColor: overlay().color,
     webPreferences: {
       preload: join(__dirname, '../preload/index.js'),
       contextIsolation: true,
@@ -840,7 +843,10 @@ app.whenReady().then(async () => {
   }
   createWindow()
   // Windows 的窗口按钮不会自己跟着深浅色变
-  if (!isMac) nativeTheme.on('updated', () => win?.setTitleBarOverlay(overlay()))
+  nativeTheme.on('updated', () => {
+    win?.setBackgroundColor(overlay().color)
+    if (!isMac) win?.setTitleBarOverlay(overlay())
+  })
   // 打开一会儿后悄悄检查更新，之后每 6 小时一次
   void realUpdater().catch((e: unknown) => (console.error('updater:', e), null)).then((u) => {
     updater = new Updater(u, (st) => win?.webContents.send('app:update', st))

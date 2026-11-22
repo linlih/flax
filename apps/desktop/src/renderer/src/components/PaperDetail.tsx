@@ -185,7 +185,10 @@ function MatchCard({ paper: p, busy, onManual }: { paper: Paper; busy: boolean; 
   return (
     <section className="tray match" aria-labelledby="h-match">
       <div className="tray-h">
-        <h2 id="h-match" className="lbl" style={{ margin: 0 }}>需要匹配</h2>
+        <div className="match-top">
+          <h2 id="h-match" className="lbl" style={{ margin: 0 }}>需要匹配</h2>
+          <button type="button" className="icon-btn" aria-label="信息没问题，不再提示" title="信息没问题，不再提示" onClick={() => void api.library.update(p.id, { title: p.title })}><Icon name="close" size={14} /></button>
+        </div>
         <span style={{ fontWeight: 500 }}>{p.matchIssue ? MATCH_HINT[p.matchIssue] : '信息可能不完整'}。{state === 'done' ? (list.length ? '按标题搜到这些，选一个：' : '按标题没有搜到相近的论文。') : '可以按标题搜索，或者手动填写。'}</span>
       </div>
       {state === 'done' && list.length > 0 && (
@@ -211,7 +214,6 @@ function MatchCard({ paper: p, busy, onManual }: { paper: Paper; busy: boolean; 
         )}
         {aiReady && p.files.length > 0 && <button type="button" className="btn btn-s" title="把前几页的文字（扫描版是页面图片）发给你接入的 AI，会用掉一点 AI 额度" onClick={() => void askAi()}>用 AI 识别</button>}
         <button type="button" className="btn btn-s" onClick={onManual}>手动填写</button>
-        <button type="button" className="btn btn-s" onClick={() => void api.library.update(p.id, { title: p.title })}>信息没问题</button>
       </div>
     </section>
   )
