@@ -163,13 +163,16 @@ jobs:
           LANG: en_US.UTF-8
           USE_CCACHE: 1
         run: pod install
+      # CLANG_ENABLE_EXPLICIT_MODULES=NO：Xcode 26 默认用显式模块，认不出 React Native 的 ccache 包装脚本，
+      # 就自己调编译器、不走 ccache（日志里 "Explicit modules is enabled but the compiler was not recognized"，2026-11-22）
       - name: Package
         working-directory: apps/mobile/ios
         run: |
           set -o pipefail
           xcodebuild -workspace Flax.xcworkspace -scheme Flax -configuration Release -sdk iphoneos \
             -destination 'generic/platform=iOS' -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build | tail -50
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            CLANG_ENABLE_EXPLICIT_MODULES=NO build | tail -50
       - name: ccache stats
         if: always()
         run: |
