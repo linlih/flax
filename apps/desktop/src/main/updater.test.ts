@@ -33,6 +33,7 @@ describe('Updater', () => {
     // 再检查一次不会丢掉"有新版本"
     expect(up.check(true)).toMatchObject({ kind: 'available', manual: true })
     up.install()
+    await new Promise((r) => setTimeout(r, 0))
     expect(u.downloadUpdate).toHaveBeenCalledOnce()
     u.emit('download-progress', { percent: 41.6 })
     expect(seen.at(-1)).toMatchObject({ kind: 'downloading', percent: 42 })
@@ -40,6 +41,49 @@ describe('Updater', () => {
     u.emit('update-downloaded', { version: '0.2.0' })
     expect(seen.at(-1)).toMatchObject({ kind: 'ready', version: '0.2.0' })
     expect(u.quitAndInstall).toHaveBeenCalledOnce()
+  })
+
+  // 检查到 0.2.0 以后又发了 0.3.0：不用先升到 0.2.0 再更新一次
+  it('installs the newest release, not the one found by an earlier check', async () => {
+    const u = fake()
+    let latest = '0.2.0'
+    u.checkForUpdates = vi.fn(async () => {
+      u.emit('checking-for-update')
+      u.emit('update-available', { version: latest })
+      return null
+    })
+    const seen: UpdateState[] = []
+    const up = new Updater(u, (s) => seen.push(s))
+    up.check()
+    await Promise.resolve()
+    expect(seen.at(-1)).toMatchObject({ kind: 'available', version: '0.2.0' })
+    latest = '0.3.0'
+    // 后台定时检查：界面换成更新的版本，中间不闪"正在检查"
+    const before = seen.length
+    up.check()
+    await Promise.resolve()
+    expect(seen.slice(before).map((s) => s.kind)).not.toContain('checking')
+    expect(seen.at(-1)).toMatchObject({ kind: 'available', version: '0.3.0' })
+    // 再发一个：点"立即更新"时下载前再查一次，下的是最新的
+    latest = '0.4.0'
+    up.install()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(u.checkForUpdates).toHaveBeenCalledTimes(3)
+    expect(u.downloadUpdate).toHaveBeenCalledOnce()
+    expect(seen.at(-1)).toMatchObject({ kind: 'downloading', version: '0.4.0', manual: true })
+    u.emit('update-downloaded', { version: '0.4.0' })
+    expect(seen.at(-1)).toMatchObject({ kind: 'ready', version: '0.4.0' })
+  })
+
+  it('keeps showing a found update when a later background check fails', async () => {
+    const u = fake()
+    const seen: UpdateState[] = []
+    const up = new Updater(u, (s) => seen.push(s))
+    u.emit('update-available', { version: '0.2.0' })
+    u.checkForUpdates = vi.fn(async () => { throw new Error('net::ERR_INTERNET_DISCONNECTED') })
+    up.check()
+    await new Promise((r) => setTimeout(r, 0))
+    expect(up.get()).toMatchObject({ kind: 'available', version: '0.2.0' })
   })
 
   it('reports a failed download', async () => {

@@ -1,6 +1,8 @@
 // 自动更新：从 GitHub Releases（package.json 的 build.publish）找新版本。
 // 打开应用一会儿后悄悄检查；有新版本只告诉用户（版本号和发布说明），不自己下载。
 // 用户点"立即更新"才下载，下好就重启安装。菜单和设置里可以手动检查，手动检查才把"已经是最新""检查失败"告诉用户。
+// 已经找到新版本以后照样定时检查，点"立即更新"时下载前也再查一次：中间又发了更新的版本，就直接装最新的，
+// 不用先升到一个旧的新版本再更新一次。
 // macOS 上只有签了名的应用才能自动更新；开发时不检查。
 import { app } from 'electron'
 import type { UpdateState } from '../shared/api'
@@ -18,15 +20,24 @@ export interface UpdaterLike {
 export class Updater {
   private state: UpdateState = { kind: 'idle' }
   private manual = false
+  /** 点了"立即更新"，正在下载前的那次检查或下载 */
+  private installing = false
 
   constructor(private u: UpdaterLike | null, private send: (s: UpdateState) => void) {
     if (!u) return
     // 不自己下载：用户点了"立即更新"才下（下好的版本退出时也会装上，但只有用户同意过才会有下好的版本）
     u.autoDownload = false
     u.autoInstallOnAppQuit = true
-    u.on('checking-for-update', () => this.set({ kind: 'checking' }))
-    u.on('update-not-available', () => this.set({ kind: 'latest' }))
+    // 已经有新版本在等着时再检查：界面上一直显示那个新版本，查到更新的就换成更新的
+    u.on('checking-for-update', () => {
+      if (!this.waiting()) this.set({ kind: 'checking' })
+    })
+    u.on('update-not-available', () => {
+      this.installing = false
+      this.set({ kind: 'latest' })
+    })
     u.on('update-available', (info: { version: string; releaseNotes?: unknown }) => {
+      if (this.installing) return void this.set({ kind: 'downloading', version: info.version, manual: true })
       const notes = notesText(info.releaseNotes)
       this.set(notes ? { kind: 'available', version: info.version, notes } : { kind: 'available', version: info.version })
     })
@@ -38,7 +49,7 @@ export class Updater {
       this.set({ kind: 'ready', version: info.version })
       this.u?.quitAndInstall()
     })
-    u.on('error', (e: Error) => this.set({ kind: 'error', message: friendly(e) }))
+    u.on('error', (e: Error) => this.failed(e))
   }
 
   get(): UpdateState {
@@ -48,9 +59,10 @@ export class Updater {
   /** manual：用户点的"检查更新"，结果要告诉他 */
   check(manual = false): UpdateState {
     if (!this.u) return this.set({ kind: 'dev', manual })
-    if (this.state.kind === 'available' || this.state.kind === 'downloading' || this.state.kind === 'ready') return this.set({ ...this.state, manual })
+    if (this.state.kind === 'downloading' || this.state.kind === 'ready') return this.set({ ...this.state, manual })
     this.manual = manual
-    void this.u.checkForUpdates().catch((e: unknown) => this.set({ kind: 'error', message: friendly(e) }))
+    if (this.state.kind === 'available') this.set({ ...this.state, manual })
+    void this.u.checkForUpdates().catch((e: unknown) => this.failed(e))
     return this.state
   }
 
@@ -59,8 +71,30 @@ export class Updater {
     if (!this.u) return
     if (this.state.kind === 'ready') return this.u.quitAndInstall()
     if (this.state.kind !== 'available') return
+    const u = this.u
+    this.installing = true
     this.set({ kind: 'downloading', version: this.state.version, manual: true })
-    void this.u.downloadUpdate().catch((e: unknown) => this.set({ kind: 'error', message: friendly(e), manual: true }))
+    void (async () => {
+      // electron-updater 下载的是最近一次检查到的版本，所以先再查一次
+      await u.checkForUpdates()
+      if (!this.installing) return
+      await u.downloadUpdate()
+    })()
+      .catch((e: unknown) => this.failed(e))
+      .finally(() => (this.installing = false))
+  }
+
+  /** 正在显示一个新版本（还没开始下载），或者正在下载 */
+  private waiting(): boolean {
+    return this.state.kind === 'available' || this.state.kind === 'downloading'
+  }
+
+  private failed(e: unknown): void {
+    const manual = this.installing || this.state.kind === 'downloading' ? true : undefined
+    this.installing = false
+    // 有新版本在等着时，后台再检查失败了不要把它丢掉；下载失败照样报
+    if (this.state.kind === 'available' && !manual) return
+    this.set(manual ? { kind: 'error', message: friendly(e), manual } : { kind: 'error', message: friendly(e) })
   }
 
   private set(s: UpdateState): UpdateState {
