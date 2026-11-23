@@ -45,6 +45,21 @@ export function versionInHtml(html: string, id: string): string | null {
   return new RegExp(`/abs/${esc}(v\\d+)`).exec(html)?.[1] ?? null
 }
 
+/** 存下来的网页的格式：比它旧的、里面还有没存的图，打开时重新下载一次 */
+const FORMAT = 2
+
+/** arXiv 的 SVG 图放在 <object type="image/svg+xml" data="…">（多是 TikZ 画的图），阅读器不放 object：
+ *  改成 <img>，和别的图一样存到本机。img 里的 SVG 不跑脚本 */
+export function objectsToImages(html: string): string {
+  return html.replace(/<object\b([^>]*)>([\s\S]*?)<\/object>/gi, (m, attrs: string) => {
+    if (!/\stype="image\/[^"]+"/i.test(attrs)) return m
+    const data = /\sdata="([^"]+)"/i.exec(attrs)?.[1]
+    if (!data) return m
+    const rest = attrs.replace(/\s(type|data)="[^"]*"/gi, '')
+    return `<img src="${data}"${rest}>`
+  })
+}
+
 const EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/svg+xml': '.svg', 'image/webp': '.webp' }
 
 /**
@@ -54,11 +69,21 @@ const EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg',
 export async function ensureArxivHtml(id: string, version: string | null, d: { files: HtmlFiles; get: HtmlGet; now?: () => number }): Promise<HtmlResult> {
   const now = d.now ?? Date.now
   const key = htmlKey(id, version)
+  /** 要重新下载的旧副本：下载不成就接着用它 */
+  let stale: HtmlResult | null = null
   const meta = await d.files.readText(key, 'meta.json').catch(() => null)
   if (meta) {
     try {
-      const m = JSON.parse(meta) as { ok?: boolean; version?: string | null; checkedAt?: number }
-      if (m.ok) return { ok: true, key, version: m.version ?? version }
+      const m = JSON.parse(meta) as { ok?: boolean; version?: string | null; checkedAt?: number; format?: number }
+      if (m.ok) {
+        const done = { ok: true as const, key, version: m.version ?? version }
+        if ((m.format ?? 1) >= FORMAT) return done
+        // 旧格式没存 <object> 里的图：有这种图才重新下载，下同一版
+        const old = await d.files.readText(key, 'index.html').catch(() => null)
+        if (old && !/<object\b[^>]*\stype="image\//i.test(old)) return done
+        version = version ?? m.version ?? null
+        stale = done
+      }
       if (m.ok === false && now() - (m.checkedAt ?? 0) < NONE_TTL_MS) return { ok: false, reason: 'none' }
     } catch {
       /* 坏了就重新下载 */
@@ -70,20 +95,23 @@ export async function ensureArxivHtml(id: string, version: string | null, d: { f
   try {
     res = await d.get(page)
   } catch (e) {
-    return { ok: false, reason: 'offline', message: e instanceof Error ? e.message : String(e) }
+    return stale ?? { ok: false, reason: 'offline', message: e instanceof Error ? e.message : String(e) }
   }
   if (res.status === 404 || res.status === 410) {
+    if (stale) return stale
     await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: false, checkedAt: now() }))
     return { ok: false, reason: 'none' }
   }
-  if (res.status !== 200) return { ok: false, reason: 'offline', message: `arXiv 返回 ${res.status}` }
-  if (res.body.byteLength > MAX_HTML_BYTES) return { ok: false, reason: 'none' }
+  if (res.status !== 200) return stale ?? { ok: false, reason: 'offline', message: `arXiv 返回 ${res.status}` }
+  if (res.body.byteLength > MAX_HTML_BYTES) return stale ?? { ok: false, reason: 'none' }
   let html = new TextDecoder().decode(res.body)
   if (!hasArticle(html)) {
+    if (stale) return stale
     await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: false, checkedAt: now() }))
     return { ok: false, reason: 'none' }
   }
   const found = versionInHtml(html, id) ?? version
+  html = objectsToImages(html)
 
   // 正文里的图存到本机，网页里的地址改成本地的相对路径
   const start = html.search(/<article[\s>]/)
@@ -114,6 +142,6 @@ export async function ensureArxivHtml(id: string, version: string | null, d: { f
   html = html.replace(/(<img\b[^>]*?\ssrc=")([^"]+)(")/g, (m, a: string, src: string, b: string) => (local.has(src) ? a + local.get(src)! + b : m))
 
   await d.files.writeText(key, 'index.html', html)
-  await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: true, id, version: found, fetchedAt: now(), images: local.size }))
+  await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: true, id, version: found, fetchedAt: now(), images: local.size, format: FORMAT }))
   return { ok: true, key, version: found }
 }

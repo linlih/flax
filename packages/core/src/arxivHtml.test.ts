@@ -40,6 +40,41 @@ describe('arXiv HTML download', () => {
     expect(asked).toEqual([])
   })
 
+  it('saves SVG figures that arXiv puts in <object> as local images', async () => {
+    const svgPage = PAGE.replace('</article>', '<figure><object type="image/svg+xml" data="2310.06825v1/fig.svg" id="S1.F1.g1" class="ltx_graphics" width="476" height="99"></object></figure></article>')
+    const files = memory()
+    const get = async (url: string) => {
+      if (url === 'https://arxiv.org/html/2310.06825v1') return { status: 200, body: enc(svgPage) }
+      if (url === 'https://arxiv.org/html/2310.06825v1/fig.svg') return { status: 200, body: enc('<svg/>'), type: 'image/svg+xml' }
+      return { status: 404, body: new Uint8Array() }
+    }
+    await ensureArxivHtml('2310.06825', 'v1', { files, get })
+    const html = files.data.get('2310.06825v1/index.html') as string
+    expect(html).not.toContain('<object')
+    expect(html).toMatch(/<img src="img\/\d\.svg" id="S1\.F1\.g1" class="ltx_graphics" width="476" height="99">/)
+    expect(files.data.get('2310.06825v1/img/2.svg') ?? files.data.get('2310.06825v1/img/1.svg')).toEqual(enc('<svg/>'))
+  })
+
+  it('downloads an old copy again once when it is missing <object> figures, keeping its version', async () => {
+    const files = memory()
+    files.data.set('2302.04761/meta.json', JSON.stringify({ ok: true, id: '2302.04761', version: 'v1', images: 0 }))
+    files.data.set('2302.04761/index.html', '<object type="image/svg+xml" data="2302.04761v1/a.svg"></object>')
+    files.data.set('2310.06825v1/meta.json', JSON.stringify({ ok: true, id: '2310.06825', version: 'v1', images: 1 }))
+    files.data.set('2310.06825v1/index.html', '<img src="img/1.png">')
+    const asked: string[] = []
+    const get = async (url: string) => (asked.push(url), { status: 404, body: new Uint8Array() })
+    // 旧的、没有 object 图的照用
+    expect(await ensureArxivHtml('2310.06825', 'v1', { files, get })).toEqual({ ok: true, key: '2310.06825v1', version: 'v1' })
+    expect(asked).toEqual([])
+    // 有 object 图的去下同一版
+    // 下载不成（这里 404）就接着用旧的，不当成没有网页版
+    expect(await ensureArxivHtml('2302.04761', null, { files, get })).toEqual({ ok: true, key: '2302.04761', version: 'v1' })
+    expect(asked).toEqual(['https://arxiv.org/html/2302.04761v1'])
+    expect(JSON.parse(files.data.get('2302.04761/meta.json') as string)).toMatchObject({ ok: true })
+    const offline = async () => Promise.reject(new Error('offline'))
+    expect(await ensureArxivHtml('2302.04761', null, { files, get: offline })).toMatchObject({ ok: true })
+  })
+
   it('remembers papers without an HTML version for a while', async () => {
     const files = memory()
     let n = 0
