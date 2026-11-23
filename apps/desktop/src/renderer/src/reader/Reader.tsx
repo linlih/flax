@@ -22,6 +22,7 @@ import { AiPanel } from './AiPanel'
 import { AnnoList } from './AnnoList'
 import { COLORS } from './colors'
 import { TranslateCard } from './TranslateCard'
+import { FigureViewer } from './FigureViewer'
 import { ReaderToolbar, type Tool } from './ReaderToolbar'
 import { useAiStatus } from '../lib/ai'
 import { composing, FILES_APP, FOCUS_KEY, isMac, kbd, mod, TRASH } from '../lib/platform'
@@ -176,6 +177,8 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [selBar, setSelBar] = useState<{ at: Spot; parts: SelectionPart[]; text: string } | null>(null)
   const [lastColor, setLastColor] = useState<HighlightColor>(() => (pref.get('color') as HighlightColor) ?? 'yellow')
   /** 右键菜单：在选中的文字上（bar），或者在已有的高亮上（anno） */
+  /** 网页版里双击放大的图 */
+  const [figure, setFigure] = useState<{ src: string; alt: string } | null>(null)
   const [ctx, setCtx] = useState<{ at: Spot; text: string; bar?: NonNullable<typeof selBar>; anno?: Annotation } | null>(null)
   const aiStatus = useAiStatus()
   /** 右键"翻译"弹出的译文卡片 */
@@ -637,6 +640,13 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
    * 抓手工具（或按住空格）下按下去不会选字，但双击不会拖动页面，所以自己选中鼠标下的词再翻
    */
   const onDoubleClick = (e: React.MouseEvent) => {
+    // 网页版里双击一张图：放大看
+    const img = e.target instanceof HTMLImageElement && e.target.closest('.flax-html') ? e.target : null
+    if (img) {
+      window.getSelection()?.removeAllRanges()
+      setFigure({ src: img.currentSrc || img.src, alt: img.alt })
+      return
+    }
     if (!aiStatus?.translate.ready) return
     if (hand) {
       if (!dragged.current && selectWordAt(e.clientX, e.clientY, scrollRef.current)) translateSelection()
@@ -1241,6 +1251,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   return (
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
+      {figure && <FigureViewer src={figure.src} alt={figure.alt} onClose={() => setFigure(null)} />}
       <header className="reader-bar drag">
         <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
         {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="左边栏：页面、目录和批注" title={kbd(`${showThumbs ? '隐藏' : '显示'}左边栏：页面、目录和批注（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}

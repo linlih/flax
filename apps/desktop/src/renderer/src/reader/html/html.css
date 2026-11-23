@@ -96,6 +96,8 @@
 .flax-html figure, .flax-html .ltx_figure, .flax-html .ltx_table, .flax-html .ltx_float { margin: 1.6em 0; text-align: center; }
 .flax-html .ltx_table { overflow-x: auto; }
 .flax-html img, .flax-html .ltx_graphics { max-width: 100%; height: auto; }
+/* 双击放大（Reader 里的 FigureViewer） */
+.flax-html img { cursor: zoom-in; }
 .flax-html svg.ltx_picture { max-width: 100%; height: auto; }
 .flax-html .ltx_flex_figure { display: flex; flex-wrap: wrap; justify-content: center; align-items: flex-end; gap: .6em; }
 .flax-html .ltx_flex_cell { flex: 1 1 0; min-width: 0; }
@@ -162,3 +164,11 @@
 ::highlight(fx-find) { background-color: rgba(255, 196, 0, .35); }
 ::highlight(fx-find-current) { background-color: rgba(255, 140, 0, .6); }
 ::highlight(fx-flash) { background-color: rgba(59, 130, 246, .28); }
+
+/* 放大的图：盖住整个窗口，图按窗口大小铺开（小图也放大），底色跟纸面一样，深色下和正文里的图一样反色 */
+.figure-view { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 100px 32px 24px; background: rgba(10, 10, 10, .55); cursor: zoom-out; -webkit-app-region: no-drag; }
+/* 盖住了工具栏（窗口的拖动区）：整层不拖动，点哪里都能关；关闭按钮放在工具栏下面 */
+.figure-view img { max-width: none; background: #fff; border-radius: 8px; box-shadow: var(--shadow-float); }
+.paper-dark .figure-view img { filter: invert(.88) hue-rotate(180deg); }
+.figure-view-close { position: absolute; top: 60px; right: 16px; color: #fff; background: rgba(0, 0, 0, .35); }
+.figure-view-close:hover { background: rgba(0, 0, 0, .55); }
