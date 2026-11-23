@@ -3,14 +3,14 @@
     "name": "Flax",
     "slug": "flax",
     "scheme": "flax",
-    "version": "0.1.24",
+    "version": "0.1.25",
     "orientation": "default",
     "icon": "./assets/icon.png",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "android": {
       "package": "app.flax.mobile",
-      "versionCode": 1024,
+      "versionCode": 1025,
       "icon": "./assets/icon-ios.png",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon-fg.png",
@@ -20,7 +20,7 @@
     "ios": {
       "bundleIdentifier": "app.flax.mobile",
       "supportsTablet": true,
-      "buildNumber": "1024",
+      "buildNumber": "1025",
       "icon": "./assets/icon-ios.png"
     },
     "plugins": [
