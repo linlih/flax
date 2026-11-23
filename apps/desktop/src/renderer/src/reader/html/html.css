@@ -165,10 +165,14 @@
 ::highlight(fx-find-current) { background-color: rgba(255, 140, 0, .6); }
 ::highlight(fx-flash) { background-color: rgba(59, 130, 246, .28); }
 
-/* 放大的图：盖住整个窗口，图按窗口大小铺开（小图也放大），底色跟纸面一样，深色下和正文里的图一样反色 */
-.figure-view { position: fixed; inset: 0; z-index: 60; display: flex; align-items: center; justify-content: center; padding: 100px 32px 24px; background: rgba(10, 10, 10, .55); cursor: zoom-out; -webkit-app-region: no-drag; }
-/* 盖住了工具栏（窗口的拖动区）：整层不拖动，点哪里都能关；关闭按钮放在工具栏下面 */
-.figure-view img { max-width: none; background: #fff; border-radius: 8px; box-shadow: var(--shadow-float); }
-.paper-dark .figure-view img { filter: invert(.88) hue-rotate(180deg); }
-.figure-view-close { position: absolute; top: 60px; right: 16px; color: #fff; background: rgba(0, 0, 0, .35); }
-.figure-view-close:hover { background: rgba(0, 0, 0, .55); }
+/* 放大的图（FigureViewer）：盖住整个窗口，像"快速查看"。底几乎不透明，后面的页面和侧栏不再透出来；
+   图的底色跟纸面一样，深色下和正文里的图一样反色。盖住了工具栏（窗口的拖动区），所以整层不拖动 */
+.figure-view { position: fixed; inset: 0; z-index: 60; display: flex; flex-direction: column; padding: 52px 24px 20px; background: rgba(14, 14, 14, .9); backdrop-filter: blur(12px); -webkit-app-region: no-drag; }
+.figure-view-stage { position: relative; flex: 1; min-height: 0; overflow: hidden; }
+.figure-view-stage img { position: absolute; left: 50%; top: 50%; max-width: none; background: #fff; border-radius: 6px; box-shadow: 0 8px 40px rgba(0, 0, 0, .45); cursor: zoom-in; user-select: none; }
+.figure-view.zoomed .figure-view-stage img { cursor: grab; border-radius: 0; }
+.figure-view.dragging .figure-view-stage img { cursor: grabbing; }
+.paper-dark .figure-view-stage img { filter: invert(.88) hue-rotate(180deg); }
+.figure-view-cap { flex: none; width: 100%; max-width: 760px; margin: 14px auto 0; color: rgba(255, 255, 255, .82); font-size: 13px; line-height: 1.55; text-align: center; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; user-select: text; }
+.figure-view-close { position: absolute; top: 12px; right: 14px; color: rgba(255, 255, 255, .85); background: rgba(255, 255, 255, .1); }
+.figure-view-close:hover { color: #fff; background: rgba(255, 255, 255, .18); }

@@ -178,7 +178,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
   const [lastColor, setLastColor] = useState<HighlightColor>(() => (pref.get('color') as HighlightColor) ?? 'yellow')
   /** 右键菜单：在选中的文字上（bar），或者在已有的高亮上（anno） */
   /** 网页版里双击放大的图 */
-  const [figure, setFigure] = useState<{ src: string; alt: string } | null>(null)
+  const [figure, setFigure] = useState<{ src: string; alt: string; caption: string } | null>(null)
   const [ctx, setCtx] = useState<{ at: Spot; text: string; bar?: NonNullable<typeof selBar>; anno?: Annotation } | null>(null)
   const aiStatus = useAiStatus()
   /** 右键"翻译"弹出的译文卡片 */
@@ -644,7 +644,11 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
     const img = e.target instanceof HTMLImageElement && e.target.closest('.flax-html') ? e.target : null
     if (img) {
       window.getSelection()?.removeAllRanges()
-      setFigure({ src: img.currentSrc || img.src, alt: img.alt })
+      // 图注里的公式带着 TeX 原文（MathML 的 annotation），去掉，只留显示出来的字
+      const capEl = img.closest('figure')?.querySelector(':scope > figcaption')?.cloneNode(true) as Element | undefined
+      capEl?.querySelectorAll('annotation, annotation-xml').forEach((n) => n.remove())
+      const cap = capEl?.textContent?.replace(/\u2061/g, '') ?? ''
+      setFigure({ src: img.currentSrc || img.src, alt: img.alt, caption: cap.replace(/\s+/g, ' ').trim() })
       return
     }
     if (!aiStatus?.translate.ready) return
@@ -1251,7 +1255,7 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
 
   return (
     <div className={`reader paper-${dark ? 'dark' : 'light'}${focus ? ' focus' : ''}`}>
-      {figure && <FigureViewer src={figure.src} alt={figure.alt} onClose={() => setFigure(null)} />}
+      {figure && <FigureViewer src={figure.src} alt={figure.alt} caption={figure.caption} onClose={() => setFigure(null)} />}
       <header className="reader-bar drag">
         <button type="button" className="icon-btn reader-back no-drag" aria-label={`返回${backLabel}`} title={kbd(`返回${backLabel}（⌘[）`)} onClick={onBack}><Icon name="back" /></button>
         {!focus && <button type="button" className="icon-btn tool no-drag" aria-pressed={seeThumbs} aria-label="左边栏：页面、目录和批注" title={kbd(`${showThumbs ? '隐藏' : '显示'}左边栏：页面、目录和批注（⌥⌘S）`)} onClick={() => togglePref('thumbs', !showThumbs, setShowThumbs)}><Icon name="thumbs" /></button>}
