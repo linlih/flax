@@ -173,11 +173,20 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      # 标签的说明就是发布说明，也是应用里更新提示显示的内容
+      # 标签的说明就是发布说明，也是应用里更新提示显示的内容。
+      # 装好的 Flax 从标着 Latest 的版本检查更新，GitHub 默认把最后建的版本标成 Latest；
+      # 两个版本同时在打包时，旧的可能后打完，所以先不标，传完包后只有版本号最高的才标成 Latest
       - name: Release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          set -euo pipefail
           git fetch --force --tags
-          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Flax $GITHUB_REF_NAME" --notes-from-tag --verify-tag
+          gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1 || gh release create "$GITHUB_REF_NAME" --title "Flax $GITHUB_REF_NAME" --notes-from-tag --verify-tag --latest=false
           gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          newest=$(gh release list --exclude-drafts --exclude-pre-releases --limit 200 --json tagName -q '.[].tagName' | sort -V | tail -n 1)
+          if [ "$newest" = "$GITHUB_REF_NAME" ]; then
+            gh release edit "$GITHUB_REF_NAME" --latest
+          else
+            echo "$newest 比 $GITHUB_REF_NAME 新，Latest 留给它"
+          fi
