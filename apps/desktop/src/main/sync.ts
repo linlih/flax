@@ -2,7 +2,7 @@
 //
 // 什么时候同步：开启时、应用启动时、本机改了东西几秒后、每 5 分钟、窗口重新回到前台时。
 // 出错后按 1、2、4…分钟退避，最长 30 分钟；坚果云免费版对请求次数有限制，不能一直重试。
-// 设置存在资料文件夹的 sync/settings.json；WebDAV 密码和库密钥用系统钥匙串加密后存在 sync/secret.bin。
+// 设置存在资料文件夹的 sync/settings.json；WebDAV 密码和库密钥加密后存在 sync/secret.bin（macOS 用本机密钥，见 localCrypt.ts）。
 import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { join } from 'node:path'
@@ -29,6 +29,7 @@ import { sha256, type FileStore } from './store'
 import { folderBackend } from './syncFolder'
 import { nodeCodec } from './syncCodec'
 import { deviceName } from './device'
+import type { Crypt } from './localCrypt'
 
 export const JIANGUOYUN = 'https://dav.jianguoyun.com/dav/'
 
@@ -41,11 +42,7 @@ interface Secret {
   key?: string
 }
 
-export interface Crypt {
-  available(): boolean
-  encrypt(text: string): Buffer
-  decrypt(data: Buffer): string
-}
+export type { Crypt }
 
 export interface SyncDeps {
   dataDir: string
@@ -137,7 +134,15 @@ export class SyncService {
     this.locked = false
     let secret: Secret = {}
     try {
-      secret = JSON.parse(this.d.crypt.decrypt(readFileSync(join(this.dir, 'secret.bin')))) as Secret
+      const file = join(this.dir, 'secret.bin')
+      let data: Buffer = readFileSync(file)
+      // 旧格式（钥匙串加密）换成新格式写回去，以后不再问钥匙串
+      const fresh = this.d.crypt.refresh?.(data)
+      if (fresh) {
+        writeFileSync(file, fresh, { mode: 0o600 })
+        data = fresh
+      }
+      secret = JSON.parse(this.d.crypt.decrypt(data)) as Secret
     } catch {
       /* 没有或解不开：下面按出错处理 */
     }

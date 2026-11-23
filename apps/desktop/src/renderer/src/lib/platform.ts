@@ -8,7 +8,8 @@ export const isWindows = platform === 'win32'
 /** 系统里的叫法：访达 / 资源管理器，废纸篓 / 回收站 */
 export const FILES_APP = isMac ? '访达' : '资源管理器'
 export const TRASH = isMac ? '废纸篓' : '回收站'
-export const KEYCHAIN = isMac ? '系统钥匙串' : '系统的加密存储'
+// macOS 不用钥匙串（每次更新都要输密码），用存在本机的密钥加密，见 main/localCrypt.ts
+export const KEYCHAIN = isMac ? '本机密钥' : '系统的加密存储'
 
 /** 专注模式：macOS 跟系统全屏一样用 ⌃⌘F，其他平台用 Ctrl+Shift+F */
 export const FOCUS_KEY = isMac ? '⌃⌘F' : '⇧⌘F'

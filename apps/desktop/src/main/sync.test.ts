@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { Library, seal, type HttpFetch, type PaperMeta } from '@flax/core'
 import { nodeCodec, webdavServer } from '../../../../packages/core/src/sync/node.testutil'
 import type { SyncStatus } from '../shared/api'
+import { createLocalCrypt } from './localCrypt'
 import { NoteStore } from './notes'
 import { FileStore, sha256 } from './store'
 import { SyncService, type Crypt, type SyncDeps } from './sync'
@@ -172,6 +173,28 @@ describe('turning sync on', () => {
     expect(again.get()).toMatchObject({ state: 'idle', lastSync: expect.any(String) })
     await again.syncNow()
     expect(decrypt).toHaveBeenCalledTimes(1)
+  })
+
+  it('turns a keychain-encrypted sync password into the local-key format on first sync (macOS)', async () => {
+    const kc = keychain()
+    const a = device('a', { crypt: kc })
+    await a.svc.connect(folder, 'correct horse')
+    await settled(a.svc)
+    // 新版本：本机密钥，钥匙串只用来解开旧的 secret.bin
+    const legacy = vi.spyOn(kc, 'decrypt')
+    const local = createLocalCrypt(join(root, 'a-secret.key'), kc)
+    const again = device('a', { crypt: local }).reopen()
+    await again.syncNow()
+    expect(again.get()).toMatchObject({ state: 'idle', lastSync: expect.any(String) })
+    expect(legacy).toHaveBeenCalledTimes(1)
+    const secret = readFileSync(join(a.dataDir, 'sync', 'secret.bin'))
+    expect(secret.subarray(0, 4).toString()).toBe('FXK1')
+    expect(local.decrypt(secret)).toContain('"key"')
+    // 再启动不再碰钥匙串
+    const third = device('a', { crypt: createLocalCrypt(join(root, 'a-secret.key'), kc) }).reopen()
+    await third.syncNow()
+    expect(third.get()).toMatchObject({ state: 'idle' })
+    expect(legacy).toHaveBeenCalledTimes(1)
   })
 })
 

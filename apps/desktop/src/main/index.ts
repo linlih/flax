@@ -22,6 +22,7 @@ import { deviceName } from './device'
 import { createArxivHtml } from './arxivHtml'
 import { ConnectorService } from './connectorService'
 import { createSearch } from './search'
+import { createLocalCrypt, type Crypt } from './localCrypt'
 
 app.setName('Flax')
 
@@ -126,6 +127,20 @@ function overlay(): { color: string; symbolColor: string; height: number } {
  * 应用更新后第一次读会弹窗要电脑密码，所以只为了"能不能用"不去问：macOS 和 Windows 总是有，只有 Linux 要看有没有装密钥服务
  */
 const keychainAvailable = (): boolean => process.platform !== 'linux' || safeStorage.isEncryptionAvailable()
+
+let crypt: Crypt | null = null
+/** 加密 API Key 和同步密码。Windows、Linux 用系统的（safeStorage）；macOS 用存在本机的密钥，
+ *  不然每次更新都要输电脑密码（为什么见 localCrypt.ts），以前用钥匙串加密的读到时换过来 */
+function secrets(): Crypt {
+  if (crypt) return crypt
+  const keychain: Crypt = {
+    available: keychainAvailable,
+    encrypt: (t) => safeStorage.encryptString(t),
+    decrypt: (b) => safeStorage.decryptString(b)
+  }
+  crypt = process.platform === 'darwin' ? createLocalCrypt(join(app.getPath('userData'), 'secret.key'), keychain) : keychain
+  return crypt
+}
 
 function createWindow(): void {
   win = new BrowserWindow({
@@ -500,18 +515,14 @@ function setup(): void {
   notes.watch(notesChanged)
   app.on('before-quit', () => notes.close())
 
-  // —— 同步：设置和密钥存在资料文件夹的 sync/ 里，密钥用系统钥匙串加密 ——
+  // —— 同步：设置和密钥存在资料文件夹的 sync/ 里，密钥加密存（见 secrets()）——
   sync = new SyncService({
     dataDir,
     db,
     library,
     notes,
     files: store,
-    crypt: {
-      available: keychainAvailable,
-      encrypt: (t) => safeStorage.encryptString(t),
-      decrypt: (b) => safeStorage.decryptString(b)
-    },
+    crypt: secrets(),
     fetch: (url, init) => net.fetch(url, init as RequestInit),
     onStatus: (st) => send('sync:status', st),
     onReceived: () => {
@@ -591,7 +602,7 @@ function setup(): void {
     if (n) shell.showItemInFolder(join(notes.dir, `${n.note.title}.md`))
   })
 
-  // —— AI：Key 用系统钥匙串加密；请求走 Electron 的网络栈（跟随系统代理）——
+  // —— AI：Key 加密存（见 secrets()）；请求走 Electron 的网络栈（跟随系统代理）——
   const aiDir = join(dataDir, 'ai')
   // macOS 自带翻译的小助手：打包后放在 Resources/bin，开发时用 native/out 里编好的
   const apple = new AppleTranslator(app.isPackaged ? join(process.resourcesPath, 'bin', 'flax-translate') : join(app.getAppPath(), 'native', 'out', 'flax-translate'))
@@ -602,11 +613,7 @@ function setup(): void {
   const ai = new AiService({
     apple,
     conversations,
-    settings: new AiSettings(aiDir, {
-      available: keychainAvailable,
-      encrypt: (t) => safeStorage.encryptString(t),
-      decrypt: (b) => safeStorage.decryptString(b)
-    }),
+    settings: new AiSettings(aiDir, secrets()),
     emit: (e) => send('ai:event', e),
     onStatus: (st) => send('ai:status', st),
     fetch: (input, init) => net.fetch(input instanceof URL ? input.toString() : input, init)

@@ -281,7 +281,7 @@ function ServiceForm({ status, service, onDone, cancelable = true }: { status: A
           <input className="input" type="password" autoComplete="off" placeholder={`${vendor.name} 的 API Key`} value={key} onChange={(e) => setKey(e.target.value)} spellCheck={false} disabled={!status.canEncrypt} autoFocus={!!service} />
         ) : (
           <div className="key-row">
-            <span><Icon name="done" size={14} />已保存在{KEYCHAIN}</span>
+            <span><Icon name="done" size={14} />已加密保存</span>
             <button type="button" className="link" onClick={() => setChangeKey(true)}>更换</button>
           </div>
         )}
