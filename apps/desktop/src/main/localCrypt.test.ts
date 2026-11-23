@@ -30,7 +30,8 @@ describe('local secret key (macOS)', () => {
     expect(c.decrypt(sealed)).toBe('sk-test-123')
     expect(c.refresh!(sealed)).toBeNull()
     expect(kc.asked).toBe(0)
-    expect(statSync(join(dir, 'secret.key')).mode & 0o777).toBe(0o600)
+    // 只在 macOS 上用；Windows 没有这种权限位
+    if (process.platform !== 'win32') expect(statSync(join(dir, 'secret.key')).mode & 0o777).toBe(0o600)
     // 下次启动（新的对象）读同一把密钥
     expect(createLocalCrypt(join(dir, 'secret.key'), kc).decrypt(sealed)).toBe('sk-test-123')
     // 换了密钥（文件丢了）解不开，不会解出乱码
