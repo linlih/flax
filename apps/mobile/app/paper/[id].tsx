@@ -8,6 +8,7 @@ import { app, showNotice, useVersion } from '../../src/services'
 import { hasPdf } from '../../src/platform/files'
 import { copyText, removePaper, setStatus, shareTextFile } from '../../src/actions'
 import { Button, Chip, Empty, IconButton, Section } from '../../src/ui/kit'
+import { Icon } from '../../src/ui/Icon'
 import { ActionSheet, OptionRow, BottomSheet, Prompt } from '../../src/ui/sheets'
 import { SWATCH, TAG, useTheme } from '../../src/ui/theme'
 
@@ -32,6 +33,7 @@ export default function PaperScreen() {
   const [tagRename, setTagRename] = useState<string | null>(null)
   const [tagColor, setTagColor] = useState<string | null>(null)
   const [focusTitle, setFocusTitle] = useState(0)
+  const [folderPick, setFolderPick] = useState(false)
 
   const s = app()
   const paper = useMemo(() => s.library.getPaper(id), [id, v])
@@ -50,6 +52,7 @@ export default function PaperScreen() {
     )
   }
 
+  const mine = folders.filter((f) => paper.folderIds.includes(f.id))
   const update = (patch: PaperPatch) => {
     s.library.updatePaper(paper.id, patch)
     s.changed()
@@ -168,12 +171,12 @@ export default function PaperScreen() {
 
         <Section title="整理">
           <Text style={[styles.label, { color: t.sub }]}>文件夹</Text>
+          {/* 只列这篇所在的文件夹；"＋ 文件夹"打开能搜索、能新建的列表 */}
           <View style={styles.chipsIn}>
-            {folders.length === 0 ? <Text style={{ color: t.sub, fontSize: 14 }}>还没有文件夹。在文献库右上角"更多 → 文件夹"里新建。</Text> : null}
-            {folders.map((f) => {
-              const on = paper.folderIds.includes(f.id)
-              return <Chip key={f.id} label={f.name} selected={on} onPress={() => update({ folderIds: on ? paper.folderIds.filter((x) => x !== f.id) : [...paper.folderIds, f.id] })} />
-            })}
+            {mine.map((f) => (
+              <Chip key={f.id} label={f.name} onPress={() => setFolderPick(true)} />
+            ))}
+            <Chip label="＋ 文件夹" dashed onPress={() => setFolderPick(true)} />
           </View>
           <Text style={[styles.label, { color: t.sub }]}>标签</Text>
           <View style={styles.chipsIn}>
@@ -281,6 +284,13 @@ export default function PaperScreen() {
             }
           }
         ]}
+      />
+      <FolderPicker
+        open={folderPick}
+        onClose={() => setFolderPick(false)}
+        folders={folders}
+        selected={paper.folderIds}
+        onChange={(folderIds) => update({ folderIds })}
       />
       <ActionSheet open={cite} onClose={() => setCite(false)} title="复制引用" actions={STYLES.map(([style, name]) => ({ label: name, onPress: () => void copyText(formatCitation(paper, style), `已复制 ${name} 引用`) }))} />
       <ActionSheet
@@ -402,6 +412,61 @@ function MatchCard({ paper: p, busy, onManual }: { paper: Paper; busy: boolean; 
 }
 
 /** 一项可以改的信息：失去焦点或按完成时保存 */
+/** 把这篇放进或拿出文件夹：能搜索，输入一个没有的名字就新建一个并放进去 */
+function FolderPicker({ open, onClose, folders, selected, onChange }: { open: boolean; onClose: () => void; folders: { id: string; name: string }[]; selected: string[]; onChange: (ids: string[]) => void }) {
+  const t = useTheme()
+  const [q, setQ] = useState('')
+  useEffect(() => {
+    if (!open) setQ('')
+  }, [open])
+  const name = q.trim()
+  const lower = name.toLowerCase()
+  const shown = folders.filter((f) => f.name.toLowerCase().includes(lower))
+  // 大小写不同也算已经有了（RAG 和 rag），不再提议新建
+  const exact = folders.find((f) => f.name.toLowerCase() === lower)
+  const toggle = (id: string) => onChange(selected.includes(id) ? selected.filter((x) => x !== id) : [...selected, id])
+  const create = () => {
+    try {
+      const f = app().library.createFolder(name)
+      onChange([...selected, f.id])
+      setQ('')
+    } catch (e) {
+      showNotice(e instanceof Error ? e.message : String(e))
+    }
+  }
+  return (
+    <BottomSheet open={open} onClose={onClose} title="文件夹">
+      <TextInput
+        value={q}
+        onChangeText={setQ}
+        placeholder={folders.length ? '找文件夹，或输入新名字' : '新文件夹的名字'}
+        placeholderTextColor={t.placeholder}
+        accessibilityLabel={folders.length ? '找文件夹' : '新文件夹的名字'}
+        returnKeyType="done"
+        onSubmitEditing={() => (exact ? toggle(exact.id) : name ? create() : undefined)}
+        style={{ marginHorizontal: 20, marginBottom: 8, height: 48, fontSize: 16, color: t.text, borderBottomWidth: 2, borderBottomColor: t.accent }}
+      />
+      {shown.map((f) => {
+        const on = selected.includes(f.id)
+        return (
+          <Pressable key={f.id} accessibilityRole="checkbox" accessibilityState={{ checked: on }} onPress={() => toggle(f.id)} android_ripple={{ color: t.line }} style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20 }}>
+            <Icon name="folder" size={22} color={t.body} />
+            <Text style={{ flex: 1, color: t.text, fontSize: 16 }} numberOfLines={1}>{f.name}</Text>
+            {on ? <Icon name="done" size={20} color={t.accent} /> : null}
+          </Pressable>
+        )
+      })}
+      {name && !exact ? (
+        <Pressable accessibilityRole="button" onPress={create} android_ripple={{ color: t.line }} style={{ minHeight: 52, flexDirection: 'row', alignItems: 'center', gap: 14, paddingHorizontal: 20 }}>
+          <Icon name="plus" size={22} color={t.accentText} />
+          <Text style={{ flex: 1, color: t.accentText, fontSize: 16 }} numberOfLines={1}>新建文件夹"{name}"</Text>
+        </Pressable>
+      ) : null}
+      {!folders.length && !name ? <Text style={{ color: t.sub, fontSize: 14, paddingHorizontal: 20, paddingVertical: 8 }}>还没有文件夹。输入名字新建一个，这篇会放进去。</Text> : null}
+    </BottomSheet>
+  )
+}
+
 function EditField({ label, value, placeholder, multiline, numeric, mono, focusKey, onCommit }: { label: string; value: string; placeholder?: string; multiline?: boolean; numeric?: boolean; mono?: boolean; focusKey?: number; onCommit: (v: string) => void }) {
   const t = useTheme()
   const [v, setV] = useState(value)
