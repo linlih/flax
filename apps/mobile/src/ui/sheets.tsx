@@ -41,15 +41,27 @@ export interface MenuAction {
   /** 打勾（单选的一组里当前那个） */
   checked?: boolean
   disabled?: boolean
+  /** 点了打开下一层（右边画个箭头） */
+  submenu?: boolean
+  /** 右边灰色的小字（子菜单当前选的那项） */
+  value?: string
 }
 
+/** 菜单里分组的分隔线 */
+export const DIVIDER = '-' as const
+
 /** 长按、"更多"弹出的操作菜单 */
-export function ActionSheet({ open, onClose, title, sub, actions }: { open: boolean; onClose: () => void; title?: string; sub?: string; actions: (MenuAction | null | false)[] }) {
+export function ActionSheet({ open, onClose, title, sub, actions }: { open: boolean; onClose: () => void; title?: string; sub?: string; actions: (MenuAction | typeof DIVIDER | null | false)[] }) {
   const t = useTheme()
+  // 开头、结尾、连着的分隔线不画
+  const list = actions.filter((a): a is MenuAction | typeof DIVIDER => !!a).filter((a, i, all) => a !== DIVIDER || (i > 0 && i < all.length - 1 && all[i - 1] !== DIVIDER))
   return (
     <BottomSheet open={open} onClose={onClose} title={title}>
       {sub ? <Text style={{ color: t.sub, fontSize: 14, paddingHorizontal: 20, paddingBottom: 8 }}>{sub}</Text> : null}
-      {actions.filter((a): a is MenuAction => !!a).map((a) => (
+      {list.map((a, i) =>
+        a === DIVIDER ? (
+          <View key={`d${i}`} style={{ height: 1, backgroundColor: t.line, marginVertical: 6, marginHorizontal: 20 }} />
+        ) : (
         <Pressable
           key={a.label}
           accessibilityRole="button"
@@ -64,9 +76,12 @@ export function ActionSheet({ open, onClose, title, sub, actions }: { open: bool
         >
           {a.icon ? <Icon name={a.icon} size={22} color={a.danger ? t.danger : t.body} /> : null}
           <Text style={{ flex: 1, color: a.danger ? t.danger : t.text, fontSize: 16 }}>{a.label}</Text>
+          {a.value ? <Text style={{ color: t.sub, fontSize: 15 }}>{a.value}</Text> : null}
           {a.checked ? <Icon name="done" size={20} color={t.accent} /> : null}
+          {a.submenu ? <Icon name="chevron" size={18} color={t.sub} /> : null}
         </Pressable>
-      ))}
+        )
+      )}
     </BottomSheet>
   )
 }

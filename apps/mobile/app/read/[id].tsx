@@ -4,7 +4,7 @@
 // 有 arXiv 编号的论文默认看网页版（arXiv HTML，手机上排版好读）：批注仍按 PDF 存，网页里换算位置；
 // 没有网页版、没联网、版本对不上就自动显示 PDF。更多菜单里可以来回切换（WebView 重新打开）。
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { BackHandler, Linking, Pressable, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native'
+import { BackHandler, Linking, PanResponder, Pressable, StyleSheet, Text, TextInput, useColorScheme, View } from 'react-native'
 import { router, useLocalSearchParams } from 'expo-router'
 import { WebView, type WebViewMessageEvent, type WebViewProps } from 'react-native-webview'
 import { useSafeAreaInsets } from 'react-native-safe-area-context'
@@ -57,6 +57,8 @@ const HTML_FAIL: Record<string, string> = {
 }
 /** 顶栏的高度：网页版跳转时留出来 */
 const TOP_BAR = 56
+/** 底栏的高度（不算底部安全区）：上面浮着的按钮、提示条让开它 */
+const BOTTOM_BAR = 56
 
 interface FindState {
   current: number
@@ -96,6 +98,12 @@ export default function ReadScreen() {
   const [listFilter, setListFilter] = useState<ListFilter>('all')
   const [annoMenu, setAnnoMenu] = useState<Annotation | null>(null)
   const [menu, setMenu] = useState(false)
+  /** 底栏的"Aa"面板：字号、页面深色、网页版 / PDF */
+  const [look, setLook] = useState(false)
+  /** 选中文字后"…"里的操作 */
+  const [selMore, setSelMore] = useState(false)
+  /** 拖进度条跳页：记下的"回去"不算跳去看参考文献，接着记读到哪 */
+  const sliderJump = useRef(false)
   const [jumping, setJumping] = useState(false)
   const [finding, setFinding] = useState(false)
   const [query, setQuery] = useState('')
@@ -210,7 +218,8 @@ export default function ReadScreen() {
         setMissing(new Set((m['ids'] as string[]) ?? []))
         break
       case 'canBack':
-        away.current = !!m['on']
+        if (!m['on']) sliderJump.current = false
+        away.current = !!m['on'] && !sliderJump.current
         setCanBack(!!m['on'])
         break
       case 'loaded': {
@@ -291,7 +300,10 @@ export default function ReadScreen() {
         if (active) {
           setActive(null)
           pushAnnotations(null)
-        } else setChrome((c) => !c)
+        } else {
+          setChrome((c) => !c)
+          setLook(false)
+        }
         break
       case 'find':
         setFound({ current: Number(m['current']), total: Number(m['total']), pending: !!m['pending'], ...(m['notFound'] ? { notFound: true } : {}) })
@@ -436,19 +448,62 @@ export default function ReadScreen() {
                 ) : null}
               </Pressable>
               <IconButton icon="search" label="查找" onPress={() => setFinding(true)} />
-              <IconButton icon="ai" label="问 AI" onPress={() => setAsking('')} />
               <IconButton icon="more" label="更多" onPress={() => setMenu(true)} />
             </>
           )}
         </View>
       ) : null}
+      {/* 底栏：和顶栏一起出现、一起收起；常用的都在下半屏，单手够得到（微信读书、Apple Books 都这样） */}
+      {chrome && !finding && !selected && !active ? (
+        <View style={[styles.bottom, { paddingBottom: insets.bottom + 4, backgroundColor: t.bg, borderTopColor: t.line }]}>
+          {look ? (
+            <LookPanel
+              html={inHtml}
+              dark={dark}
+              canSwitch={!!arxiv && !!shown}
+              onZoom={(dir) => send({ type: 'zoom', dir })}
+              onDark={() => {
+                setDark(!dark)
+                setPageDark(!dark)
+                send({ type: 'dark', on: !dark })
+              }}
+              onMode={(m) => {
+                setLook(false)
+                if (m !== shown) switchTo(m)
+              }}
+            />
+          ) : null}
+          <View style={styles.bottomRow}>
+            <IconButton icon="list" label="批注列表" onPress={() => setList(true)} />
+            {page && page.total > 1 ? (
+              <PageSlider
+                page={page.page}
+                total={page.total}
+                onJump={(pg) => {
+                  if (pg === page.page) return
+                  sliderJump.current = true
+                  send({ type: 'mark' })
+                  send({ type: 'goto', page: pg })
+                }}
+              />
+            ) : (
+              <View style={{ flex: 1 }} />
+            )}
+            <Pressable accessibilityRole="button" accessibilityLabel="字号和显示" accessibilityState={{ expanded: look }} onPress={() => setLook((x) => !x)} style={[styles.aa, look ? { backgroundColor: t.container } : null]}>
+              <Text style={{ color: look ? t.onContainer : t.text, fontSize: 17, fontWeight: '600' }}>Aa</Text>
+            </Pressable>
+            <IconButton icon="ai" label="问 AI" onPress={() => setAsking('')} />
+          </View>
+        </View>
+      ) : null}
+
       {/* 点了引用、参考文献跳走以后：一键回到正文读到的地方（自己滚回去了就不显示） */}
       {canBack && !selected && !active && !lookup ? (
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="回到刚才读的地方"
           onPress={() => send({ type: 'back' })}
-          style={[styles.back, { bottom: insets.bottom + 20, backgroundColor: t.container }]}
+          style={[styles.back, { bottom: insets.bottom + (chrome && !finding ? BOTTOM_BAR + 12 : 20), backgroundColor: t.container }]}
           android_ripple={{ color: '#00000018', borderless: false }}
         >
           <Icon name="back" size={18} color={t.onContainer} />
@@ -456,7 +511,7 @@ export default function ReadScreen() {
         </Pressable>
       ) : null}
       {elsewhere || atEnd ? (
-        <View style={[styles.banner, { bottom: insets.bottom + 60, backgroundColor: t.dark ? '#E6E6E6' : '#2B2B2E' }]}>
+        <View style={[styles.banner, { bottom: insets.bottom + (chrome && !finding ? BOTTOM_BAR + 60 : 60), backgroundColor: t.dark ? '#E6E6E6' : '#2B2B2E' }]}>
           <Text style={{ color: t.dark ? '#111' : '#fff', fontSize: 14, flex: 1 }}>{elsewhere ? `在 ${elsewhere.device} 上读到第 ${elsewhere.page} 页` : '读到最后了'}</Text>
           <Text
             accessibilityRole="button"
@@ -505,39 +560,46 @@ export default function ReadScreen() {
           </View>
         </Sheet>
       ) : null}
+      {/* 选中文字：一条浮在底部的操作条（颜色点一下就高亮），不常用的收进"…"（微信读书、PDF Expert 都是一小条） */}
       {selection ? (
-        <Sheet bottom={insets.bottom}>
-          <View style={styles.swatches}>
-            {COLORS.map((c) => (
-              <Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`${c.label}高亮`} onPress={() => addFromSelection(c.id)} style={styles.swatchBtn}>
-                <View style={[styles.swatch, { backgroundColor: SWATCH[c.id] }]} />
-              </Pressable>
-            ))}
-            <Pressable accessibilityRole="button" accessibilityLabel="下划线" onPress={() => addFromSelection('blue', 'underline')} style={styles.swatchBtn}>
-              <Text style={{ color: t.text, fontSize: 20, textDecorationLine: 'underline', fontWeight: '600' }}>U</Text>
+        <View style={[styles.selBar, { bottom: insets.bottom + 12, backgroundColor: t.bg, borderColor: t.line }]}>
+          {COLORS.map((c) => (
+            <Pressable key={c.id} accessibilityRole="button" accessibilityLabel={`${c.label}高亮`} onPress={() => addFromSelection(c.id)} style={styles.selDot}>
+              <View style={[styles.swatchSmall, { backgroundColor: SWATCH[c.id] }]} />
             </Pressable>
-          </View>
-          <View style={styles.actions}>
-            <Action label="摘录" onPress={() => toNote(addFromSelection('yellow'))} />
-            <Action label="评论" onPress={() => setComment({ parts: selection })} />
-            <Action
-              label="翻译"
-              onPress={() => {
-                setTranslating(selText)
-                clearSelection()
-              }}
-            />
-            <Action
-              label="问 AI"
-              onPress={() => {
-                setAsking(selText)
-                clearSelection()
-              }}
-            />
-            <Action label="复制" onPress={() => copy(selText)} />
-          </View>
-        </Sheet>
+          ))}
+          <View style={{ width: StyleSheet.hairlineWidth, height: 28, backgroundColor: t.line, marginHorizontal: 2 }} />
+          <IconButton icon="comment" label="评论" onPress={() => setComment({ parts: selection })} size={21} />
+          <IconButton
+            icon="translate"
+            label="翻译"
+            size={21}
+            onPress={() => {
+              setTranslating(selText)
+              clearSelection()
+            }}
+          />
+          <IconButton
+            icon="ai"
+            label="问 AI"
+            size={21}
+            onPress={() => {
+              setAsking(selText)
+              clearSelection()
+            }}
+          />
+          <IconButton icon="more" label="更多操作" onPress={() => setSelMore(true)} size={21} />
+        </View>
       ) : null}
+      <ActionSheet
+        open={selMore && !!selection}
+        onClose={() => setSelMore(false)}
+        actions={[
+          { label: '复制', icon: 'copy', onPress: () => copy(selText) },
+          { label: '摘录到笔记（黄色高亮）', icon: 'notes', onPress: () => toNote(addFromSelection('yellow')) },
+          { label: '下划线', icon: 'underline', onPress: () => addFromSelection('blue', 'underline') }
+        ]}
+      />
 
       {active ? (
         <Sheet bottom={insets.bottom}>
@@ -616,22 +678,6 @@ export default function ReadScreen() {
         open={menu}
         onClose={() => setMenu(false)}
         actions={[
-          { label: '跳到第几页', icon: 'page', onPress: () => setJumping(true) },
-          { label: '批注列表', icon: 'list', onPress: () => setList(true) },
-          ...(arxiv && shown ? [inHtml ? { label: '看 PDF 原版', icon: 'file' as const, onPress: () => switchTo('pdf') } : { label: '看网页版', icon: 'paper' as const, onPress: () => switchTo('html') }] : []),
-          { label: inHtml ? '字大一点' : '放大', icon: 'plus', onPress: () => send({ type: 'zoom', dir: 1 }) },
-          { label: inHtml ? '字小一点' : '缩小', icon: 'minus', onPress: () => send({ type: 'zoom', dir: -1 }) },
-          { label: inHtml ? '默认字号' : '适合宽度', icon: 'fit', onPress: () => send({ type: 'zoom', dir: 0 }) },
-          {
-            label: '页面深色显示',
-            icon: 'moon',
-            checked: dark,
-            onPress: () => {
-              setDark(!dark)
-              setPageDark(!dark)
-              send({ type: 'dark', on: !dark })
-            }
-          },
           {
             label: '这篇的笔记',
             icon: 'notes',
@@ -641,7 +687,8 @@ export default function ReadScreen() {
               router.push(`/note/${encodeURIComponent(n.id)}`)
             }
           },
-          { label: '论文详情', icon: 'info', onPress: () => router.push(`/paper/${paper.id}`) }
+          { label: '论文详情', icon: 'info', onPress: () => router.push(`/paper/${paper.id}`) },
+          { label: '跳到第几页', icon: 'page', onPress: () => setJumping(true) }
         ]}
       />
 
@@ -756,6 +803,87 @@ function JumpSheet({ open, total, current, annotated, onClose, onJump }: { open:
   )
 }
 
+/** 进度条：拖动时上面显示第几页，松手跳过去（跳之前记下读到的地方，能回来）；点一下也跳 */
+function PageSlider({ page, total, onJump }: { page: number; total: number; onJump: (page: number) => void }) {
+  const t = useTheme()
+  const [w, setW] = useState(0)
+  const [drag, setDrag] = useState<number | null>(null)
+  const geo = useRef({ w: 0, x0: 0 })
+  geo.current.w = w
+  const at = (x: number) => Math.min(total, Math.max(1, Math.round((x / Math.max(1, geo.current.w)) * (total - 1)) + 1))
+  const cb = useRef(onJump)
+  cb.current = onJump
+  const pan = useMemo(
+    () =>
+      PanResponder.create({
+        onStartShouldSetPanResponder: () => true,
+        onPanResponderTerminationRequest: () => false,
+        onPanResponderGrant: (e) => {
+          geo.current.x0 = e.nativeEvent.locationX
+          setDrag(at(geo.current.x0))
+        },
+        onPanResponderMove: (_, g) => setDrag(at(geo.current.x0 + g.dx)),
+        onPanResponderRelease: (_, g) => {
+          cb.current(at(geo.current.x0 + g.dx))
+          setDrag(null)
+        },
+        onPanResponderTerminate: () => setDrag(null)
+      }),
+    [total]
+  )
+  const shownPage = drag ?? page
+  const frac = total > 1 ? (shownPage - 1) / (total - 1) : 0
+  return (
+    <View
+      accessible
+      accessibilityRole="adjustable"
+      accessibilityLabel="阅读进度"
+      accessibilityValue={{ min: 1, max: total, now: page, text: `第 ${page} 页，共 ${total} 页` }}
+      onAccessibilityAction={(e) => onJump(Math.min(total, Math.max(1, page + (e.nativeEvent.actionName === 'increment' ? 1 : -1))))}
+      accessibilityActions={[{ name: 'increment' }, { name: 'decrement' }]}
+      style={{ flex: 1, height: 48, justifyContent: 'center', marginHorizontal: 8 }}
+    >
+      {drag !== null ? (
+        <View pointerEvents="none" style={[styles.bubble, { left: Math.max(0, Math.min(w - 96, frac * w - 48)), backgroundColor: t.dark ? '#E6E6E6' : '#2B2B2E' }]}>
+          <Text style={{ color: t.dark ? '#111' : '#fff', fontSize: 14, fontWeight: '600' }}>
+            第 {drag} / {total} 页
+          </Text>
+        </View>
+      ) : null}
+      <View {...pan.panHandlers} onLayout={(e) => setW(e.nativeEvent.layout.width)} style={{ height: 48, justifyContent: 'center' }}>
+        <View pointerEvents="none" style={{ height: 4, borderRadius: 2, backgroundColor: t.desk }}>
+          <View style={{ width: `${frac * 100}%`, height: 4, borderRadius: 2, backgroundColor: t.accent }} />
+        </View>
+        <View pointerEvents="none" style={[styles.thumb, { marginTop: drag !== null ? -10 : -8, left: frac * w - (drag !== null ? 10 : 8), width: drag !== null ? 20 : 16, height: drag !== null ? 20 : 16, borderRadius: 10, backgroundColor: t.accent }]} />
+      </View>
+    </View>
+  )
+}
+
+/** "Aa"面板：浮在底栏上面，改了马上能在页面上看到 */
+function LookPanel({ html, dark, canSwitch, onZoom, onDark, onMode }: { html: boolean; dark: boolean; canSwitch: boolean; onZoom: (dir: 1 | -1 | 0) => void; onDark: () => void; onMode: (m: 'html' | 'pdf') => void }) {
+  const t = useTheme()
+  const seg = (label: string, on: boolean, onPress: () => void, a11y?: string) => (
+    <Pressable key={label} accessibilityRole="button" accessibilityLabel={a11y ?? label} accessibilityState={{ selected: on }} onPress={onPress} android_ripple={{ color: t.line }} style={[styles.seg, { backgroundColor: on ? t.container : t.surface }]}>
+      <Text style={{ color: on ? t.onContainer : t.text, fontSize: 15, fontWeight: on ? '600' : '500' }}>{label}</Text>
+    </Pressable>
+  )
+  return (
+    <View style={{ paddingHorizontal: 12, paddingTop: 12, paddingBottom: 4, gap: 10, borderBottomWidth: StyleSheet.hairlineWidth, borderBottomColor: t.line }}>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {seg(html ? 'A−' : '缩小', false, () => onZoom(-1), html ? '字小一点' : '缩小')}
+        {seg(html ? '默认字号' : '适合宽度', false, () => onZoom(0))}
+        {seg(html ? 'A+' : '放大', false, () => onZoom(1), html ? '字大一点' : '放大')}
+      </View>
+      <View style={{ flexDirection: 'row', gap: 8 }}>
+        {seg('页面深色', dark, onDark)}
+        {canSwitch ? seg('网页版', html, () => onMode('html'), '看网页版') : null}
+        {canSwitch ? seg('PDF 原版', !html, () => onMode('pdf'), '看 PDF 原版') : null}
+      </View>
+    </View>
+  )
+}
+
 function Sheet({ children, bottom }: { children: React.ReactNode; bottom: number }) {
   const t = useTheme()
   return <View style={[styles.sheet, { backgroundColor: t.bg, paddingBottom: bottom + 16 }]}>{children}</View>
@@ -771,10 +899,19 @@ function Action({ label, onPress, danger }: { label: string; onPress: () => void
 }
 
 const styles = StyleSheet.create({
+  bottom: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopWidth: StyleSheet.hairlineWidth, elevation: 2 },
+  bottomRow: { height: BOTTOM_BAR, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4 },
+  aa: { width: 48, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
+  seg: { flex: 1, height: 44, borderRadius: 12, alignItems: 'center', justifyContent: 'center', overflow: 'hidden' },
+  thumb: { position: 'absolute', top: '50%' },
+  bubble: { position: 'absolute', bottom: 46, width: 96, height: 32, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
   top: { position: 'absolute', left: 0, right: 0, top: 0, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 4, minHeight: 56, borderBottomWidth: StyleSheet.hairlineWidth, elevation: 2 },
   banner: { position: 'absolute', left: 12, right: 12, minHeight: 48, borderRadius: 8, paddingLeft: 16, paddingRight: 8, flexDirection: 'row', alignItems: 'center', elevation: 6 },
   back: { position: 'absolute', alignSelf: 'center', height: 40, paddingHorizontal: 16, borderRadius: 20, flexDirection: 'row', alignItems: 'center', gap: 6, elevation: 3, shadowColor: '#000', shadowOpacity: 0.12, shadowRadius: 6, shadowOffset: { width: 0, height: 2 } },
   sheet: { position: 'absolute', left: 0, right: 0, bottom: 0, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingHorizontal: 12, paddingTop: 16, gap: 10, elevation: 12 },
+  selBar: { position: 'absolute', left: 8, right: 8, height: 56, borderRadius: 18, borderWidth: StyleSheet.hairlineWidth, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 4, elevation: 8, shadowColor: '#000', shadowOpacity: 0.15, shadowRadius: 10, shadowOffset: { width: 0, height: 3 } },
+  selDot: { width: 34, height: 48, alignItems: 'center', justifyContent: 'center' },
+  swatchSmall: { width: 22, height: 22, borderRadius: 11 },
   swatches: { flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 4 },
   swatchBtn: { width: 48, height: 48, alignItems: 'center', justifyContent: 'center' },
   swatch: { width: 28, height: 28, borderRadius: 14 },

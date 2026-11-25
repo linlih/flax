@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DatabaseSync } from 'node:sqlite'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
-import { Library, type FetchText } from '@flax/core'
+import { Library, typedText, type FetchText } from '@flax/core'
 import type { ImportNotice } from '../shared/api'
 import { Importer } from './importer'
 import type { FetchBytes } from './net'
@@ -208,6 +208,12 @@ describe('Importer', () => {
     expect(await importer.addFromText('see https://arxiv.org/abs/2101.01234')).toBe(true)
     expect(lib.listPapers()[0]).toMatchObject({ title: 'Sparse Mixtures for Long Documents' })
     expect(await importer.addFromText('no id here')).toBe(false)
+  })
+
+  it('reads a link typed with a Chinese keyboard (。 for ., full-width : and /)', async () => {
+    expect(await importer.addFromText('arxiv。org／abs／2101。01234')).toBe(true)
+    expect(lib.listPapers()[0]).toMatchObject({ title: 'Sparse Mixtures for Long Documents' })
+    expect(typedText('https：//arxiv。org/abs/2101。01234。')).toBe('https://arxiv.org/abs/2101.01234。')
   })
 
   it('downloads and imports a pasted link to a PDF on any site', async () => {

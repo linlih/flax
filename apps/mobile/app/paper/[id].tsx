@@ -5,6 +5,7 @@ import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, TextInput, 
 import { router, Stack, useLocalSearchParams } from 'expo-router'
 import { addedLabel, authorLine, formatCitation, MATCH_HINT, progress, sizeLabel, SOURCE_LABEL, splitName, STATUS_LABEL, STATUSES, suggestFileName, TAG_COLOR_LABEL, TAG_COLORS, tagColorMap, toBibTeX, toRIS, type Author, type Candidate, type CiteStyle, type Paper, type PaperMeta, type PaperPatch, type TagColor } from '@flax/core'
 import { app, showNotice, useVersion } from '../../src/services'
+import { openPaper } from '../../src/openPaper'
 import { hasPdf } from '../../src/platform/files'
 import { copyText, removePaper, setStatus, shareTextFile } from '../../src/actions'
 import { Button, Chip, Empty, IconButton, Section } from '../../src/ui/kit'
@@ -67,25 +68,12 @@ export default function PaperScreen() {
   const pr = progress(paper)
 
   const open = async () => {
-    if (!main) {
-      if (s.importer.startDownload(paper.id)) showNotice('正在从 arXiv 下载 PDF')
-      else showNotice('这篇论文没有 PDF。可以从"添加"里选一个 PDF，名字或 DOI 对得上会自动配给它。')
-      s.changed()
-      return
+    setBusy(true)
+    try {
+      await openPaper(paper, 'details')
+    } finally {
+      setBusy(false)
     }
-    if (!local) {
-      if (!s.sync.enabled) return showNotice('PDF 不在这台手机上。开启同步后可以从云端下载。')
-      setBusy(true)
-      try {
-        const ok = await s.sync.download(main.hash)
-        if (!ok) return showNotice('云端也没有这个 PDF：可能那台电脑还没传上去。')
-      } catch (e) {
-        return showNotice(`下载失败：${e instanceof Error ? e.message : String(e)}`)
-      } finally {
-        setBusy(false)
-      }
-    }
-    router.push(`/read/${paper.id}`)
   }
 
   const readLabel = !main ? (paper.identifiers.arxiv ? (downloading ? '正在下载 PDF…' : '从 arXiv 下载 PDF') : '没有 PDF') : !local ? `下载 PDF 并打开${main.size ? `（${sizeLabel(main.size)}）` : ''}` : page ? `接着读 · 第 ${page} 页` : '开始读'

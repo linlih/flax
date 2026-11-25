@@ -80,6 +80,14 @@ export function baseName(path: string): string {
 }
 
 /** 文字里的第一个 http(s) 链接 */
+/**
+ * 用中文输入法打的链接、编号："." 会变成 "。"，冒号、斜杠也可能是全角的。
+ * 全角字符换成半角；夹在字母数字中间的句号当作点（句末的"。"不动，链接末尾的标点另外去掉）
+ */
+export function typedText(text: string): string {
+  return text.normalize('NFKC').replace(/(?<=[A-Za-z0-9])。(?=[A-Za-z0-9])/g, '.')
+}
+
 export function urlIn(text: string): string | null {
   const m = /https?:\/\/[^\s<>"'）】]+/i.exec(text)
   if (!m) return null
@@ -400,7 +408,8 @@ export class Importer {
    * 粘贴 DOI、arXiv 链接或书的 ISBN：建一条没有 PDF 的记录。
    * 都没有但贴的是链接：当作 PDF 下载下来导入。什么都没认出来返回 false
    */
-  async addFromText(text: string): Promise<boolean> {
+  async addFromText(typed: string): Promise<boolean> {
+    const text = typedText(typed)
     const ids = idsInText(text)
     if (!ids.arxiv && !ids.doi && !ids.isbn) {
       const url = urlIn(text)

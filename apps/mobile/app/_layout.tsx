@@ -48,7 +48,8 @@ export default function Layout() {
           }}
         >
           <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-          <Stack.Screen name="read/[id]" options={{ headerShown: false, animation: 'fade' }} />
+          {/* 淡入时 iOS 默认整屏都能右滑返回：阅读器里横着拖进度条、横移页面会被当成返回，只留屏幕左边缘的返回手势 */}
+          <Stack.Screen name="read/[id]" options={{ headerShown: false, animation: 'fade', fullScreenGestureEnabled: false }} />
         </Stack>
         <Snackbar />
         <PdfFactsHost />

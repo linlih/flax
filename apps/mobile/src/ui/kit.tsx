@@ -88,23 +88,6 @@ export function Chip({ label, onPress, selected, dashed, color, onLongPress }: {
   )
 }
 
-/** 顶部的分段标签（在读 / 待读 / 全部） */
-export function Tabs<K extends string>({ tabs, value, onChange }: { tabs: { key: K; label: string }[]; value: K; onChange: (k: K) => void }) {
-  const t = useTheme()
-  return (
-    <View accessibilityRole="tablist" style={[styles.tabs, { borderColor: t.line }]}>
-      {tabs.map((tab) => {
-        const on = tab.key === value
-        return (
-          <Pressable key={tab.key} accessibilityRole="tab" accessibilityState={{ selected: on }} onPress={() => onChange(tab.key)} style={[styles.tab, on ? { borderBottomColor: t.accent } : null]}>
-            <Text style={{ color: on ? t.accentText : t.body, fontWeight: on ? '600' : '400', fontSize: 15 }}>{tab.label}</Text>
-          </Pressable>
-        )
-      })}
-    </View>
-  )
-}
-
 export function Row({ title, sub, onPress, right, danger }: { title: string; sub?: string; onPress?: () => void; right?: ReactNode; danger?: boolean }) {
   const t = useTheme()
   return (
@@ -190,8 +173,6 @@ const styles = StyleSheet.create({
   hint: { fontSize: 12, paddingHorizontal: 16, lineHeight: 17 },
   chip: { height: 32, paddingHorizontal: 12, borderRadius: 8, borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 6 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  tabs: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth },
-  tab: { flex: 1, height: 48, alignItems: 'center', justifyContent: 'center', borderBottomWidth: 3, borderBottomColor: 'transparent' },
   row: { minHeight: 56, paddingHorizontal: 16, paddingVertical: 10, flexDirection: 'row', alignItems: 'center', gap: 12 },
   sectionHead: { minHeight: 48, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 },
   empty: { padding: 32, gap: 8, alignItems: 'center' },

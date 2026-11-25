@@ -223,6 +223,14 @@ export class HtmlView {
     return el.getBoundingClientRect().top - this.o.scroller.getBoundingClientRect().top
   }
 
+  /** 记下现在读到的地方（拖进度条跳页之前），之后可以 back() 回来；已经记着一处就不换 */
+  markOrigin(): void {
+    const from = this.firstVisible()
+    if (!from || this.origin) return
+    this.origin = { el: from.el, dy: this.offsetOf(from.el) }
+    this.o.onJump?.(true)
+  }
+
   /** 回到点链接之前读的地方；没有可回的返回 false */
   back(): boolean {
     const o = this.origin

@@ -24,6 +24,7 @@ export interface HtmlMode {
   find(query: string | null, again?: boolean, previous?: boolean): void
   zoom(dir: 1 | -1 | 0): void
   back(): void
+  mark(): void
 }
 
 let waiting: ((r: HtmlReply) => void) | null = null
@@ -180,6 +181,9 @@ export async function startHtml(o: {
     },
     back() {
       view.back()
+    },
+    mark() {
+      view.markOrigin()
     }
   }
 }

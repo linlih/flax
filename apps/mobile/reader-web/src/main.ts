@@ -6,6 +6,7 @@
 //   { type: 'html', ok, base?, reason?, message? }             回复 needHtml：网页版存在哪个文件夹（file://）
 //   { type: 'annotations', annotations, active }               批注变了
 //   { type: 'goto', page, anno? }                              跳到某页 / 某条批注
+//   { type: 'mark' }                                          记下现在读到的地方（拖进度条跳页前），之后能 back 回来
 //   { type: 'goto', page, quote }                             跳到某页并找到那句话（AI 回答里的引用）
 //   { type: 'clearSelection' }
 //   { type: 'find', query, again?, previous? } / { type: 'closeFind' }  在文中查找
@@ -43,6 +44,7 @@ type Msg =
   | { type: 'clearSelection' }
   | { type: 'clearLookup' }
   | { type: 'back' }
+  | { type: 'mark' }
   | { type: 'find'; query: string; again?: boolean; previous?: boolean }
   | { type: 'closeFind' }
   | { type: 'zoom'; dir: 1 | -1 | 0 }
@@ -66,6 +68,7 @@ let find: (m: Extract<Msg, { type: 'find' }> | null) => void = () => {}
 let zoom: (dir: 1 | -1 | 0) => void = () => {}
 /** 回到点论文内部链接（引用、参考文献）之前读的地方 */
 let back: () => void = () => {}
+let mark: () => void = () => {}
 
 const docOptions = (url: string) => ({
   url,
@@ -117,6 +120,7 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
       find = (f) => r.find(f ? f.query : null, f?.again, f?.previous)
       zoom = r.zoom
       back = r.back
+      mark = r.mark
       return
     }
     post({ type: 'htmlFailed', reason: r.fail, ...(r.message ? { message: r.message } : {}) })
@@ -161,6 +165,11 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
     if (!origin) return
     origin = null
     post({ type: 'canBack', on: false })
+  }
+  mark = () => {
+    if (origin) return
+    origin = { top: container.scrollTop, left: container.scrollLeft, scale: viewer.currentScale }
+    post({ type: 'canBack', on: true })
   }
   back = () => {
     const o = origin
@@ -379,6 +388,9 @@ async function open(m: Extract<Msg, { type: 'open' }>) {
         break
       case 'back':
         back()
+        break
+      case 'mark':
+        mark()
         break
       case 'clearLookup':
         markLookup(null)
