@@ -24,7 +24,7 @@ function cache(): HtmlFiles & { data: Map<string, string | Uint8Array> } {
 /** 一篇论文、一个按哈希存文件的地方（哈希用内容本身，测试里够用） */
 function setup(get: HtmlGet, extra: Partial<WebCopyDeps> = {}) {
   const library = new Library(new DatabaseSync(':memory:'))
-  const paper = library.addPaper({ title: 'Mistral 7B', authors: [], identifiers: { arxiv: '2310.06825' }, metadataSource: 'arxiv' })
+  const paper = library.addPaper({ title: 'Mistral 7B', authors: [], identifiers: { arxiv: '2310.06825' }, source: 'arxiv' })
   const stored = new Map<string, Uint8Array>()
   const store = { has: (h: string) => stored.has(h), put: async (b: Uint8Array) => (stored.set(`h${stored.size + 1}`, b), `h${stored.size}`) }
   const files = cache()
