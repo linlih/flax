@@ -1,5 +1,5 @@
 // 主进程和渲染进程之间的接口。渲染进程只能通过 window.api 调这些方法。
-import type { Annotation, AnnotationPatch, DevicePosition, HtmlResult, IdentifyInput, TrashedPaper, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term } from '@flax/core'
+import type { Annotation, AnnotationPatch, DevicePosition, IdentifyInput, TrashedPaper, Folder, NewAnnotation, Paper, PaperMeta, PaperPatch, ReadingPosition, TagColor, Term, WebCopyResult } from '@flax/core'
 
 export interface LibrarySnapshot {
   papers: Paper[]
@@ -59,7 +59,8 @@ export interface LibraryApi {
   /** 这篇的 PDF 在资料文件夹里还在不在 */
   fileMissing(id: string): Promise<boolean>
   /** arXiv 网页版：确保本机有一份（version 是 PDF 上的 vN，不知道就取最新的），在 flax://arxiv/<key>/ 下面 */
-  arxivHtml(id: string, version: string | null): Promise<HtmlResult>
+  /** arXiv 网页版：确保这篇有、本机读得到（存在资料文件夹里，按哈希从 flax://file/ 读） */
+  webCopy(paperId: string, id: string, version: string | null): Promise<WebCopyResult>
   /** PDF 找不到时让用户重新选一个；other_paper：选的文件属于库里另一篇 */
   relink(id: string): Promise<'ok' | 'cancel' | 'not_pdf' | 'other_paper'>
   showInFinder(id: string): Promise<void>

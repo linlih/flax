@@ -29,7 +29,7 @@ const SPECS: Record<LibKind, Spec> = {
          ON CONFLICT(id) DO UPDATE SET data = excluded.data, title_norm = excluded.title_norm, doi = excluded.doi, arxiv = excluded.arxiv,
          updated_at = excluded.updated_at, deleted = excluded.deleted`
       ).run(str(d['id']), JSON.stringify(d), normalizeTitle(str(d['title'])), ids.doi?.toLowerCase() ?? null, ids.arxiv ?? null, str(d['addedAt'], at), at, deleted)
-      const files = Array.isArray(d['files']) ? (d['files'] as { hash?: unknown }[]) : []
+      const files = [d['files'], d['webCopies']].flatMap((x) => (Array.isArray(x) ? (x as { hash?: unknown }[]) : []))
       for (const f of files) if (typeof f.hash === 'string') db.prepare('INSERT OR REPLACE INTO files (hash, paper_id) VALUES (?, ?)').run(f.hash, str(d['id']))
     }
   },

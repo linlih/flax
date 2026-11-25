@@ -144,6 +144,17 @@ describe('sync engine', () => {
     expect((await b.engine.sync()).sent).toBe(0)
   })
 
+  it('carries a saved arXiv web copy to the other device, which then knows its file belongs to the paper', async () => {
+    const { a, b } = await pair()
+    const p = a.lib.addPaper(meta('Toolformer', { identifiers: { arxiv: '2302.04761' } }))
+    a.lib.addWebCopy(p.id, { hash: 'f'.repeat(64), size: 10, want: 'v1', version: 'v1', addedAt: tick() })
+    await a.engine.sync()
+    await b.engine.sync()
+    expect(b.lib.getPaper(p.id)?.webCopies).toEqual(a.lib.getPaper(p.id)?.webCopies)
+    expect(b.lib.liveFileHashes()).toContain('f'.repeat(64))
+    expect(b.lib.findDuplicate({ hash: 'f'.repeat(64) })?.paper.id).toBe(p.id)
+  })
+
   it('merges concurrent offline edits on both devices', async () => {
     const { a, b } = await pair()
     const p = a.lib.addPaper(meta('Paper'))

@@ -1,6 +1,6 @@
 // 文献库仓储层：所有读写都经过这里。
 // 每条记录存成 JSON，另抽几列做索引。以后接 CRDT 同步只改这一层。
-import type { Annotation, DevicePosition, TrashedPaper, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingPosition, ReadingStatus, TagColor, Term, UUID } from './model'
+import type { Annotation, DevicePosition, TrashedPaper, FileRef, Folder, MatchIssue, Paper, PaperMeta, ReadingPosition, ReadingStatus, TagColor, Term, UUID, WebCopy } from './model'
 import { TAG_COLORS } from './model'
 import { normalizeTitle } from './text'
 import { likePattern } from './search'
@@ -206,10 +206,10 @@ export class Library {
     this.db.prepare('DELETE FROM sync_files').run()
   }
 
-  /** 所有没删的论文用到的 PDF 哈希 */
+  /** 所有没删的论文用到的文件哈希（PDF 和网页版） */
   liveFileHashes(): string[] {
     const out = new Set<string>()
-    for (const p of this.listPapers()) for (const f of p.files) out.add(f.hash)
+    for (const p of this.listPapers()) for (const h of fileHashes(p)) out.add(h)
     return [...out]
   }
 
@@ -347,6 +347,17 @@ export class Library {
     })
   }
 
+  /** 存好了一份网页版：同一个"要的版本"只留最新的一份 */
+  addWebCopy(id: UUID, copy: WebCopy): Paper {
+    return this.tx(() => {
+      const p = this.write(id, (x) => {
+        x.webCopies = [...(x.webCopies ?? []).filter((c) => c.want !== copy.want && c.hash !== copy.hash), copy]
+      })
+      this.db.prepare('INSERT OR REPLACE INTO files (hash, paper_id) VALUES (?, ?)').run(copy.hash, id)
+      return p
+    })
+  }
+
   /** 主文件找不到了，用户重新选了一个：它成为主文件，原来的主文件记录去掉 */
   replaceMainFile(id: UUID, file: FileRef): Paper {
     return this.tx(() => {
@@ -407,7 +418,7 @@ export class Library {
     if (!row) return
     const p = JSON.parse(row.data) as Paper
     if (p.purged) return
-    const next: Paper = { ...p, purged: true, files: [], updatedAt: this.now(), deviceId: this.deviceId }
+    const next: Paper = { ...p, purged: true, files: [], webCopies: [], updatedAt: this.now(), deviceId: this.deviceId }
     delete next.abstract
     delete next.readingPosition
     this.db.prepare('UPDATE papers SET data = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(next), next.updatedAt, id)
@@ -422,7 +433,7 @@ export class Library {
       const used = new Set<string>()
       for (const r of this.db.prepare('SELECT data FROM papers').all() as { data: string }[]) {
         const p = JSON.parse(r.data) as Paper
-        if (!p.purged) for (const f of p.files ?? []) used.add(f.hash)
+        if (!p.purged) for (const h of fileHashes(p)) used.add(h)
       }
       const orphans = (this.db.prepare('SELECT hash FROM files').all() as { hash: string }[]).map((r) => r.hash).filter((h) => !used.has(h))
       for (const h of orphans) {
@@ -644,6 +655,11 @@ export class Library {
     })
     return n
   }
+}
+
+/** 论文占着的文件：PDF 和网页版 */
+export function fileHashes(p: Paper): string[] {
+  return [...(p.files ?? []).map((f) => f.hash), ...(p.webCopies ?? []).map((c) => c.hash)]
 }
 
 function cleanTags(tags: string[]): string[] {

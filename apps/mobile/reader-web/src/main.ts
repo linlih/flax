@@ -3,7 +3,7 @@
 //
 // RN → 网页：window.flaxReader.receive(消息)
 //   { type: 'open', url, annotations, position, jump, dark, html?, topInset? }   打开文档；html 是 arXiv 编号：先试网页版
-//   { type: 'html', ok, base?, reason?, message? }             回复 needHtml：网页版存在哪个文件夹（file://）
+//   { type: 'html', ok, file?, reason?, message? }             回复 needHtml：网页版文件的 file:// 地址
 //   { type: 'annotations', annotations, active }               批注变了
 //   { type: 'goto', page, anno? }                              跳到某页 / 某条批注
 //   { type: 'mark' }                                          记下现在读到的地方（拖进度条跳页前），之后能 back 回来

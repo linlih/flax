@@ -445,12 +445,11 @@ export function Reader({ paper, backLabel, onBack, onInfo, toast, notes, jump, o
       scroller: htmlScrollRef.current!,
       host: htmlHostRef.current!,
       fetchHtml: async (version) => {
-        const r = await api.library.arxivHtml(arxivId, version)
+        const r = await api.library.webCopy(paper.id, arxivId, version)
         if (!r.ok) return { fail: r.reason, ...(r.message ? { message: r.message } : {}) }
-        const base = `flax://arxiv/${encodeURIComponent(r.key)}/`
-        const res = await fetch(`${base}index.html`)
+        const res = await fetch(`flax://file/${r.hash}`)
         if (!res.ok) return { fail: 'offline' }
-        return { raw: await res.text(), base }
+        return { raw: await res.text(), base: 'flax://file/' }
       },
       onPage: (p) => {
         setPage(p)

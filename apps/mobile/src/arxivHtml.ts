@@ -1,7 +1,10 @@
-// arXiv 网页版存在手机的缓存目录：<缓存>/arxiv-html/<编号vN>/。不同步，系统清掉了下次再下载。
-// 阅读器网页从 file:// 读 index.html 和图片（iOS 允许读整个应用目录，Android 允许读文件）。
+// arXiv 网页版：整页（图内嵌）存成一个文件，放在资料文件夹里按哈希存（和 PDF 一样），记在论文上、跟着同步。
+// 不放缓存目录：系统清理缓存不会丢。阅读器网页从 file:// 读这个文件。
+// <缓存>/arxiv-html/ 是以前存的：里面已经有的直接打包进资料文件夹，不用再下载；"没有网页版"的记录也记在这。
 import { Directory, File, Paths } from 'expo-file-system'
-import { ensureArxivHtml, type HtmlFiles, type HtmlGet, type HtmlResult } from '@flax/core'
+import { ensureWebCopy, type HtmlFiles, type HtmlGet, type WebCopyResult } from '@flax/core'
+import { hasPdf, pdfFile, putPdf } from './platform/files'
+import { app } from './services'
 
 const root = () => new Directory(Paths.cache, 'arxiv-html')
 
@@ -10,27 +13,21 @@ function at(key: string, name: string): File {
   return new File(root(), key, name)
 }
 
-function ensureDir(f: File) {
-  const dir = f.parentDirectory
-  if (!dir.exists) dir.create({ intermediates: true, idempotent: true })
-}
-
-const files: HtmlFiles = {
+const cache: HtmlFiles = {
   readText: async (key, name) => {
     const f = at(key, name)
     return f.exists ? f.text() : null
   },
+  readBytes: async (key, name) => {
+    const f = at(key, name)
+    return f.exists ? f.bytes() : null
+  },
   writeText: async (key, name, text) => {
     const f = at(key, name)
-    ensureDir(f)
+    const dir = f.parentDirectory
+    if (!dir.exists) dir.create({ intermediates: true, idempotent: true })
     if (!f.exists) f.create()
     f.write(text)
-  },
-  writeBytes: async (key, name, data) => {
-    const f = at(key, name)
-    ensureDir(f)
-    if (!f.exists) f.create()
-    f.write(data)
   }
 }
 
@@ -45,16 +42,31 @@ const get: HtmlGet = async (url) => {
   }
 }
 
-const running = new Map<string, Promise<HtmlResult>>()
+const running = new Map<string, Promise<WebCopyResult>>()
 
-/** 确保本机有这一版的网页版；成功时给出它所在文件夹的 file:// 地址 */
-export async function arxivHtml(id: string, version: string | null): Promise<HtmlResult & { base?: string }> {
-  const k = `${id}${version ?? ''}`
+/** 确保这篇论文有网页版、本机读得到；成功时给出那个文件的 file:// 地址 */
+export async function webCopy(paperId: string, id: string, version: string | null): Promise<WebCopyResult & { uri?: string }> {
+  const k = `${paperId}/${version ?? ''}`
   let p = running.get(k)
   if (!p) {
-    p = ensureArxivHtml(id, version, { files, get }).finally(() => running.delete(k))
+    const s = app()
+    p = ensureWebCopy(paperId, id, version, {
+      library: {
+        getPaper: (pid) => s.library.getPaper(pid),
+        addWebCopy: (pid, copy) => {
+          const paper = s.library.addWebCopy(pid, copy)
+          // 新存的一份：几秒后传到同步
+          s.changed()
+          return paper
+        }
+      },
+      store: { has: hasPdf, put: (data) => putPdf(data) },
+      fetchSynced: (hash) => s.sync.download(hash),
+      get,
+      cache
+    }).finally(() => running.delete(k))
     running.set(k, p)
   }
   const r = await p
-  return r.ok ? { ...r, base: new Directory(root(), r.key).uri.replace(/\/?$/, '/') } : r
+  return r.ok ? { ...r, uri: pdfFile(r.hash).uri } : r
 }

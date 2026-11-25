@@ -1,7 +1,6 @@
 // flax:// 协议：给渲染进程读 PDF 和 PDF.js 的资源文件。
-//   flax://file/<sha256>      库里的 PDF，支持 Range，大文件也能先显示第一页
+//   flax://file/<sha256>      库里的文件（PDF、arXiv 网页版），支持 Range，大文件也能先显示第一页
 //   flax://pdfjs/<dir>/<name> PDF.js 的字体、CMap（中日韩文字）、wasm 解码器
-//   flax://arxiv/<key>/<file>  存在本机的 arXiv 网页版（index.html 和 img/ 里的图）
 // 渲染进程拿不到任意路径，只能按哈希读库里的文件。
 import { createReadStream } from 'node:fs'
 import { open, stat } from 'node:fs/promises'
@@ -19,11 +18,7 @@ export interface ProtocolDeps {
   /** 本机没有这个文件时（比如在别的设备上加的论文）先下载；下载到了返回 true */
   fetchMissing?: (hash: string) => Promise<boolean>
   pdfjsRoot?: string
-  /** arXiv 网页版存在哪（每篇一个文件夹） */
-  arxivRoot?: string
 }
-
-const ARXIV_TYPES: Record<string, string> = { html: 'text/html; charset=utf-8', json: 'application/json', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp' }
 
 export function createHandler(d: ProtocolDeps): (req: Request) => Promise<Response> {
   const pdfjsRoot = d.pdfjsRoot ?? dirname(require.resolve('pdfjs-dist/package.json'))
@@ -46,15 +41,6 @@ export function createHandler(d: ProtocolDeps): (req: Request) => Promise<Respon
         const path = normalize(join(pdfjsRoot, parts[0]!, parts[1]!))
         if (!path.startsWith(join(pdfjsRoot, parts[0]!) + sep)) return notFound()
         return await serveFile(path, null, parts[1]!.endsWith('.wasm') ? 'application/wasm' : 'application/octet-stream')
-      }
-      if (url.host === 'arxiv' && d.arxivRoot && parts.length >= 2) {
-        const root = normalize(d.arxivRoot)
-        const path = normalize(join(root, ...parts))
-        if (!path.startsWith(root + sep)) return notFound()
-        const ext = (parts[parts.length - 1]!.split('.').pop() ?? '').toLowerCase()
-        const type = ARXIV_TYPES[ext]
-        if (!type) return notFound()
-        return await serveFile(path, null, type)
       }
       return notFound()
     } catch (e) {

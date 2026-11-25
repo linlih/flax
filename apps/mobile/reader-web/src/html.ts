@@ -1,5 +1,5 @@
 // 手机阅读器的网页版模式（arXiv HTML）：显示、批注换算都用桌面的 HtmlView，这里只接上和 RN 之间的消息。
-// 打开流程：读 PDF 的文字 → 认出版本 → 问 RN 要这一版的网页（RN 下载、存在缓存里）→ 从 file:// 读进来显示。
+// 打开流程：读 PDF 的文字 → 认出版本 → 问 RN 要这一版的网页（RN 存在资料文件夹里，图内嵌）→ 从 file:// 读进来显示。
 // 打不开（没有网页版、没联网、和 PDF 对不上）就告诉 RN，由 main.ts 接着用 PDF 打开。
 import type { Annotation } from '@flax/core'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
@@ -12,7 +12,8 @@ type Post = (m: Record<string, unknown>) => void
 
 export interface HtmlReply {
   ok: boolean
-  base?: string
+  /** 网页版文件的 file:// 地址 */
+  file?: string
   reason?: 'none' | 'offline'
   message?: string
 }
@@ -41,6 +42,8 @@ function readLocal(url: string): Promise<string> {
   return new Promise((resolve, reject) => {
     const x = new XMLHttpRequest()
     x.open('GET', url)
+    // 文件和 PDF 存在一起（扩展名是 .pdf），按网页文字读
+    x.overrideMimeType('text/html; charset=utf-8')
     x.onload = () => (x.status === 0 || x.status === 200 ? resolve(x.responseText) : reject(new Error(`HTTP ${x.status}`)))
     x.onerror = () => reject(new Error('读不了网页文件'))
     x.send()
@@ -62,9 +65,9 @@ export async function startHtml(o: {
   const fetchHtml = (version: string | null) =>
     new Promise<Fetched>((resolve) => {
       waiting = (r) => {
-        if (!r.ok || !r.base) return resolve({ fail: r.reason ?? 'offline', ...(r.message ? { message: r.message } : {}) })
-        readLocal(`${r.base}index.html`).then(
-          (raw) => resolve({ raw, base: r.base! }),
+        if (!r.ok || !r.file) return resolve({ fail: r.reason ?? 'offline', ...(r.message ? { message: r.message } : {}) })
+        readLocal(r.file).then(
+          (raw) => resolve({ raw, base: r.file! }),
           (e: Error) => resolve({ fail: 'offline', message: e.message })
         )
       }

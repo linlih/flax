@@ -14,7 +14,7 @@ import { app, bump, showNotice } from '../../src/services'
 import { pdfFile } from '../../src/platform/files'
 import { readerProps } from '../../src/reader'
 import { appendToPaperNote, copyText, pageDark, readerMode, setPageDark, setReaderMode, setStatus } from '../../src/actions'
-import { arxivHtml } from '../../src/arxivHtml'
+import { webCopy } from '../../src/arxivHtml'
 import { Button, Chip, Empty, Field, IconButton } from '../../src/ui/kit'
 import { Icon } from '../../src/ui/Icon'
 import { ActionSheet, BottomSheet, Prompt } from '../../src/ui/sheets'
@@ -202,10 +202,10 @@ export default function ReadScreen() {
         break
       }
       case 'needHtml': {
-        if (!arxiv) return send({ type: 'html', ok: false, reason: 'none' })
+        if (!arxiv || !paper) return send({ type: 'html', ok: false, reason: 'none' })
         const version = typeof m['version'] === 'string' ? m['version'] : null
-        arxivHtml(arxiv, version).then(
-          (r) => send(r.ok ? { type: 'html', ok: true, base: r.base } : { type: 'html', ok: false, reason: r.reason, ...(r.message ? { message: r.message } : {}) }),
+        webCopy(paper.id, arxiv, version).then(
+          (r) => send(r.ok ? { type: 'html', ok: true, file: r.uri } : { type: 'html', ok: false, reason: r.reason, ...(r.message ? { message: r.message } : {}) }),
           (e: unknown) => send({ type: 'html', ok: false, reason: 'offline', message: e instanceof Error ? e.message : String(e) })
         )
         break

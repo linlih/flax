@@ -19,7 +19,7 @@ import { Updater, realUpdater } from './updater'
 import { FileStore } from './store'
 import { SyncService } from './sync'
 import { deviceName } from './device'
-import { createArxivHtml } from './arxivHtml'
+import { createWebCopies } from './arxivHtml'
 import { ConnectorService } from './connectorService'
 import { createSearch } from './search'
 import { createLocalCrypt, type Crypt } from './localCrypt'
@@ -200,10 +200,14 @@ function setup(): void {
   })
   const changed = () => send('library:changed')
   let sync: SyncService | null = null
-  const arxivRoot = join(app.getPath('userData'), 'arxiv-html')
-  const arxivHtml = createArxivHtml(arxivRoot, (url, init) => net.fetch(url, init))
+  const webCopy = createWebCopies({
+    cacheRoot: join(app.getPath('userData'), 'arxiv-html'),
+    store,
+    library,
+    fetchSynced: (hash) => sync?.download(hash) ?? Promise.resolve(false),
+    fetchImpl: (url, init) => net.fetch(url, init)
+  })
   protocol.handle(SCHEME, createHandler({
-    arxivRoot,
     fetchMissing: (hash) => sync?.download(hash) ?? Promise.resolve(false),
     fileFor: (hash) => {
       try {
@@ -694,7 +698,12 @@ function setup(): void {
   handle('connector:status', () => ({ settings: connector!.settings(), state: connector!.state() }))
   handle('connector:set', (patch) => connector!.set((patch ?? {}) as { enabled?: unknown; port?: unknown }))
 
-  handle('library:arxivHtml', (id, version) => arxivHtml(str(id, 'id'), version === null || version === undefined ? null : str(version, 'version')))
+  handle('library:webCopy', async (paperId, id, version) => {
+    const r = await webCopy(str(paperId, 'paperId'), str(id, 'id'), version === null || version === undefined ? null : str(version, 'version'))
+    // 新存了一份的话（下载要一阵），记录和文件要传上去
+    if (r.ok) sync?.poke()
+    return r
+  })
   handle('library:showInFinder', (id) => {
     const p = mainFile(str(id, 'id'))
     if (p) shell.showItemInFolder(p)

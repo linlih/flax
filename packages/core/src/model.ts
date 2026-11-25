@@ -38,6 +38,20 @@ export interface FileRef {
   addedAt: string
 }
 
+/**
+ * arXiv 网页版：整页连图（内嵌）存成一个 HTML 文件，和 PDF 一样按哈希存在资料文件夹里、跟着同步。
+ * 不放进 files：那里都是 PDF
+ */
+export interface WebCopy {
+  hash: string
+  size: number
+  /** 要的是哪一版：PDF 上认出来的 vN；认不出是 null（当时最新的那版） */
+  want: string | null
+  /** 拿到的是哪一版 */
+  version: string | null
+  addedAt: string
+}
+
 /** web：浏览器插件从网页上的 citation_* 信息读到的（联网查不到时才用） */
 export type MetadataSource = 'arxiv' | 'crossref' | 'openalex' | 'openlibrary' | 'ai' | 'pdf' | 'filename' | 'web' | 'user'
 
@@ -52,6 +66,8 @@ export interface Paper extends Versioned {
   identifiers: Identifiers
   abstract?: string
   files: FileRef[]
+  /** arXiv 网页版（可能有几版，对应不同的 PDF） */
+  webCopies?: WebCopy[]
   folderIds: UUID[]
   tags: string[]
   readingStatus: ReadingStatus

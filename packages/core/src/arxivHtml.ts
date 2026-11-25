@@ -1,19 +1,34 @@
-// arXiv 网页版（arxiv.org/html/<编号>）：下载一份存在本机，图片也存下来，离线也能读。
+// arXiv 网页版（arxiv.org/html/<编号>）：下载一次，图片内嵌进网页（data: 地址），整页存成一个 HTML 文件。
+// 这个文件和 PDF 一样按哈希存在资料文件夹里、记在论文上（Paper.webCopies），跟着同步传到别的设备；
+// 手机上不放缓存目录，系统清理也不会丢。
 // 桌面（主进程）和手机（React Native）共用；存文件和联网由平台传进来。
 // 网页里的脚本、样式这里不管：显示前在阅读器里用 DOMParser 清理（见 reader/html/article.ts）。
+import type { Paper, UUID, WebCopy } from './model'
+import { toBase64, utf8 } from './sync/codec'
 
-/** 存网页的地方：每一份（编号 + 版本）一个文件夹 */
+/** 旧版本存网页的地方（每一份一个文件夹，图片单独存）：还在的就直接打包，不用再下载；"没有网页版"的记录也记在这 */
 export interface HtmlFiles {
   readText(key: string, name: string): Promise<string | null>
+  readBytes(key: string, name: string): Promise<Uint8Array | null>
   writeText(key: string, name: string, text: string): Promise<void>
-  writeBytes(key: string, name: string, data: Uint8Array): Promise<void>
 }
 
 /** 平台的下载：不限速（一个网页加几张图，和浏览器打开一样） */
 export type HtmlGet = (url: string) => Promise<{ status: number; body: Uint8Array; type?: string }>
 
-export type HtmlResult =
-  | { ok: true; key: string; version: string | null }
+export interface WebCopyDeps {
+  library: { getPaper(id: UUID): Paper | null; addWebCopy(id: UUID, copy: WebCopy): Paper }
+  /** 资料文件夹里按哈希存的文件（和 PDF 同一处） */
+  store: { has(hash: string): boolean | Promise<boolean>; put(data: Uint8Array): Promise<string> }
+  /** 本机没有、同步的云端可能有：下载下来，有了返回 true */
+  fetchSynced?: (hash: string) => Promise<boolean>
+  get: HtmlGet
+  cache: HtmlFiles
+  now?: () => number
+}
+
+export type WebCopyResult =
+  | { ok: true; hash: string; version: string | null }
   /** none：arXiv 没有这篇的网页版（或转换失败）；offline：没连上，下次再试 */
   | { ok: false; reason: 'none' | 'offline'; message?: string }
 
@@ -45,9 +60,6 @@ export function versionInHtml(html: string, id: string): string | null {
   return new RegExp(`/abs/${esc}(v\\d+)`).exec(html)?.[1] ?? null
 }
 
-/** 存下来的网页的格式：比它旧的、里面还有没存的图，打开时重新下载一次 */
-const FORMAT = 2
-
 /** arXiv 的 SVG 图放在 <object type="image/svg+xml" data="…">（多是 TikZ 画的图），阅读器不放 object：
  *  改成 <img>，和别的图一样存到本机。img 里的 SVG 不跑脚本 */
 export function objectsToImages(html: string): string {
@@ -60,34 +72,75 @@ export function objectsToImages(html: string): string {
   })
 }
 
-const EXT: Record<string, string> = { 'image/png': '.png', 'image/jpeg': '.jpg', 'image/gif': '.gif', 'image/svg+xml': '.svg', 'image/webp': '.webp' }
-
 /**
- * 确保本机有这篇的网页版。version 是 PDF 上的版本（vN），要和 PDF 对得上批注才能对上；
- * 不知道版本就取最新的。已经存过的直接用。
+ * 确保这篇论文有网页版、本机读得到。version 是 PDF 上的版本（vN），要和 PDF 对得上批注才能对上；
+ * 不知道版本就取最新的。存过的直接用；本机没有就先从同步下载，再不行才去 arXiv 下载。
  */
-export async function ensureArxivHtml(id: string, version: string | null, d: { files: HtmlFiles; get: HtmlGet; now?: () => number }): Promise<HtmlResult> {
+export async function ensureWebCopy(paperId: UUID, id: string, version: string | null, d: WebCopyDeps): Promise<WebCopyResult> {
   const now = d.now ?? Date.now
+  const paper = d.library.getPaper(paperId)
+  const copies = paper?.webCopies ?? []
+  const have = copies.find((c) => c.want === version) ?? (version ? copies.find((c) => c.version === version) : undefined)
+  if (have) {
+    if (await d.store.has(have.hash)) return { ok: true, hash: have.hash, version: have.version }
+    if (d.fetchSynced && (await d.fetchSynced(have.hash).catch(() => false))) return { ok: true, hash: have.hash, version: have.version }
+  }
+
   const key = htmlKey(id, version)
-  /** 要重新下载的旧副本：下载不成就接着用它 */
-  let stale: HtmlResult | null = null
-  const meta = await d.files.readText(key, 'meta.json').catch(() => null)
+  let got = await fromOldCopy(key, d.cache)
+  if (!got) {
+    const r = await download(id, version, d, now)
+    if ('reason' in r) return r
+    got = r
+  }
+  const data = utf8(got.html)
+  const hash = await d.store.put(data)
+  if (paper) d.library.addWebCopy(paperId, { hash, size: data.byteLength, want: version, version: got.version, addedAt: new Date(now()).toISOString() })
+  return { ok: true, hash, version: got.version }
+}
+
+const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', svg: 'image/svg+xml', webp: 'image/webp' }
+
+const dataUri = (type: string, body: Uint8Array) => `data:${type};base64,${toBase64(body)}`
+
+/** 以前存在缓存文件夹里的一份：图片内嵌进去，不用再下载。缺图的旧格式（<object> 里的图没存）不要 */
+async function fromOldCopy(key: string, cache: HtmlFiles): Promise<{ html: string; version: string | null } | null> {
+  const meta = await cache.readText(key, 'meta.json').catch(() => null)
+  if (!meta) return null
+  let m: { ok?: boolean; version?: string | null; format?: number }
+  try {
+    m = JSON.parse(meta)
+  } catch {
+    return null
+  }
+  if (!m.ok) return null
+  let html = await cache.readText(key, 'index.html').catch(() => null)
+  if (!html || ((m.format ?? 1) < 2 && /<object\b[^>]*\stype="image\//i.test(html))) return null
+  const names = [...new Set([...html.matchAll(/<img\b[^>]*?\ssrc="(img\/\d+\.(\w+))"/g)].map((x) => x[1]!))]
+  const inlined = new Map<string, string>()
+  for (const name of names) {
+    const body = await cache.readBytes(key, name).catch(() => null)
+    const type = MIME[name.split('.').pop()!.toLowerCase()]
+    if (body && type) inlined.set(name, dataUri(type, body))
+  }
+  html = html.replace(/(<img\b[^>]*?\ssrc=")(img\/\d+\.\w+)(")/g, (all, a: string, src: string, b: string) => (inlined.has(src) ? a + inlined.get(src)! + b : all))
+  return { html, version: m.version ?? null }
+}
+
+async function download(id: string, version: string | null, d: WebCopyDeps, now: () => number): Promise<{ html: string; version: string | null } | { ok: false; reason: 'none' | 'offline'; message?: string }> {
+  const key = htmlKey(id, version)
+  const meta = await d.cache.readText(key, 'meta.json').catch(() => null)
   if (meta) {
     try {
-      const m = JSON.parse(meta) as { ok?: boolean; version?: string | null; checkedAt?: number; format?: number }
-      if (m.ok) {
-        const done = { ok: true as const, key, version: m.version ?? version }
-        if ((m.format ?? 1) >= FORMAT) return done
-        // 旧格式没存 <object> 里的图：有这种图才重新下载，下同一版
-        const old = await d.files.readText(key, 'index.html').catch(() => null)
-        if (old && !/<object\b[^>]*\stype="image\//i.test(old)) return done
-        version = version ?? m.version ?? null
-        stale = done
-      }
+      const m = JSON.parse(meta) as { ok?: boolean; checkedAt?: number }
       if (m.ok === false && now() - (m.checkedAt ?? 0) < NONE_TTL_MS) return { ok: false, reason: 'none' }
     } catch {
       /* 坏了就重新下载 */
     }
+  }
+  const none = async () => {
+    await d.cache.writeText(key, 'meta.json', JSON.stringify({ ok: false, checkedAt: now() })).catch(() => undefined)
+    return { ok: false as const, reason: 'none' as const }
   }
 
   const page = `${BASE}${id}${version ?? ''}`
@@ -95,31 +148,22 @@ export async function ensureArxivHtml(id: string, version: string | null, d: { f
   try {
     res = await d.get(page)
   } catch (e) {
-    return stale ?? { ok: false, reason: 'offline', message: e instanceof Error ? e.message : String(e) }
+    return { ok: false, reason: 'offline', message: e instanceof Error ? e.message : String(e) }
   }
-  if (res.status === 404 || res.status === 410) {
-    if (stale) return stale
-    await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: false, checkedAt: now() }))
-    return { ok: false, reason: 'none' }
-  }
-  if (res.status !== 200) return stale ?? { ok: false, reason: 'offline', message: `arXiv 返回 ${res.status}` }
-  if (res.body.byteLength > MAX_HTML_BYTES) return stale ?? { ok: false, reason: 'none' }
+  if (res.status === 404 || res.status === 410) return none()
+  if (res.status !== 200) return { ok: false, reason: 'offline', message: `arXiv 返回 ${res.status}` }
+  if (res.body.byteLength > MAX_HTML_BYTES) return { ok: false, reason: 'none' }
   let html = new TextDecoder().decode(res.body)
-  if (!hasArticle(html)) {
-    if (stale) return stale
-    await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: false, checkedAt: now() }))
-    return { ok: false, reason: 'none' }
-  }
+  if (!hasArticle(html)) return none()
   const found = versionInHtml(html, id) ?? version
   html = objectsToImages(html)
 
-  // 正文里的图存到本机，网页里的地址改成本地的相对路径
+  // 正文里的图下载下来，内嵌进网页
   const start = html.search(/<article[\s>]/)
   const end = html.lastIndexOf('</article>')
   const body = start >= 0 && end > start ? html.slice(start, end) : html
   const srcs = [...new Set([...body.matchAll(/<img\b[^>]*?\ssrc="([^"]+)"/g)].map((m) => m[1]!))].filter((s) => !/^data:/i.test(s)).slice(0, MAX_IMAGES)
-  const local = new Map<string, string>()
-  let n = 0
+  const inlined = new Map<string, string>()
   const queue = [...srcs]
   const worker = async () => {
     for (let src = queue.shift(); src !== undefined; src = queue.shift()) {
@@ -132,16 +176,12 @@ export async function ensureArxivHtml(id: string, version: string | null, d: { f
       if (url.protocol !== 'https:' || !/(^|\.)arxiv\.org$/.test(url.hostname) || url.hostname.startsWith('static.')) continue
       const r = await d.get(url.href).catch(() => null)
       if (!r || r.status !== 200 || !r.body.byteLength) continue
-      const ext = EXT[(r.type ?? '').split(';')[0]!.trim()] ?? (/\.(png|jpe?g|gif|svg|webp)$/i.exec(url.pathname)?.[0]?.toLowerCase() ?? '.png')
-      const name = `img/${++n}${ext}`
-      await d.files.writeBytes(key, name, r.body)
-      local.set(src, name)
+      const type = (r.type ?? '').split(';')[0]!.trim().toLowerCase()
+      const mime = type.startsWith('image/') ? type : MIME[/\.(\w+)$/.exec(url.pathname)?.[1]?.toLowerCase() ?? ''] ?? 'image/png'
+      inlined.set(src, dataUri(mime, r.body))
     }
   }
   await Promise.all([worker(), worker(), worker(), worker()])
-  html = html.replace(/(<img\b[^>]*?\ssrc=")([^"]+)(")/g, (m, a: string, src: string, b: string) => (local.has(src) ? a + local.get(src)! + b : m))
-
-  await d.files.writeText(key, 'index.html', html)
-  await d.files.writeText(key, 'meta.json', JSON.stringify({ ok: true, id, version: found, fetchedAt: now(), images: local.size, format: FORMAT }))
-  return { ok: true, key, version: found }
+  html = html.replace(/(<img\b[^>]*?\ssrc=")([^"]+)(")/g, (m, a: string, src: string, b: string) => (inlined.has(src) ? a + inlined.get(src)! + b : m))
+  return { html, version: found }
 }
